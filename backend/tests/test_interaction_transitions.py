@@ -5,8 +5,9 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
+from conftest import create_valid_published_job
 from httpx import AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -20,9 +21,10 @@ from app.models import (
     Notification,
     TalentInterest,
 )
-from app.notifications import email as notification_email
+from app.notifications import provider as notification_provider
+from app.notifications.provider import SmtpEmailProvider
+from app.notifications.worker import process_outbox_once
 from app.services.email_service import EmailDeliveryError
-from conftest import create_valid_published_job
 
 
 async def _login(client: AsyncClient, stem: str) -> str:
@@ -555,19 +557,32 @@ async def test_external_delivery_failure_after_commit_does_not_rollback_hire(
         )
     ).scalar_one()
 
-    monkeypatch.setattr(notification_email, "real_delivery_enabled", lambda: True)
-
     def _fail_delivery(**kwargs):
         raise EmailDeliveryError("synthetic provider outage")
 
-    monkeypatch.setattr(notification_email, "send_auth_email", _fail_delivery)
-    notification_email._process_outbox_row(outbox)
+    # Patched on the provider module, not on email_service: SmtpEmailProvider
+    # imported the name at import time, so patching the source module would
+    # leave the real sender in place and the test would quietly pass on a
+    # successful send.
+    monkeypatch.setattr(notification_provider, "send_auth_email", _fail_delivery)
+
+    # The worker claims from the whole table, so rows queued by earlier tests in
+    # this file would fill the batch and this one would never be attempted.
+    await db_session.execute(delete(EmailOutbox).where(EmailOutbox.id != outbox.id))
+    await process_outbox_once(db_session, provider=SmtpEmailProvider())
     await db_session.commit()
 
     application = await db_session.get(JobApplication, uuid.UUID(application_id))
     assert application is not None
     assert (application.status, application.participant_status) == ("hired", "hired")
-    assert outbox.status == "failed"
+
+    # The hire stands and the email is not lost: a provider outage is transient
+    # until the attempt ceiling says otherwise, so the row is owed another try
+    # rather than written off.
+    await db_session.refresh(outbox)
+    assert outbox.attempts == 1
+    assert outbox.status == "queued"
+    assert outbox.next_attempt_at is not None
 
 
 async def test_realtime_failure_after_commit_still_returns_authoritative_success(

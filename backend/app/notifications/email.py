@@ -1,11 +1,16 @@
 """Email layer for notifications.
 
-Phase 1 keeps real delivery OFF. Every notification email is written to the
-``email_outbox`` table and handed to an adapter:
+Every email the platform intends to send is written to the ``email_outbox``
+table inside the caller's transaction. Delivery is not attempted here: the
+worker claims committed rows, asks a provider, and records what it said.
 
-* MockEmailAdapter (default) — marks the row ``mocked`` and logs it; never sends.
-* SmtpEmailAdapter (deferred) — only used when ``EMAIL_DELIVERY_ENABLED=true`` and
-  ``EMAIL_MODE=smtp``; reuses the existing SMTP path in ``email_service``.
+There is deliberately only ONE delivery path. This module used to carry a second
+one — a mock adapter that marked rows ``mocked``, a status the worker never
+produces — and two paths with different vocabularies is how a row ends up in a
+state that nothing else understands.
+
+``real_delivery_enabled()`` still decides whether that provider is the real SMTP
+one or the mock; see ``app/notifications/runner.build_provider``.
 
 Authentication mail (verification, password reset, invitation) now goes through
 the same table via ``queue_auth_email``. It used to send inline after the
@@ -18,14 +23,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models import EmailOutbox
-from app.services.email_service import EmailDeliveryError, send_auth_email
 
 logger = logging.getLogger(__name__)
 
@@ -43,32 +46,9 @@ class EmailPayload:
     dedupe_key: str | None = None
 
 
-def _now() -> datetime:
-    return datetime.now(UTC)
-
-
 def real_delivery_enabled() -> bool:
     """Real notification email is only attempted when explicitly switched on."""
     return bool(settings.email_delivery_enabled) and settings.email_mode == "smtp"
-
-
-def _process_outbox_row(row: EmailOutbox) -> None:
-    if not real_delivery_enabled():
-        row.status = "mocked"
-        row.processed_at = _now()
-        logger.info(
-            "notification_email_mocked",
-            extra={"event_key": row.event_key, "to": row.to_email, "subject": row.subject},
-        )
-        return
-
-    try:  # pragma: no cover - real delivery is off by default and not exercised in tests
-        send_auth_email(to_email=row.to_email, subject=row.subject, text_body=row.body or row.preview or "")
-        row.status = "sent"
-    except EmailDeliveryError as exc:  # pragma: no cover
-        row.status = "failed"
-        row.error = str(exc)
-    row.processed_at = _now()
 
 
 def queue_notification_email(session: AsyncSession, payload: EmailPayload) -> EmailOutbox:

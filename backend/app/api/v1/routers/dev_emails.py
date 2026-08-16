@@ -72,8 +72,9 @@ async def list_notification_outbox(
 ) -> DevOutboxListResponse:
     """Dev/test helper: inspect notification emails queued to the mock outbox.
 
-    Notification emails are never sent while delivery is disabled — they land here
-    with status ``mocked`` so they can be previewed locally and asserted in tests.
+    While real delivery is switched off the worker uses the mock provider, so
+    rows reach ``sent`` without anything leaving the machine and can be previewed
+    locally and asserted in tests.
     """
     _ensure_dev_only()
     rows = (

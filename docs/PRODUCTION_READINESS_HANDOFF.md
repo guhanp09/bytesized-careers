@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 5 — Invite-only beta and durable transactional email
-LAST COMPLETED ATOMIC SLICE: Phase 5G (EMAIL-002) — verification and password-reset mail is queued inside the transaction instead of sent inline, and app/notifications/runner.py drains the queue. INVITE-001, INVITE-002, EMAIL-001 and EMAIL-002 are VALIDATED
-NEXT ATOMIC SLICE: Phase 5 continues at EMAIL-003 — route event email (application, hiring, safety) through the same queue — then EMAIL-004 (bounce/suppression), which also owes the failure visibility that EMAIL-002's removed 503 used to provide. The invitation email is still unwritten because nothing issues invitations over HTTP yet. Phase 4 is locally certified: 23 deterministic browser failures are 0, and the 5 that still fail under parallel load all pass serially (list recorded below under "Phase 4 certification"). EMAIL-005 (domain authentication) is BLOCKED_EXTERNAL and must not hold up the durable outbox work. Still open elsewhere: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004 (timeouts/concurrency), TRUST-003 (marketplace metrics — StatTiles for Applicants/Views/Response rate, and two tests currently assert they stay visible), CORRECT-006 (duplicate job-apply-button and APPLICATION REQUIREMENTS identities), and backend/.env.example (BLOCKED_ENVIRONMENT).
+LAST COMPLETED ATOMIC SLICE: Phase 5H (EMAIL-003) — one delivery path only; the mock adapter that marked rows "mocked" is gone, and event mail is proven queued-to-sent and retried end to end. INVITE-001, INVITE-002, EMAIL-001, EMAIL-002 and EMAIL-003 are VALIDATED
+NEXT ATOMIC SLICE: Phase 5 continues at EMAIL-004 (bounce/suppression), which also owes the failure visibility that EMAIL-002's removed 503 used to provide. Then Phase 5 certification. The invitation email is still unwritten because nothing issues invitations over HTTP yet; EMAIL-005 stays BLOCKED_EXTERNAL. Phase 4 is locally certified: 23 deterministic browser failures are 0, and the 5 that still fail under parallel load all pass serially (list recorded below under "Phase 4 certification"). EMAIL-005 (domain authentication) is BLOCKED_EXTERNAL and must not hold up the durable outbox work. Still open elsewhere: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004 (timeouts/concurrency), TRUST-003 (marketplace metrics — StatTiles for Applicants/Views/Response rate, and two tests currently assert they stay visible), CORRECT-006 (duplicate job-apply-button and APPLICATION REQUIREMENTS identities), and backend/.env.example (BLOCKED_ENVIRONMENT).
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0061_beta_invitations (single head; 0060_email_outbox_lease then 0061)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -56,6 +56,43 @@ default-src   'self'; object-src 'none'; base-uri 'self'; form-action 'self'.
 Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
+```
+
+## Phase 5H checkpoint (EMAIL-003 — event email, and the second delivery path is gone)
+
+```text
+Commit: "refactor(email): leave one way for an email to be delivered"
+Status: COMPLETE. No migration, no new producer.
+
+Most of EMAIL-003 was already true and the ledger row was stale: app/notifications/service.py
+already enqueued inside the caller's transaction, and EMAIL-001's worker plus EMAIL-002's runner
+gave those rows a way out. What was actually wrong was that TWO delivery paths existed.
+
+REMOVED: notifications/email.py::_process_outbox_row. It marked rows "mocked" — a status the
+worker never produces and that eligible_predicate does not know — so a row processed by the old
+path landed in a state the rest of the system could not reason about. Its only caller was a test.
+One vocabulary now: queued -> sent | failed | skipped. The model comment, the dev-outbox route
+docstring and the module docstring said otherwise and were corrected rather than left to mislead.
+
+TEST TRAP, and it cost a wrong-looking pass: SmtpEmailProvider does
+`from app.services.email_service import send_auth_email` AT IMPORT TIME. Patching
+`email_service.send_auth_email` therefore does NOT affect it — the real sender stays in place and
+a test that expected a failure quietly passes on a successful send. Patch
+`app.notifications.provider.send_auth_email`. Two existing tests were patching the wrong module.
+
+SECOND TRAP: process_outbox_once claims table-wide, so in a file where earlier tests queue mail,
+the batch fills with their rows and the row under test is never attempted. Delete the others
+first (see test_external_delivery_failure_after_commit_does_not_rollback_hire) — this is the same
+lesson as Phase 5C-fix, in a different disguise.
+
+Rewritten rather than deleted: test_external_delivery_failure_after_commit_does_not_rollback_hire
+now drives the real worker. Its old assertion was status == "failed" on the first outage, which
+is the wrong contract — a transient outage is retried, so the row is queued with attempts == 1
+and a next_attempt_at. The hire standing regardless is still the point of the test.
+
+NEXT: EMAIL-004 (bounce/suppression) — it also owes the failure visibility that EMAIL-002's
+removed 503 used to provide, since a misconfigured provider is now only visible in worker logs
+and in rows that reach MAX_ATTEMPTS.
 ```
 
 ## Phase 5G checkpoint (EMAIL-002 — auth email goes through the outbox, and something drains it)

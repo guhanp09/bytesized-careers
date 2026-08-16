@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from conftest import create_valid_published_job
 from httpx import AsyncClient
+from sqlalchemy import delete, select
 
+from app.models import EmailOutbox
 from app.notifications import EVENT_REGISTRY, get_event, missing_payload_fields
 from app.notifications.email import real_delivery_enabled
+from app.notifications.provider import MockEmailProvider
 from app.notifications.registry import CHANNEL_EMAIL, CHANNEL_IN_APP
-from conftest import create_valid_published_job
+from app.notifications.worker import process_outbox_once
 
 
 async def _register_verified_login(
@@ -188,7 +192,10 @@ async def test_email_delivery_disabled_never_sends_real_email(client: AsyncClien
         sent.append(kwargs)
         raise AssertionError("real email must not be sent while EMAIL_DELIVERY_ENABLED is false")
 
-    monkeypatch.setattr("app.notifications.email.send_auth_email", _spy_send)
+    # Patched on the provider module, which is the only thing that reaches SMTP
+    # now that the mock adapter is gone. It also imported the name at import
+    # time, so patching email_service would leave the real sender in place.
+    monkeypatch.setattr("app.notifications.provider.send_auth_email", _spy_send)
 
     owner_token = await _register_verified_login(client, email="nosend_owner@example.com", username="nosend_owner")
     await _post_published_job(client, owner_token, "Editor for travel channel")
@@ -258,3 +265,43 @@ async def test_mark_one_read_decrements_unread(client: AsyncClient) -> None:
 
     after = await client.get("/api/v1/notifications", headers={"Authorization": f"Bearer {owner_token}"})
     assert after.json()["unread_count"] == before_unread - 1
+
+
+async def test_an_event_email_is_delivered_by_the_worker(
+    client: AsyncClient, db_session
+) -> None:
+    """The queue drains for event mail too, not only for auth mail.
+
+    Every notification email used to be recorded as intended and never sent,
+    because nothing called the delivery path. This is the end-to-end check that
+    a real product event now reaches a provider: post a job, run one pass, and
+    the row that was queued is sent.
+    """
+
+    owner_token = await _register_verified_login(
+        client, email="worker_delivers@example.com", username="worker_delivers"
+    )
+    await _post_published_job(client, owner_token, "Editor for a cooking channel")
+
+    queued = (
+        await db_session.execute(
+            select(EmailOutbox)
+            .where(EmailOutbox.to_email == "worker_delivers@example.com")
+            .where(EmailOutbox.event_key == "job_posted_successfully")
+        )
+    ).scalar_one()
+    assert queued.status == "queued"
+
+    # The worker claims table-wide, so rows from earlier tests would otherwise
+    # fill the batch and this one would never be attempted.
+    await db_session.execute(delete(EmailOutbox).where(EmailOutbox.id != queued.id))
+    provider = MockEmailProvider()
+    run = await process_outbox_once(db_session, provider=provider)
+    await db_session.commit()
+
+    assert run.sent == 1
+    assert [row.to_email for row in provider.sent] == ["worker_delivers@example.com"]
+    await db_session.refresh(queued)
+    assert queued.status == "sent"
+    # Recorded so a later bounce or complaint can be matched back to this send.
+    assert queued.provider_message_id
