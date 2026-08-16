@@ -87,6 +87,8 @@ Locally complete and certified. Every row below is `VALIDATED`; the certificatio
 
 ## Phase 5 — Durable transactional email and invite-only beta
 
+Locally complete and certified. Every row below is `VALIDATED` except EMAIL-005, which is `BLOCKED_EXTERNAL` on a sending domain and a paid provider; the certification totals are recorded in the handoff under "Phase 5 certification". No PostgreSQL migration harness was run because Docker is unavailable in this environment — migrations 0060/0061/0062 render both upgrade and downgrade offline, which is not the same thing and is not claimed to be.
+
 | ID | Severity | Subsystem | Dependencies | Status | Tests required | Migration | Infra | Blocks beta | Blocks unrestricted | Resolving commit |
 |---|---|---|---|---|---|---|---|---|---|---|
 | INVITE-001 | CRITICAL | Invitations | AUTH-001, AUTH-005 | VALIDATED | Email binding, expiry, single use, revocation, concurrency and audit tests | YES | NO | Yes | Yes | b141919, then "feat(invites): check the invitation at both signup doors" for atomic single use |

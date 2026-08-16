@@ -3,11 +3,11 @@
 ## Resume summary
 
 ```text
-LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
-CURRENT PHASE: Phase 5 — Invite-only beta and durable transactional email
+LAST COMPLETED PHASE: Phase 5 — Invite-only beta and durable transactional email (locally complete and certified; EMAIL-005 remains BLOCKED_EXTERNAL). Phases 2 and 4 were certified earlier under the same terms
+CURRENT PHASE: Phase 6 — AI Job Import hardening
 LAST COMPLETED ATOMIC SLICE: Phase 5I (EMAIL-004) — bounce/complaint suppression with an asymmetric rule (a hard bounce stops auth mail, a complaint does not) and a signed, replay-resistant delivery webhook. INVITE-001, INVITE-002, EMAIL-001, EMAIL-002, EMAIL-003 and EMAIL-004 are VALIDATED
-NEXT ATOMIC SLICE: Phase 5 certification, then Phase 6. Everything in Phase 5 is VALIDATED except EMAIL-005 (BLOCKED_EXTERNAL: sending domain, SPF/DKIM/DMARC). Still unwritten by design: the invitation email itself, because nothing issues invitations over HTTP yet, and an operator view of failed/suppressed rows, which belongs with the admin panel rather than the delivery path. Phase 4 is locally certified: 23 deterministic browser failures are 0, and the 5 that still fail under parallel load all pass serially (list recorded below under "Phase 4 certification"). EMAIL-005 (domain authentication) is BLOCKED_EXTERNAL and must not hold up the durable outbox work. Still open elsewhere: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004 (timeouts/concurrency), TRUST-003 (marketplace metrics — StatTiles for Applicants/Views/Response rate, and two tests currently assert they stay visible), CORRECT-006 (duplicate job-apply-button and APPLICATION REQUIREMENTS identities), and backend/.env.example (BLOCKED_ENVIRONMENT).
-CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
+NEXT ATOMIC SLICE: Phase 6 — AI Job Import hardening. Read the Phase 6 ledger rows first, and the standing product constraint before touching anything: AI Job Import must REMAIN. It may not be removed, permanently disabled, reduced to literal extraction, given a disconnected review UI, or allowed to auto-publish; import is an input method, not a second job editor. Phase 5 is certified locally (see "Phase 5 certification"); EMAIL-005 stays BLOCKED_EXTERNAL, the invitation email is unwritten because nothing issues invitations over HTTP yet, and an operator view of failed/suppressed email rows belongs with the admin panel. Still open elsewhere: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004 (timeouts/concurrency), TRUST-003 (marketplace metrics), CORRECT-006 (duplicate job-apply-button and APPLICATION REQUIREMENTS identities), and backend/.env.example (BLOCKED_ENVIRONMENT — the path is denied to tooling, so new settings are documented in backend/app/core/config.py instead).
+CURRENT HEAD: the Phase 5 certification commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0062_email_suppressions (single head; 0060_email_outbox_lease, 0061_beta_invitations, 0062)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
 IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
@@ -473,6 +473,54 @@ and its concurrency tests are the slice after, and those want the disposable Pos
 `SKIP LOCKED`.
 
 EMAIL-005 (SPF/DKIM/DMARC, real provider) stays BLOCKED_EXTERNAL and must not gate any of this.
+
+## Phase 5 certification — LOCALLY COMPLETE
+
+```text
+Scope: invite-only beta and durable transactional email.
+Status: every row VALIDATED except EMAIL-005, which is BLOCKED_EXTERNAL and cannot be closed from
+        this machine. Certifying the rest does not certify EMAIL-005 and must not be read that way.
+
+  INVITE-001  VALIDATED  invitation bound to one address and one use; single use enforced by the
+                         write (redeemed_at IS NULL), not by a read
+  INVITE-002  VALIDATED  one gate, called before create_user on BOTH the password and Google
+                         paths; redemption in the same transaction as the account
+  EMAIL-001   VALIDATED  lease/claim in one statement, bounded retries, provider seam, worker
+  EMAIL-002   VALIDATED  auth mail queued inside the transaction; runner.py drains the queue
+  EMAIL-003   VALIDATED  event mail proven queued-to-sent and retried; second delivery path removed
+  EMAIL-004   VALIDATED  asymmetric bounce/complaint suppression; signed, replay-resistant webhook
+  EMAIL-005   BLOCKED_EXTERNAL  sending domain, SPF, DKIM, DMARC, bounce domain, provider staging
+                         send. Needs DNS and a paid provider; both are outside the mandate.
+
+Evidence, all uncontended, all local:
+  backend      6,903 passed / 64 skipped / 0 failed   (Phase 5 start: 6,845 / 64)
+  frontend     1,181 passed / 0 failed  (node --test)
+  typescript   tsc --noEmit, exit 0
+  ruff         clean on every changed file; whole-tree findings remain the known baseline
+  alembic      single head 0062_email_suppressions; 0060, 0061, 0062 upgrade AND downgrade render
+               offline. No PostgreSQL harness was run: Docker is unavailable here, and that is an
+               environment limitation, not a passing result.
+
+Non-vacuity was proven by mutation for every protection added in this phase, not assumed:
+  gate removed from both signup paths      -> uninvited signup returns 200, test fails
+  redemption returned to read-then-write   -> the same invitation is redeemed twice, test fails
+  inline send restored                     -> the two provider-call-counting tests fail
+  runner error guard and event wait removed-> survive-a-bad-pass and shutdown-latency tests fail
+  signature and suppression checks removed -> 6 tests fail, including every forgery case
+
+What is deliberately NOT built, so nobody mistakes it for an oversight:
+  - the invitation EMAIL. Nothing issues invitations over HTTP yet, so there is no place to send
+    it from; the event key auth.invitation is reserved and the queue is ready.
+  - an operator view of failed/suppressed rows. EMAIL-002 removed a 503 that made a provider
+    outage loud in the request; a misconfigured provider is now visible only in worker logs and
+    in rows reaching MAX_ATTEMPTS. That view belongs with the admin panel.
+  - anything that would need a real provider, a real domain, or DNS.
+
+Posture on deploy: every new switch is off by default. INVITE_ONLY_BETA unset preserves open
+registration exactly; EMAIL_WORKER_IN_PROCESS unset means the API hosts no worker; an unset
+EMAIL_WEBHOOK_SECRET refuses every delivery report rather than accepting unsigned ones. Deploying
+this phase changes no behaviour until someone turns something on, which is the point.
+```
 
 ## Phase 4 certification — LOCALLY COMPLETE
 
