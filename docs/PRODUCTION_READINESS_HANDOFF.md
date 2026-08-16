@@ -58,6 +58,28 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               not belong in connect-src.
 ```
 
+## Phase 3C atomic checkpoint (DEP-001B)
+
+```text
+Phase: Phase 3, atomic slice 3C / DEP-001B — the framework and everything it carries
+Status: COMPLETE (DEP-001 is VALIDATED — production audit reports zero findings)
+Initial HEAD: Phase 3B checkpoint commit
+Final HEAD: Phase 3C checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): deps(next): move to the minor that carries patched postcss and sharp
+Files materially changed: `package.json`, `package-lock.json`
+Migrations: None
+Advisories resolved: nine `next` advisories (middleware/proxy bypass on Turbopack, DoS in Server Actions, SSRF in Server Actions on custom servers, SSRF in rewrites via attacker-controlled destination host, two cache-confusion issues, unbounded Server Action payload on Edge, image-optimization DoS via SVG, unauthenticated disclosure of internal Server Function endpoints); four `postcss` advisories (`</style>` XSS and three sourceMappingURL path-traversal/arbitrary-.map-read issues); the `sharp`/libvips group (CVE-2026-33327/33328/35590/35591); and two `nanoid` infinite-loop advisories
+Why 16.3.1 and not 16.2.12: every direct `next` advisory ends at `<16.2.11`, so a patch bump would have silenced them — but `16.2.11` and `16.2.12` still pin `postcss 8.4.31` and `sharp ^0.34.5`, both of which are themselves vulnerable and reach production. `16.3.1` pins `postcss 8.5.23` and `sharp ^0.35.3`, and `postcss@8.5.23`'s `nanoid ^3.3.16` resolves to the patched 3.3.18. One minor bump therefore closes four packages at once, which is why this is a single coherent group rather than four slices. It stays inside the declared `^16.2.6` range
+Framework-internals risk, checked explicitly: the WEB-008B nonce architecture depends on Next reading the request CSP header, so `app-render/get-script-nonce-from-header.js` and the `proxy` file convention were both confirmed present in 16.3.1 before any test ran, and the CSP browser suite was then run against it
+Audit movement: production findings 4 → 0. `npm audit --omit=dev` reports "found 0 vulnerabilities"
+Tests run: TypeScript; ESLint; complete frontend unit suite; production build; CSP browser suite; complete standard browser matrix; complete real-backend QA browser matrix
+Exact results: TypeScript passed; ESLint 0 errors / 33 known warnings; frontend unit 1,181 passed / 0 failed; build passed; CSP browser 6 passed with the policy enforcing; standard browser 448 passed / 22 failed (was 444 / 26 on 16.2.6 — four fewer failures); QA browser 280 passed / 10 failed / 2 skipped on a heavily contended machine, then the affected specs re-run clean at 35 passed / 0 failed in 1.6 minutes
+Standard-matrix churn, investigated not assumed: two specs failed that had not failed before (`visual-theme.spec.ts:52`, `seo-filter-routes.spec.ts:139`) and several that had failed before stopped failing. Both new ones were re-run in isolation and passed 16/16, so they are parallel-execution flakes rather than regressions. `visual-theme:52` was worth checking carefully because it exercises the theme bootstrap script that WEB-008B attaches a nonce to — its passing is direct evidence that the nonce'd inline script still executes on 16.3.1
+MACHINE CONTENTION — read this before trusting any browser run: the QA matrix reported 10 failures and took 1.1 hours against 15.5 minutes previously. That was not the framework. Load average during the run was 15.8 / 18.3 / 19.5, from the host's own browsers, editors and concurrent agent processes, plus a stray `next-server (v16.2.6)` left running for nine hours by an earlier inspection step. Three tests consumed roughly 46 of the 64 minutes hanging in Playwright teardown *after* hitting their 45-second timeout. Once the stray was killed and load fell to about 4.7, all five specs that had newly failed passed 35/35 in 1.6 minutes. Two independent facts point the same way: the standard matrix on the same 16.3.1 got *faster* (4.4m vs 7.7m), and `workspace-performance.spec.ts:108` — an item in the original Phase 0 recorded baseline — now passes. Before recording any browser failure as real, check `uptime` and `ps -ax | grep next-server`, and kill leftovers
+Backend: untouched by this slice
+Next slice: reassess remaining Phase 3 items, then Phase 4. This run is strong evidence that the historical 17/6 browser baseline is stale and must be re-established serially on a quiet machine rather than trusted
+```
+
 ## Phase 3B atomic checkpoint (DEP-001A)
 
 ```text
