@@ -97,6 +97,47 @@ class TestTheManifestAndLockAgree:
         assert not missing, f"declared but absent from uv.lock, so it was never relocked: {missing}"
 
 
+class TestSecurityFloorsHold:
+    """Some version floors are security boundaries, not preferences.
+
+    Both of these were raised deliberately to escape advisories, and both are
+    easy to lower again by someone widening a range to resolve an unrelated
+    conflict. Lowering either silently reintroduces a known vulnerable package,
+    so the floor is asserted rather than trusted.
+    """
+
+    @staticmethod
+    def _floor(package: str) -> tuple[int, ...]:
+        manifest = (BACKEND / "pyproject.toml").read_text(encoding="utf8")
+        match = re.search(rf'"{re.escape(package)}>=([0-9.]+)', manifest)
+        assert match, f"{package} no longer declares a lower bound"
+        return tuple(int(part) for part in match.group(1).split("."))
+
+    def test_fastapi_stays_high_enough_to_permit_a_patched_starlette(self) -> None:
+        # FastAPI below 0.141 pins `starlette<1.0.0`, and every Starlette before
+        # 1.x is missing Host-header validation — which poisons
+        # `request.url.path` — and is vulnerable to UNC-path traversal in
+        # StaticFiles. This service mounts StaticFiles, so that one is reachable.
+        assert self._floor("fastapi") >= (0, 141, 1)
+
+    def test_cryptography_stays_past_the_pkcs7_oracle(self) -> None:
+        # 50.0.0 is the first release without the PKCS#7 EnvelopedData
+        # Bleichenbacher oracle. This library encrypts OAuth credentials and
+        # TOTP secrets.
+        assert self._floor("cryptography") >= (50, 0, 0)
+
+    def test_the_lock_agrees_with_those_floors(self) -> None:
+        lock = (BACKEND / "uv.lock").read_text(encoding="utf8")
+
+        for package, minimum in (("fastapi", (0, 141, 1)), ("starlette", (1, 0, 0)), ("cryptography", (50, 0, 0))):
+            match = re.search(
+                rf'^\[\[package\]\]\nname = "{package}"\nversion = "([^"]+)"', lock, re.MULTILINE
+            )
+            assert match, f"{package} is missing from the lock"
+            resolved = tuple(int(p) for p in match.group(1).split(".") if p.isdigit())
+            assert resolved >= minimum, f"{package} resolved to {match.group(1)}, below its security floor"
+
+
 @pytest.mark.parametrize("path", ["pyproject.toml", "uv.lock"])
 def test_the_canonical_artifacts_exist(path: str) -> None:
     assert (BACKEND / path).is_file(), f"{path} is part of the dependency contract"

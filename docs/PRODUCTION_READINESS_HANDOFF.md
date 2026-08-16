@@ -6,7 +6,7 @@
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 3 — Dependencies, rate limiting, and request safety
 LAST COMPLETED ATOMIC SLICE: Phase 3C (DEP-001B) — `next` 16.2.6 → 16.3.1; the frontend production audit now reports zero findings
-NEXT ATOMIC SLICE: DEP-002E — starlette, and it is a framework migration rather than a version bump: `fastapi 0.129.0` pins `starlette<1.0.0`, so Starlette 1.x requires FastAPI 0.141.1 (a twelve-minor jump). The compatibility research is already done and recorded below under "DEP-002E — starlette: the compatibility research"; start there. Give it its own session. Everything else in DEP-002 is done — the backend production audit went from 9 vulnerable packages to 1. Starlette 0.52.1 → 1.x, the last vulnerable production package: 10 issues including missing Host-header validation that poisons `request.url.path` and SSRF/NTLM via UNC paths in StaticFiles. That one is a major gated behind FastAPI's supported Starlette range, so move FastAPI and Starlette together and validate middleware, auth, exception handlers, CORS, lifespan and TestClient behaviour before trusting the full suite. Tooling is available: `python3 -m venv <scratch> && <scratch>/bin/pip install uv` gives uv 0.12.5; drive it with `UV_CACHE_DIR` and `UV_PROJECT_ENVIRONMENT` pointed at scratch paths so it never touches `backend/.venv`. Still outstanding and small: `backend/.env.example` needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands touching `.env*` paths). RATE-001 remains BLOCKED_EXTERNAL for want of any Redis, and its `RedisRateLimitBackend.hit` check-then-act race must become one atomic server-side operation before that backend is trusted
+NEXT ATOMIC SLICE: DEP-003 — the production dependency set. The clean production sync is done and verified; what remains is SBOM inspection, and the container build itself stays BLOCKED_ENVIRONMENT because Docker is unavailable here. After that, work the remaining Phase 3 ledger items, then Phase 4 (establish a fresh browser baseline on a quiet host — the historical 17/6 numbers are stale). DEP-002 is VALIDATED: the backend went from 9 production-reachable vulnerable packages to 0 actionable, with one residual (ecdsa Minerva) that has no upstream fix and is structurally unreachable.
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -58,7 +58,30 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               not belong in connect-src.
 ```
 
-## DEP-002E — starlette: the compatibility research, done (start here)
+## Phase 3H atomic checkpoint (DEP-002E — the FastAPI/Starlette migration)
+
+```text
+Phase: Phase 3, atomic slice 3H / DEP-002E — the framework pair
+Status: COMPLETE. DEP-002 is VALIDATED
+Initial HEAD: 2f77ef9e084b96748c2417051cce49534ded9d2c
+Final HEAD: Phase 3H checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): deps(backend): move the framework pair past the host-header and UNC flaws
+Files materially changed: `backend/pyproject.toml`, `backend/uv.lock`, `backend/tests/test_packaging_contract.py`
+Migrations: None
+Dependency changes: fastapi 0.129.0 → 0.141.1; starlette 0.52.1 → 1.6.0. Manifest floor `fastapi>=0.115.0` → `>=0.141.1`
+Lockfile changes: 14 lines. Only those two packages moved — anyio 4.12.1, pydantic 2.12.5, httpx 0.28.1, websockets 16.0 and uvicorn 0.40.0 are all unchanged. A framework major with no transitive drift is the outcome to expect here; a large unexplained lock diff would have meant something else was happening
+Advisories resolved (10): GHSA-86qp-5c8j-p5mr and PYSEC-2026-161 (missing Host-header validation poisoning `request.url.path`); GHSA-jp82-jpqv-5vv3 (unvalidated request path concatenated into the authority); GHSA-wqp7-x3pw-xc5r (SSRF and NTLM credential theft via UNC paths in StaticFiles); GHSA-x746-7m8f-x49c (arbitrary HTTP method dispatched to `HTTPEndpoint` attributes); GHSA-82w8-qh3p-5jfq (`request.form()` limits silently ignored); plus PYSEC duplicates
+REACHABILITY NOTE: `app/main.py:66` mounts `StaticFiles(directory=media_root)` at `settings.media_base_path`, so the UNC-path advisory was directly reachable in production rather than theoretical. That is the strongest single reason this migration was worth its risk
+METHOD — framework primitives proved before the suite ran. A major like this can break one thing every test touches and present as thousands of unrelated product failures, so "does the framework work" was answered separately from "does the product work" using a scratch harness covering: application import, router registration, OpenAPI generation, the StaticFiles mount, TestClient construction and lifespan, header round-trip, the `{"error": {code, message}}` envelope on both validation and not-found, CORS accepting the configured origin and refusing an unlisted one, the middleware stack, an authenticated dependency chain refusing an anonymous caller, and the realtime WebSocket refusing an unauthenticated connection cleanly. All thirteen passed
+FRAMEWORK BEHAVIOUR CHANGE FOUND, and worth knowing: Starlette 1.x no longer flattens `include_router` into `app.routes`; included routers nest under a `_IncludedRouter`, so top-level `app.routes` is 7 while `app.openapi()["paths"]` correctly reports 202. Nothing in `backend/app`, `backend/tests` or `backend/scripts` iterates `app.routes`, so no compatibility shim was needed — but code that did would have failed in a way that looked nothing like a dependency problem
+Tests run: 13-check framework primitive harness; focused matrix of 155 real tests across realtime/websockets, messaging, interaction transitions, config, packaging, trusted identity, auth, sessions, administrator strong auth and marketplace; complete uncontended backend suite; production-set re-audit; Ruff
+Exact results: framework primitives 13/13; focused matrix 91 + 64 = 155 passed; complete backend 6,731 passed / 64 skipped / 0 failed in 318.11s — byte-identical to the pre-migration baseline, so a twelve-minor FastAPI jump plus a Starlette major required no test changes at all; Ruff clean
+Vulnerabilities before/after against the locked production set (52 packages): 1 vulnerable package → 1. The remaining entry is ecdsa's Minerva timing attack, which has no fix and none planned upstream, is already classified NOT_REACHABLE_WITH_EVIDENCE, and was made structurally unreachable in Phase 3G by narrowing `jwt_algorithm` to the HMAC family. Every actionable backend advisory is now closed: the programme went 9 vulnerable packages → 0 actionable
+New guards: `TestSecurityFloorsHold` asserts the FastAPI and cryptography floors in the manifest and that the lock honours them. Both were verified non-vacuous by lowering the floors to their pre-remediation values, which failed exactly those two assertions; restored afterwards. These exist because a floor is easy to lower while resolving an unrelated conflict, and lowering either silently reintroduces a known vulnerable package
+Next slice: DEP-003 (production dependency set — SBOM inspection remains; the clean production sync is done and the Docker image build stays BLOCKED_ENVIRONMENT), then the remaining Phase 3 ledger items, then Phase 4
+```
+
+## DEP-002E — starlette: the compatibility research (spent in Phase 3H; kept for the reasoning)
 
 The last vulnerable production package, and the only one left open. Do not
 attempt `uv lock --upgrade-package starlette`; it cannot move on its own.

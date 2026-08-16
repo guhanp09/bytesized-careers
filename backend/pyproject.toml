@@ -5,7 +5,11 @@ description = "Standalone backend service for CreatorJobs"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "fastapi>=0.115.0",
+  # Security floor, not a preference: FastAPI below 0.141 pins `starlette<1.0.0`,
+  # and every Starlette before 1.x is missing Host-header validation (which
+  # poisons `request.url.path`) and is vulnerable to UNC-path traversal in
+  # StaticFiles — which this service mounts, so that one is reachable.
+  "fastapi>=0.141.1",
   "uvicorn[standard]>=0.30.0",
   "sqlalchemy>=2.0.31",
   "alembic>=1.13.2",
