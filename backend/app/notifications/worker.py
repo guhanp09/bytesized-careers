@@ -1,9 +1,10 @@
 """The loop that actually delivers what the outbox promised.
 
-Until now nothing did. `queue_notification_email` wrote durable rows and
-`_process_outbox_row` existed with no production caller, so every notification
-email was recorded as intended and never sent. That is a safe failure — better
-than sending twice — but it is still a queue that does not drain.
+Until this existed nothing did. `queue_notification_email` wrote durable rows and
+the only thing that could process them had no production caller, so every
+notification email was recorded as intended and never sent. That is a safe
+failure — better than sending twice — but it is still a queue that does not
+drain.
 
 This is the piece in the middle: claim, ask the provider, record what it said.
 It holds no state of its own. Everything that decides what happens next lives on
@@ -28,6 +29,7 @@ from app.repositories.email_outbox_delivery import (
     mark_terminal_failure,
 )
 from app.repositories.email_outbox_repository import claim_due_emails
+from app.services.email_suppression_service import may_send
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,11 @@ async def process_outbox_once(
     or retries internally — the retry schedule is on the row, so "try again
     later" means exactly "leave it for a later pass".
 
+    A suppressed address is skipped before the provider is asked at all. That
+    check belongs here and not at enqueue time, because an address can be
+    suppressed after its mail is already queued, and that queued mail is
+    precisely what must not go out.
+
     A provider that raises rather than returning a result is treated as a
     retryable failure. Losing the row to an unhandled exception would strand it
     until its lease expired, and an exception from a network client is precisely
@@ -72,6 +79,16 @@ async def process_outbox_once(
 
     for row in claimed:
         row_id = row.id
+
+        # Checked here, at the last moment before sending, rather than at
+        # enqueue time: an address can be suppressed after a row is queued, and
+        # the queued row is exactly the mail that must then not go out.
+        decision = await may_send(session, email=row.to_email, event_key=row.event_key)
+        if not decision.allowed:
+            await mark_suppressed(session, row_id, reason=decision.reason, now=now)
+            run.suppressed += 1
+            continue
+
         try:
             result = await provider.send(row)
         except Exception as exc:  # noqa: BLE001 - any provider fault is a delivery fault

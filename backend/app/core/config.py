@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # that is checked on the server for every signup path — a client-side gate
     # is not a gate.
     invite_only_beta: bool = Field(default=False, alias="INVITE_ONLY_BETA")
+    # Shared with the mail provider and nothing else. Unset means the delivery
+    # webhook refuses every request rather than accepting unsigned ones: an
+    # unset secret must not become an open door onto the suppression list.
+    email_webhook_secret: str | None = Field(default=None, alias="EMAIL_WEBHOOK_SECRET")
     # Email delivery is a background job. The API can host it for convenience in
     # local development; in production a separate `python -m
     # app.notifications.runner` process is preferable, because a worker sharing

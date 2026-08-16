@@ -5,13 +5,13 @@
 ```text
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 5 — Invite-only beta and durable transactional email
-LAST COMPLETED ATOMIC SLICE: Phase 5H (EMAIL-003) — one delivery path only; the mock adapter that marked rows "mocked" is gone, and event mail is proven queued-to-sent and retried end to end. INVITE-001, INVITE-002, EMAIL-001, EMAIL-002 and EMAIL-003 are VALIDATED
-NEXT ATOMIC SLICE: Phase 5 continues at EMAIL-004 (bounce/suppression), which also owes the failure visibility that EMAIL-002's removed 503 used to provide. Then Phase 5 certification. The invitation email is still unwritten because nothing issues invitations over HTTP yet; EMAIL-005 stays BLOCKED_EXTERNAL. Phase 4 is locally certified: 23 deterministic browser failures are 0, and the 5 that still fail under parallel load all pass serially (list recorded below under "Phase 4 certification"). EMAIL-005 (domain authentication) is BLOCKED_EXTERNAL and must not hold up the durable outbox work. Still open elsewhere: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004 (timeouts/concurrency), TRUST-003 (marketplace metrics — StatTiles for Applicants/Views/Response rate, and two tests currently assert they stay visible), CORRECT-006 (duplicate job-apply-button and APPLICATION REQUIREMENTS identities), and backend/.env.example (BLOCKED_ENVIRONMENT).
+LAST COMPLETED ATOMIC SLICE: Phase 5I (EMAIL-004) — bounce/complaint suppression with an asymmetric rule (a hard bounce stops auth mail, a complaint does not) and a signed, replay-resistant delivery webhook. INVITE-001, INVITE-002, EMAIL-001, EMAIL-002, EMAIL-003 and EMAIL-004 are VALIDATED
+NEXT ATOMIC SLICE: Phase 5 certification, then Phase 6. Everything in Phase 5 is VALIDATED except EMAIL-005 (BLOCKED_EXTERNAL: sending domain, SPF/DKIM/DMARC). Still unwritten by design: the invitation email itself, because nothing issues invitations over HTTP yet, and an operator view of failed/suppressed rows, which belongs with the admin panel rather than the delivery path. Phase 4 is locally certified: 23 deterministic browser failures are 0, and the 5 that still fail under parallel load all pass serially (list recorded below under "Phase 4 certification"). EMAIL-005 (domain authentication) is BLOCKED_EXTERNAL and must not hold up the durable outbox work. Still open elsewhere: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004 (timeouts/concurrency), TRUST-003 (marketplace metrics — StatTiles for Applicants/Views/Response rate, and two tests currently assert they stay visible), CORRECT-006 (duplicate job-apply-button and APPLICATION REQUIREMENTS identities), and backend/.env.example (BLOCKED_ENVIRONMENT).
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
-CURRENT ALEMBIC HEAD: 0061_beta_invitations (single head; 0060_email_outbox_lease then 0061)
+CURRENT ALEMBIC HEAD: 0062_email_suppressions (single head; 0060_email_outbox_lease, 0061_beta_invitations, 0062)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
 IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
-NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRET; GOOGLE_OAUTH_EXCHANGE_SECRET shared only between NextAuth and FastAPI; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID; INVITE_ONLY_BETA (default false — leaving it unset preserves open registration exactly); MAX_REQUEST_BODY_BYTES and MAX_MEDIA_REQUEST_BODY_BYTES from RATE-004; EMAIL_WORKER_IN_PROCESS (default false) and EMAIL_WORKER_INTERVAL_SECONDS (default 5) from EMAIL-002. These are documented in backend/app/core/config.py rather than backend/.env.example, which tooling may not read or write (BLOCKED_ENVIRONMENT)
+NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRET; GOOGLE_OAUTH_EXCHANGE_SECRET shared only between NextAuth and FastAPI; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID; INVITE_ONLY_BETA (default false — leaving it unset preserves open registration exactly); MAX_REQUEST_BODY_BYTES and MAX_MEDIA_REQUEST_BODY_BYTES from RATE-004; EMAIL_WORKER_IN_PROCESS (default false) and EMAIL_WORKER_INTERVAL_SECONDS (default 5) from EMAIL-002; EMAIL_WEBHOOK_SECRET from EMAIL-004 (unset means the delivery webhook refuses everything, which is the intended fail-closed posture, not a bug). These are documented in backend/app/core/config.py rather than backend/.env.example, which tooling may not read or write (BLOCKED_ENVIRONMENT)
 NEW DEPENDENCIES: backend now declares its already-locked runtime `httpx==0.28.1` and `httpcore==1.0.9` usage directly; no package version changed
 NEW SERVICES: app.services.safe_outbound_fetch shared public-URL boundary; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md complete caller inventory; plus all previously documented OAuth/session/strong-auth services
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
@@ -56,6 +56,71 @@ default-src   'self'; object-src 'none'; base-uri 'self'; form-action 'self'.
 Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
+```
+
+## Phase 5I checkpoint (EMAIL-004 — bounces, complaints, and a webhook that cannot be forged)
+
+```text
+Commit: "feat(email): stop mailing an address that told us to stop"
+Migration: 0062_email_suppressions, parents 0061_beta_invitations, single head. New table only.
+        Offline SQL render verified; no PostgreSQL harness in this environment (Docker absent).
+
+THE RULE THAT MATTERS is the asymmetry, and collapsing it is expensive in BOTH directions:
+  hard bounce  = a fact about the mailbox. It does not exist. Suppress EVERYTHING, auth included:
+                 a reset link to a mailbox that rejects it helps nobody and costs the sending
+                 domain its reputation.
+  complaint    = a judgement about mail WE chose to send. The person is still there. Suppress
+                 everything EXCEPT authentication mail — otherwise reporting one job alert locks
+                 someone out of their own account forever.
+  soft bounce  = transient. Not a suppression at all; the outbox retry schedule already covers it.
+  unknown      = recorded, acts on nothing. Silently dropping mail for a category nobody ruled on
+                 is worse than sending it.
+This is what AUTH_EVENT_KEYS in notifications/email.py is for; it was added in EMAIL-002 with
+exactly this in mind.
+
+WHERE THE CHECK LIVES: in the worker, immediately before the provider is asked — NOT at enqueue.
+An address can be suppressed after its mail is queued, and that queued mail is precisely what
+must not go out. A suppressed row becomes `skipped`.
+
+THE WEBHOOK IS THE ATTACK SURFACE. It cannot be authenticated the ordinary way (a provider holds
+no session), so the signature is the entire gate. Unsigned, this endpoint lets any stranger post
+a fabricated hard bounce for any address and silently stop that person's mail, including password
+resets — a denial of service against one account at a time that leaves nothing resembling an
+attack in the logs. Three properties, each closing a specific hole:
+  - HMAC-SHA256 over `timestamp.body`, so the CLAIM is signed, not merely the request;
+  - the timestamp is INSIDE the signed material and checked against a 300s window, so a captured
+    request is not a lasting credential (a header-only timestamp could be swapped for a fresh one);
+  - hmac.compare_digest, because a byte-by-byte comparison leaks how much of a guess was right.
+An unset EMAIL_WEBHOOK_SECRET REFUSES every request. "No secret configured, so accept everything"
+turns a missing environment variable into an open door, in exactly the deployment nobody watches.
+
+DELIBERATELY PROVIDER-NEUTRAL: no provider has been chosen (EMAIL-005 is BLOCKED_EXTERNAL on the
+sending domain), so writing a specific vendor's header scheme now would mean implementing a
+verifier for something this codebase has never seen. Mapping a real provider onto this is a small
+adapter; the properties above are the part worth getting right first.
+
+Idempotent by construction: providers redeliver webhooks as a matter of contract, so recording is
+INSERT ... ON CONFLICT DO NOTHING. A second delivery neither raises on the unique index nor
+overwrites the original reason with a later, vaguer one.
+
+Releasing sets released_at rather than deleting: "this address bounced in March" is the context
+for April's support conversation, and a deleted row cannot explain why mail stopped.
+
+Tests: tests/test_email_suppression.py, 30 cases. Non-vacuity PROVEN by mutation: neutering the
+signature check and the worker's suppression check fails 6 tests, including every forgery case.
+
+BUG FOUND AND FIXED DURING THIS SLICE, worth remembering: the router first imported
+`get_db_session` from app.db.session instead of `get_db` from app.api.deps. conftest overrides
+ONLY the deps one, so the endpoint ran against the real configured engine and wrote a row into
+the local dev.db while the test saw nothing. Symptom: a 200 response with the assertion failing.
+The stray dev row was removed. Always take get_db from app.api.deps.
+
+Test note: the endpoint commits on its own session, so a test holding db_session sees a snapshot
+from before the request. Read committed rows through a fresh TestSessionLocal session.
+
+NOT DONE HERE: EMAIL-002's removed 503 owed some failure visibility, and a misconfigured provider
+is still only visible in worker logs and in rows that reach MAX_ATTEMPTS. An operator view of
+failed/suppressed rows belongs with the admin panel work, not in the delivery path.
 ```
 
 ## Phase 5H checkpoint (EMAIL-003 — event email, and the second delivery path is gone)

@@ -94,7 +94,7 @@ Locally complete and certified. Every row below is `VALIDATED`; the certificatio
 | EMAIL-001 | CRITICAL | Outbox worker | DEP-002 | VALIDATED | Lease, concurrent claim, retry, crash recovery and idempotency tests | YES | YES | Yes | Yes | 95a1a66, ebaf659, 5e0ded7, 5a7725f |
 | EMAIL-002 | CRITICAL | Authentication email | EMAIL-001 | VALIDATED | Invite, verification, reset, expiry and delivery-failure tests | NO | YES | Yes | Yes | "feat(email): make auth mail a promise the database keeps" — verification and reset queue durably and a runner drains them; the invitation email waits on an issuing endpoint |
 | EMAIL-003 | HIGH | Event email | EMAIL-001 | VALIDATED | Application/hiring/safety notification state and retry tests | NO | YES | Yes | Yes | "refactor(email): leave one way for an email to be delivered" — the enqueue was already correct; this removed the second delivery path and proved queued-to-sent and the retry end to end |
-| EMAIL-004 | HIGH | Bounce/suppression | EMAIL-001 | NOT_STARTED | Provider webhook signature, bounce, complaint and suppression tests | YES | YES | Yes | Yes | — |
+| EMAIL-004 | HIGH | Bounce/suppression | EMAIL-001 | VALIDATED | Provider webhook signature, bounce, complaint and suppression tests | YES | YES | Yes | Yes | "feat(email): stop mailing an address that told us to stop" — migration 0062; signature scheme is provider-neutral until EMAIL-005 picks one |
 | EMAIL-005 | HIGH | Domain authentication | EMAIL-001 | BLOCKED_EXTERNAL | Provider staging send, SPF, DKIM, DMARC and bounce-domain verification | NO | YES | Yes | Yes | — |
 
 ## Phase 6 — AI Job Import production hardening

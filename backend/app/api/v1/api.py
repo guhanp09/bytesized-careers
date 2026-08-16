@@ -8,6 +8,7 @@ from app.api.v1.routers.dev_emails import router as dev_emails_router
 from app.api.v1.routers.dev_personas import router as dev_personas_router
 from app.api.v1.routers.dev_seed import router as dev_seed_router
 from app.api.v1.routers.dev_workflows import router as dev_workflows_router
+from app.api.v1.routers.email_webhooks import router as email_webhooks_router
 from app.api.v1.routers.health import router as health_router
 from app.api.v1.routers.job_imports import router as job_imports_router
 from app.api.v1.routers.jobs import router as jobs_router
@@ -29,6 +30,7 @@ api_router = APIRouter()
 api_router.include_router(admin_router)
 api_router.include_router(auth_router)
 api_router.include_router(content_style_router)
+api_router.include_router(email_webhooks_router)
 api_router.include_router(health_router)
 api_router.include_router(jobs_router)
 api_router.include_router(job_imports_router)

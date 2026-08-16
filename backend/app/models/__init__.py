@@ -3,6 +3,7 @@ from app.models.auth_session import AuthRefreshCredential, AuthSession
 from app.models.beta_invitation import BetaInvitation
 from app.models.conversation import Conversation, Message
 from app.models.email_outbox import EmailOutbox
+from app.models.email_suppression import EmailSuppression
 from app.models.email_verification_token import EmailVerificationToken
 from app.models.hiring_identity import HiringIdentity
 from app.models.interaction_interview import InteractionInterview
@@ -50,6 +51,7 @@ __all__ = [
     "Message",
     "BetaInvitation",
     "EmailOutbox",
+    "EmailSuppression",
     "EmailVerificationToken",
     "HiringIdentity",
     "InteractionInterview",
