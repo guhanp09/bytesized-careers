@@ -58,6 +58,36 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               not belong in connect-src.
 ```
 
+## Phase 5D checkpoint (EMAIL-001E/F — provider seam and the worker)
+
+```text
+Status: COMPLETE. Commit: "feat(email): actually deliver what the outbox promised"
+New: backend/app/notifications/provider.py — EmailProvider protocol, ProviderOutcome
+     (SENT/RETRYABLE/TERMINAL/SUPPRESSED), ProviderResult, MockEmailProvider, SmtpEmailProvider.
+     backend/app/notifications/worker.py — process_outbox_once(session, *, provider, worker_id,
+     limit, now) -> DeliveryRun. One pass, no internal loop or sleep: the caller owns scheduling
+     and the retry schedule lives on the row.
+Tests: 15 worker cases; 100 including claim/delivery/migration/notifications/interaction-transitions.
+
+FINDING: there was NO production consumer of the outbox at all. `_process_outbox_row` had exactly
+one caller — a test. Every notification email was being recorded as intended and never sent. Safe
+(better than sending twice) but the queue never drained. The worker closes that.
+`queue_notification_email` already writes inside the caller's transaction, so the enqueue half of
+EMAIL-001F was already correct; `app/notifications/service.py` is the single enqueue site.
+
+Design notes worth keeping:
+  - MockEmailProvider returns SENT, not a separate "mocked" outcome, so dev and production exercise
+    one success path. Mock-vs-real belongs in config and logs, not in the state machine.
+  - SmtpEmailProvider classifies EmailDeliveryError as RETRYABLE: send_auth_email raises one type
+    for everything, and guessing "terminal" on a transient outage silently drops mail, whereas
+    retrying is bounded by MAX_ATTEMPTS and then reported.
+  - A provider that RAISES is treated as a retryable failure. Letting it escape would leave the row
+    leased until expiry with no recorded reason.
+
+NEXT: EMAIL-002/003 (auth + event email through the outbox), EMAIL-004 (bounce/suppression state,
+needs provider_message_id which 0060 added), INVITE-001/002. EMAIL-005 stays BLOCKED_EXTERNAL.
+```
+
 ## Phase 5C-fix (outbox test isolation) — read this before writing more outbox tests
 
 ```text
