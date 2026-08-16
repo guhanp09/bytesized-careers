@@ -65,15 +65,22 @@ for (const viewport of [
     await dismissHiringDialog(page);
 
     const form = page.locator("form");
-    await expect(form.getByRole("heading", { name: "Language requirements" })).toBeVisible();
-    await form.getByRole("button", { name: /Add language/ }).click();
-    await expect(form.locator('section[id^="job-language-"]')).toHaveCount(1);
 
-    // Exercise a repeatable row and the mobile sticky actions before measuring.
-    await form.getByLabel("Language", { exact: true }).fill("Portuguese (Brazil)");
-    await form.getByLabel("Priority", { exact: true }).selectOption("required");
+    // Grow the form before measuring, which is the point: a static form rarely
+    // overflows. Language requirements used to provide the repeatable row and
+    // were removed from post-job, so the tools tag input does it instead — and
+    // it exercises the harder case anyway, since a long unbroken token is a
+    // classic source of horizontal overflow at 320px.
+    const tagInput = form.getByPlaceholder("Type a tag and press Enter (e.g. Premiere, After Effects)");
+    await expect(tagInput).toBeVisible();
+    await tagInput.fill("DaVinci Resolve Studio colour management");
+    await tagInput.press("Enter");
+    await expect(form.getByText("DaVinci Resolve Studio colour management")).toBeVisible();
+
     const saveDraft = form.getByRole("button", { name: "Save draft" }).last();
-    const continueButton = form.getByRole("button", { name: /Continue to step/ }).last();
+    // The footer action is labelled just "Continue" now; it used to carry the
+    // step number.
+    const continueButton = form.getByRole("button", { name: /^Continue$/ }).last();
     const actionFooter = saveDraft.locator("xpath=ancestor::div[contains(@class, 'fixed')][1]");
     await expect(saveDraft).toBeVisible();
     await expect(continueButton).toBeVisible();
@@ -93,7 +100,7 @@ for (const viewport of [
       )
       .toBeLessThanOrEqual(2);
 
-    const lastInput = form.getByPlaceholder("Type a tag and press Enter (e.g. Premiere, After Effects)");
+    const lastInput = tagInput;
     await expect(lastInput).toBeVisible();
     const footerBox = await actionFooter.boundingBox();
     const lastInputBox = await lastInput.boundingBox();
@@ -109,6 +116,6 @@ for (const viewport of [
     );
     await page.waitForTimeout(150);
 
-    await expectNoHorizontalPageOverflow(page, `/post-job structured language form at ${viewport.label}`);
+    await expectNoHorizontalPageOverflow(page, `/post-job tools form at ${viewport.label}`);
   });
 }

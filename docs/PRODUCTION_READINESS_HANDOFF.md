@@ -125,6 +125,22 @@ smoke (2) + phase3a-polish (1) + post-job-languages (1) — FIXED, commit "test(
   assertion uses .first(). Whether that duplication should exist is CORRECT-006 (Duplicate UI
   identity), which is NOT_STARTED and owns it.
 
+mobile-overflow (2) + applications-pipeline (1) — FIXED, commit "test(phase4): measure overflow on a form that still exists, and click the row"
+  mobile-overflow: both viewports failed on SETUP, not on overflow — the test grew the form by
+  adding a Language requirement, and language requirements were deliberately removed from
+  post-job (a sibling test asserts their absence). Re-based on the tools tag input, which grows
+  the form the same way and exercises a long unbroken token, the harder overflow case at 320px.
+  The footer button is labelled "Continue" now, not "Continue to step N". The overflow assertions
+  themselves were never the problem and now actually run at both widths.
+  applications-pipeline :286: a genuine locator defect. The card is not a button — its profile
+  link, checkbox and stage menu all stopPropagation by design — so Playwright's default centre
+  click lands on a child and the row handler never fires. Verified by probe: clicking the labelled
+  Message button opens the dock, clicking the card centre does not. Switching the test to the
+  button would have made it a duplicate of :486 and hidden the row behaviour, so it clicks the
+  card's own surface at an offset instead.
+
+PHASE 4 STANDARD BASELINE NOW: 18 deterministic failures -> 0.
+
 ## Phase 4 browser baseline — ESTABLISHED (this replaces the stale 17/6 numbers)
 
 Measured after RATE-004, at commit `d3036da`. Both matrices run in full, then the

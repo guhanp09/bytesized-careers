@@ -286,7 +286,13 @@ test.describe("applications pipeline view", () => {
   test("clicking a pipeline row opens the conversation in the chat dock, not the full inbox", async ({ page }) => {
     await openRecruiterPipeline(page);
     const target = anchor(BOARD, "stage reviewing", { persona: "recruiter" });
-    await card(page, target).click();
+    // Deliberately offset. A pipeline card is not a button — it holds a profile
+    // link, a checkbox, a stage menu and a Message button, all of which stop
+    // propagation on purpose — so Playwright's default centre click lands on a
+    // child and the row handler never runs. Clicking the card's own surface is
+    // what "clicking the row" means, and it is the behaviour worth guarding:
+    // the labelled Message button is already covered separately below.
+    await card(page, target).click({ position: { x: 6, y: 6 } });
 
     // Opens the compact chatbox on that thread; the pipeline stays put behind it.
     const dock = page.getByTestId("chat-dock-panel");
