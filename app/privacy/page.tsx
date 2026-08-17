@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Icon } from "../../components/Icons";
+import { CURRENT_LEGAL_VERSION } from "../../lib/legal";
 import { PageHeader, StateCard } from "../../components/ui";
 
 type IconName = Parameters<typeof Icon>[0]["name"];
@@ -10,28 +11,14 @@ export const metadata = {
   description: "Beta privacy summary for CreatorJobs.",
 };
 
-const sections = [
-  {
-    title: "Information you provide",
-    icon: "file",
-    body: "CreatorJobs stores account details, profile fields, job posts, talent listings, applications, saved items, reports, and messages needed to operate the marketplace.",
-  },
-  {
-    title: "Public marketplace information",
-    icon: "globe",
-    body: "Published jobs, talent listings, public profiles, and public work samples may be visible to other users and visitors. Keep private client information out of public descriptions and portfolio notes.",
-  },
-  {
-    title: "Service operations",
-    icon: "settings",
-    body: "We use authentication, email delivery, logs, rate limiting, and health checks to run the service, protect accounts, and diagnose issues.",
-  },
-  {
-    title: "Your choices",
-    icon: "sliders-horizontal",
-    body: "You can edit profile details, manage listings, remove saved items, and report unsafe listings. During beta, contact support for account or data requests.",
-  },
-] satisfies Array<{ title: string; icon: IconName; body: string }>;
+// The wording comes from the published version rather than living here, so an
+// acceptance record naming a version can be resolved to the exact text. Editing
+// this page can no longer change what a prior acceptance appears to mean.
+const sections = CURRENT_LEGAL_VERSION.privacy as ReadonlyArray<{
+  title: string;
+  icon: IconName;
+  body: string;
+}>;
 
 export default function PrivacyPage() {
   return (
@@ -47,6 +34,12 @@ export default function PrivacyPage() {
           title="Public by design, private by default where possible"
           description="Marketplace listings and public profiles are meant to be discoverable. Account security, saved items, drafts, and private workflow data should remain protected."
         />
+
+        <p className="text-xs text-muted">
+          {/* Shown because an acceptance record stores this version; a reader
+              should be able to see which wording they are looking at. */}
+          Version {CURRENT_LEGAL_VERSION.version}
+        </p>
 
         <div className="grid gap-4">
           {sections.map((section) => (

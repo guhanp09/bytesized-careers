@@ -1322,6 +1322,40 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 10B checkpoint (legal version provenance — the gap LEGAL-001 found, closed)
+
+```text
+COMMIT: "feat(legal): make a published legal version an immutable snapshot"
+MIGRATION: none. FRONTEND: tsc clean, eslint clean, node tests 1,181 -> 1,185 (+4).
+Unblocked by an explicit decision: the architecture only needs to make 2026-06-01 an immutable
+retrievable snapshot NOW, and preserve each later version when it is actually introduced. That
+closes provenance without inventing any future wording or policy.
+
+THE GAP: acceptance records store a version; nothing could turn that version back into the wording
+it named. The pages held their text inline and showed no version, so "they accepted 2026-06-01"
+pointed at nothing retrievable — and editing a page silently changed what every earlier acceptance
+appeared to mean.
+
+NOW: lib/legal/versions/2026-06-01.ts holds the wording, moved VERBATIM out of the two pages —
+nothing was reworded, because writing wording is LEGAL-002 and not a side effect of relocating a
+constant. lib/legal/index.ts registers published versions (never removed) and names the current
+one. Both pages render from the registry and display the version to the reader.
+
+ENFORCED BY CHECKSUM, not by asking people to be careful: an edited archive still renders and
+still passes every other test while quietly rewriting history. Changing wording means ADDING a
+version file — more work than editing one, deliberately, because the extra step is where somebody
+notices that existing acceptances no longer cover what is shown.
+The test also pins the backend's declared version against the archived set: a backend accepting
+against wording nobody can produce is the exact failure its own module warns about.
+The checksum test proved itself on first run by rejecting a placeholder value.
+
+STILL OPEN, and not answered here: whether superseded versions must be REACHABLE TO A READER (a
+public archive, a permalink). That is product and counsel. The bytes now survive to answer it.
+
+NEXT READY: PLATFORM-004 (pool bounds — explicit production configuration, no baked-in capacity
+numbers), then CI-001/CI-002 workflows, PLATFORM-002, PLATFORM-005.
+```
+
 ## Phase 10A checkpoint (PLATFORM-001 — container hardening)
 
 ```text

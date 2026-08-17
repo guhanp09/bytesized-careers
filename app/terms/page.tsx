@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Icon } from "../../components/Icons";
+import { CURRENT_LEGAL_VERSION } from "../../lib/legal";
 import { PageHeader, StateCard } from "../../components/ui";
 
 type IconName = Parameters<typeof Icon>[0]["name"];
@@ -10,28 +11,14 @@ export const metadata = {
   description: "Beta terms for using CreatorJobs.",
 };
 
-const sections = [
-  {
-    title: "Use the marketplace responsibly",
-    icon: "shield",
-    body: "CreatorJobs helps hiring teams and talent discover each other. Do not post misleading listings, impersonate another person or business, scrape the platform, or use the service for spam or harassment.",
-  },
-  {
-    title: "Listings, profiles, and work samples",
-    icon: "file",
-    body: "You are responsible for the accuracy of the jobs, talent listings, profiles, portfolio links, and messages you share. Only publish work samples you are allowed to share.",
-  },
-  {
-    title: "Hiring and payment expectations",
-    icon: "wallet",
-    body: "Agree on scope, timeline, revisions, ownership, and payment terms before starting work. During beta, CreatorJobs may offer launch-free posting or listing access without processing payment.",
-  },
-  {
-    title: "Reports and moderation",
-    icon: "alert",
-    body: "CreatorJobs may remove listings, profiles, or accounts that appear unsafe, misleading, abusive, or outside the marketplace purpose.",
-  },
-] satisfies Array<{ title: string; icon: IconName; body: string }>;
+// The wording comes from the published version rather than living here, so an
+// acceptance record naming a version can be resolved to the exact text. Editing
+// this page can no longer change what a prior acceptance appears to mean.
+const sections = CURRENT_LEGAL_VERSION.terms as ReadonlyArray<{
+  title: string;
+  icon: IconName;
+  body: string;
+}>;
 
 export default function TermsPage() {
   return (
@@ -47,6 +34,12 @@ export default function TermsPage() {
           title="Beta notice"
           description="These terms are an operational placeholder for beta readiness, not final legal advice."
         />
+
+        <p className="text-xs text-muted">
+          {/* Shown because an acceptance record stores this version; a reader
+              should be able to see which wording they are looking at. */}
+          Version {CURRENT_LEGAL_VERSION.version}
+        </p>
 
         <div className="grid gap-4">
           {sections.map((section) => (
