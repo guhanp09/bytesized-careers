@@ -1322,6 +1322,60 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 11B checkpoint (SEO-002 — a sitemap that was valid, well-formed and wrong)
+
+```text
+COMMIT: "fix(seo): stop the sitemap lying about what exists and when it changed"
+MIGRATION: none. BACKEND: untouched, EXPECTED_CURRENT_COLLECTION stays 7,499.
+FRONTEND: tsc exit 0, next build exit 0, node tests 1,214 -> 1,226 (+12).
+
+FOUR DEFECTS, and every one of them produced a valid file, which is why none was noticed:
+
+  1. TRUNCATION. The whole listing was ONE request for 100 records. With four hundred open jobs,
+     three hundred were absent — valid XML describing a smaller site than the one being served.
+     Now walked to the end, with three separate stopping conditions (short page, reported total
+     reached, protocol ceiling) because a server that ignored `offset` would otherwise return the
+     same first page forever. Bounded at the sitemap protocol's own 50,000-URL limit.
+  2. FABRICATED TIMESTAMPS. Every job carried `lastModified: new Date()` — a claim that every job
+     on the platform changed at the instant the crawler asked. This is worse than omitting the
+     field: `lastmod` exists so a crawler can skip what has not changed, so a file where everything
+     changed one second ago teaches it to disregard `lastmod` for this site entirely. Now read from
+     `updated_at`/`created_at`, and an unparseable value yields NOTHING rather than today, because
+     "I do not know" is true and costs nothing.
+  3. AN OUTAGE PUBLISHED AS A FACT. `.catch(() => [])` meant an unreachable backend produced a
+     sitemap of six static pages, served with 200. A crawler is entitled to read that as
+     authoritative — the site has six pages now — which is how an afternoon of downtime empties an
+     index. The error now propagates, Next answers 500, and the crawler keeps what it has.
+  4. FOUND BY FIXING (3): THE SITEMAP WAS PRERENDERED AT BUILD TIME. Removing the swallowed error
+     broke `npm run build`, which is how this surfaced — the fetch failure had been happening at
+     BUILD time all along and being absorbed. Prerendering is wrong twice over: a sitemap of live
+     jobs frozen at deploy misses everything posted afterwards, and a build without a reachable
+     backend shipped a permanently-empty sitemap as an artifact. Now `force-dynamic`; the build
+     output confirms it (`ƒ /sitemap.xml`, server-rendered on demand).
+  Also: /faq was PUBLIC_INDEXABLE and absent from the sitemap. Coverage is now compared against
+  lib/seo/routeIndexing.ts, so an indexable route missing from the sitemap fails a test — as does
+  the reverse contradiction, submitting a URL that has been told not to index itself.
+
+A TESTING LESSON, TWICE, IN OPPOSITE DIRECTIONS — worth carrying forward:
+  In SEO-001 a comment naming /you/ and /admin/ (while explaining they are NOT disallowed) made a
+  source-reading test PASS with the defect live: a false negative.
+  Here, a comment quoting `.catch(() => [])` (while explaining its removal) made a test FAIL with
+  the code correct: a false positive.
+  Prose that documents a rule is textually indistinguishable from code that breaks it. Every
+  assertion about code now runs against a comment-stripped copy, and the helper says why.
+
+NON-VACUITY PROVEN BY MUTATION: all three original defects reintroduced simultaneously — clock
+timestamps, the swallowed catch, /faq removed — and exactly the 3 corresponding cases failed.
+Restored from a scratch copy and re-verified.
+
+WHAT THESE TESTS DO NOT PROVE, stated because a green run implies more than it should: they read the
+source rather than executing the route. Reaching the behaviour needs a running backend and a
+populated database, so nothing here demonstrates that pagination actually retrieves a fourth page
+from a real API, or that a live crawler sees a 500. The properties asserted are structural.
+
+NEXT READY: SEO-003 JobPosting lifecycle (schema validity, expiry, closure, removal).
+```
+
 ## Phase 11A checkpoint (SEO-001 — robots.txt and noindex were cancelling each other out)
 
 ```text
