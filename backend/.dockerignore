@@ -1,0 +1,43 @@
+# What must never reach the image, and why.
+#
+# `COPY . .` copies the build context, and the build context is a developer's
+# working directory. Without this file the image ships the test suite, the local
+# SQLite databases, and — if one exists — the .env holding real credentials.
+# A secret baked into an image layer stays there after the file is deleted in a
+# later layer, so this is the only place to stop it.
+
+# Secrets. First on purpose.
+.env
+.env.*
+*.pem
+*.key
+
+# Local databases and media. dev.db has real development data in it.
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+.local-data/
+
+# Tests and tooling: build-time concerns, and every file is runtime attack
+# surface that cannot be used for anything legitimate in production.
+tests/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# The local virtualenv. The image builds its own from the lockfile; copying this
+# one would overwrite it with a developer's machine, dev dependencies included.
+.venv/
+__pycache__/
+*.py[cod]
+
+# Version control and editor state.
+.git/
+.gitignore
+.idea/
+.vscode/
+*.swp

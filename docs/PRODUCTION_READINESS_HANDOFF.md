@@ -1322,6 +1322,36 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 10A checkpoint (PLATFORM-001 — container hardening)
+
+```text
+COMMIT: "harden(container): stop the image running as root and shipping the working directory"
+MIGRATION: none. FOCUSED: tests/test_container_hardening.py (22). No full suite: source-level
+  container assertions cannot affect application behaviour.
+
+TWO REAL GAPS in an otherwise good Dockerfile (locked prod-only deps already existed):
+  1. IT RAN AS ROOT. A remote-code-execution bug becomes root inside the container, and from there
+     the distance to the host is one runtime vulnerability. Nothing the API does needs root.
+     Now: uid 10001, nologin shell, USER before CMD (a USER after CMD is ignored — a test asserts
+     the ordering, because creating a user and never switching to it looks hardened and runs as
+     root).
+  2. `COPY . .` SHIPPED THE BUILD CONTEXT — a developer's working directory: the test suite, the
+     local SQLite databases with real dev data, and any .env. A secret baked into a layer survives
+     its own deletion in a later layer, so .dockerignore is the only place to stop it. Secrets are
+     listed first so a reader meets the reason first.
+
+HEALTHCHECK IS LIVENESS, NOT READINESS, and a test pins that: consulting the database would
+restart a healthy container during a blip and turn a partial outage into a crash loop. Bounded
+timeout/retries plus a start-period, because an unbounded check hangs against the wedged process
+it exists to detect, and no start-period kills a container for being slow to boot.
+
+BLOCKED_ENVIRONMENT: the actual image build and vulnerability scan. Docker is unavailable, so
+these 22 assertions are source-level only — recorded as such rather than described as a scan.
+
+NEXT READY: CI-001/CI-002 workflows (none exist — .github/workflows is absent), PLATFORM-002
+config contract, PLATFORM-005 health contracts.
+```
+
 ## Phase 9 certification — LOCALLY COMPLETE
 
 ```text

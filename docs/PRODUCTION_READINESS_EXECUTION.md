@@ -163,7 +163,7 @@ Locally complete and certified for everything that does not require a decision n
 |---|---|---|---|---|---|---|---|---|---|---|
 | CI-001 | CRITICAL | Required checks | Phases 1–9 | NOT_STARTED | CI dry runs for type, lint, unit, backend, Postgres, browser and build | NO | YES | Yes | Yes | — |
 | CI-002 | HIGH | Security/supply chain | DEP-003 | NOT_STARTED | npm/Python audits, Gitleaks, SBOM and image scan in CI | NO | YES | Yes | Yes | — |
-| PLATFORM-001 | CRITICAL | Production container | DEP-003 | NOT_STARTED | Non-root, prod-only deps, immutable build and health-check tests | NO | YES | Yes | Yes | — |
+| PLATFORM-001 | CRITICAL | Production container | DEP-003 | IMPLEMENTED | Non-root, prod-only deps, immutable build and health-check tests | NO | YES | Yes | Yes | "harden(container): stop the image running as root and shipping the working directory" — non-root uid 10001 with nologin, USER before CMD, new .dockerignore (secrets first), --chown copy, bounded liveness HEALTHCHECK on /api/v1/health. Locked prod-only deps predate this. 22 source-level tests. The actual image BUILD and SCAN remain BLOCKED_ENVIRONMENT (no Docker) |
 | PLATFORM-002 | CRITICAL | Configuration contract | WEB-008, RATE-001, MEDIA-001, EMAIL-001 | NOT_STARTED | HTTPS/origin/CORS/host/cookie/secret/service/flag boot matrix | NO | YES | Yes | Yes | — |
 | PLATFORM-003 | CRITICAL | Migration release step | CI-001 | NOT_STARTED | Single-run fresh Postgres upgrade and compatible rollout tests | NO | YES | Yes | Yes | — |
 | PLATFORM-004 | HIGH | Database pool safety | PLATFORM-002 | NOT_STARTED | Pool-limit, acquire/statement timeout and saturation tests | NO | YES | Yes | Yes | — |
