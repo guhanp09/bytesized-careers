@@ -1322,6 +1322,60 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 10E-2 checkpoint (SEC-010 — the artifact disagreed with the manifest, so the exception died)
+
+```text
+COMMIT: "fix(deps): remediate the Prisma-chain advisories instead of excepting them"
+MIGRATION: none. FRONTEND: tsc clean, next build exit 0, eslint 0 errors / 33 pre-existing warnings,
+node tests 1,198 -> 1,203 (+5 artifact-contract tests).
+EXPECTED_CURRENT_COLLECTION (backend) UNCHANGED at 7,369 — this slice adds no backend tests.
+
+THIS SUPERSEDES the reachability paragraph in the Phase 10E checkpoint below. That paragraph is
+left standing rather than edited, because the wrong reasoning is the useful part of this record.
+
+WHAT WAS CLAIMED: the three HIGH advisories (prisma -> @prisma/config -> deepmerge-ts) were
+recorded as NOT reachable in the deployed runtime, argued from the manifest — `prisma` is a
+devDependency, `@prisma/client` declares no runtime dependencies, therefore the CLI's config chain
+does not ship.
+
+WHAT THE ARTIFACT SAID: a clean `npm ci --omit=dev --ignore-scripts` into a scratch directory
+physically contained all three packages. The manifest argument was WRONG, and wrong for a specific
+reason worth remembering: npm 7+ installs the PEER dependencies of production packages, and
+`@prisma/client` declares `prisma` as a peer. Dependency classification in package.json does not
+decide what a production install contains. Only the install does.
+
+Per the standing instruction — do not preserve an exception contrary to artifact evidence — the
+finding was RECLASSIFIED as actionable and remediated. It was not excepted, and it was not
+re-argued.
+
+REMEDIATION, and what was refused: the advisory covers deepmerge-ts <8.0.0; @prisma/config pins
+7.1.5; the published fix path npm proposes is a semver-major DOWNGRADE of prisma to 6.12.0. That
+downgrade was NOT performed — it is a data-layer decision and was explicitly unauthorized. Instead
+package.json declares `"overrides": { "deepmerge-ts": "^8.0.0" }`, resolving 8.0.1, which is the
+fixed major of the actually-vulnerable package and touches no Prisma version.
+  Compatibility verified, not assumed: `npx prisma validate` exits 0 ("The schema at
+  prisma/schema.prisma is valid"), `npx prisma generate` succeeds, `next build` exits 0.
+
+OUTCOME, stated precisely: after remediation, `npm audit --omit=dev` reports zero vulnerabilities,
+and a fresh production-only install resolves deepmerge-ts to 8.0.1. This is not "the advisories
+were false positives" — they were real, they were reachable in the artifact, and they are fixed.
+The earlier reading of them as non-reachable was the error.
+
+THE ALLOWLIST IS NOW EMPTY, and empty is the correct state. Three entries were removed because the
+advisories they described no longer exist, not because they were forgiven. A stale exception is
+worse than no exception: it is a standing permission that the NEXT advisory in the same package
+would silently inherit. security/npm-audit-allowlist.json keeps its schema and its comment
+explaining why it is empty; the gate keeps failing on anything unanalysed, which is its whole job.
+  Still deliberately NOT `--audit-level`. Unchanged, and asserted by a test.
+
+GUARDED SO IT CANNOT SILENTLY REGRESS: tests/productionDependencyArtifact.test.mjs (5 cases) fails
+if the override is removed, if the lockfile resolves deepmerge-ts below 8, if the Prisma CLI drifts
+into `dependencies`, if `@prisma/client` drifts out of them, or if a Prisma-chain exception
+reappears in the allowlist.
+
+NEXT READY: PLATFORM-002 config contract, PLATFORM-003 migration release step, PLATFORM-005 health.
+```
+
 ## Phase 10E checkpoint (CI-001 + CI-002 — workflows written, locally validated, never remotely run)
 
 ```text
@@ -1348,6 +1402,9 @@ evidence is worthless. A test asserts the ordering and that the job does not fan
 A REAL PRODUCTION SECURITY FINDING, found by running the audit rather than assuming the recorded
 "zero findings" still held: `npm audit --omit=dev` reports THREE HIGH advisories —
 prisma -> @prisma/config -> deepmerge-ts.
+  >> THE REACHABILITY ARGUMENT BELOW IS WRONG AND WAS SUPERSEDED BY PHASE 10E-2. It is kept
+  >> verbatim because the mistake is instructive: it reasons from the manifest, and a production
+  >> install contains the chain anyway. Do not act on this paragraph.
   Reachability: @prisma/client declares NO runtime dependencies and lists `prisma` as a PEER
   dependency (verified in node_modules/@prisma/client/package.json), which is why npm counts the
   CLI's tree as production. The vulnerable code is CLI config parsing at build/generate time, not
