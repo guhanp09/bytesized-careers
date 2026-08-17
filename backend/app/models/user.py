@@ -44,7 +44,18 @@ class User(Base):
     # Admin suspension (reversible): a suspended account is rejected at auth and
     # its published content is excluded from public marketplace queries. Set only
     # through the audited admin endpoints (docs/ADMIN_PANEL_PLAN.md §12).
+    #: An ADMINISTRATIVE decision about this account. Never written by the
+    #: account holder's own actions — see `deletion_hidden_at` for that.
     suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    #: The account holder's own deletion request taking effect. Separate from
+    #: suspension because the two are independent lifecycles: sharing a column
+    #: meant requesting deletion made an account un-suspendable (the suspend
+    #: endpoint refuses an already-suspended account), so asking to be deleted
+    #: was a way to become un-moderatable. Either hides the account; neither
+    #: cancels the other.
+    deletion_hidden_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     suspension_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     suspended_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

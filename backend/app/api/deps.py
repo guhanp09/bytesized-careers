@@ -11,6 +11,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.account_state import account_block
 from app.core.account_types import isAdmin
 from app.core.auth_assurance import has_fresh_strong_auth
 from app.core.config import settings
@@ -317,10 +318,13 @@ async def resolve_access_token_context(
     # Suspended accounts are rejected at the door (admin panel enforcement —
     # docs/ADMIN_PANEL_PLAN.md §12). 403, not 401: the token is valid, the
     # account is locked.
-    if user.suspended_at is not None:
+    # Both states, through one helper. An enforcement point that checked only
+    # `suspended_at` is how the other state silently stops being enforced.
+    block = account_block(user)
+    if block.blocked:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account suspended. Contact support for details.",
+            detail=block.reason,
         )
 
     if (

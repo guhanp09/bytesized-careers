@@ -52,11 +52,6 @@ async def revoke_auth_sessions_for_user(
     )
 
 
-#: Written when the account holder's own request is what hid them, and checked
-#: before lifting it again. An administrator's suspension has a different reason
-#: and is never touched by this module.
-SELF_REQUESTED_SUSPENSION_REASON = "Account deletion requested by the account holder."
-
 REQUESTED = "requested"
 CANCELLED = "cancelled"
 COMPLETED = "completed"
@@ -109,19 +104,15 @@ async def request_deletion(
     )
     session.add(request)
 
-    # Hidden immediately. This is the part the person asked for that can be done
-    # at once without destroying anything, and it is reversible if they cancel.
-    # `suspended_at` is reused rather than duplicated: every visibility and
-    # access check in the codebase already consults it, and a second flag would
-    # mean two answers to "is this account active" that could disagree.
+    # Hidden immediately, in this lifecycle's OWN column. It was once written to
+    # `suspended_at`, and the collision was not theoretical: the suspend endpoint
+    # refuses an already-suspended account, so requesting deletion made an
+    # account impossible for an administrator to suspend. Asking to be deleted
+    # must not be a way to become un-moderatable.
     #
-    # An account an administrator has already suspended is left exactly as it
-    # is. Overwriting the reason would destroy why it was suspended, and would
-    # let the account restore itself later by cancelling — asking to be deleted
-    # must not be a way out of a suspension.
-    if user.suspended_at is None:
-        user.suspended_at = moment
-        user.suspension_reason = SELF_REQUESTED_SUSPENSION_REASON
+    # Nothing here reads or writes suspension state at all. An administrator's
+    # decision is theirs; this is the account holder's.
+    user.deletion_hidden_at = moment
 
     # Every existing login is ended. Between asking and completing there is a
     # window, and a session that survives it is a stolen laptop still using an
@@ -155,12 +146,10 @@ async def cancel_request(
     request.status = CANCELLED
     request.cancelled_at = moment
 
-    # Only lifted because this suspension was self-imposed. An account suspended
-    # by an administrator must not become active again by asking to be deleted
-    # and then changing its mind.
-    if user.suspension_reason == SELF_REQUESTED_SUSPENSION_REASON:
-        user.suspended_at = None
-        user.suspension_reason = None
+    # Only this lifecycle's own state is cleared. An account an administrator
+    # suspended stays suspended: cancelling a deletion request is not a route
+    # out of a suspension, and the two decisions belong to different people.
+    user.deletion_hidden_at = None
 
     await session.flush()
     return request

@@ -991,6 +991,42 @@ REALTIME-002 (typing/presence TTL; typing expiry already exists in the manager, 
 building).
 ```
 
+## Phase 9F checkpoint (deletion and suspension become independent states)
+
+```text
+COMMIT: "fix(accounts): stop a deletion request from making an account un-suspendable"
+MIGRATION: 0068_account_deletion_hidden_at, parents 0067, SINGLE HEAD. Expand only, one nullable
+  column on users + index. No data statement.
+VERIFICATION: pytest exit 0, ZERO FAILED/ERROR lines, then collection 7,282 -> 7,294 (+12).
+  Counts are only read after the run is proven green — see the note at the end of this block.
+
+A REAL ESCAPE, not a tidiness fix. Deletion borrowed `suspended_at` to hide an account, and
+admin_suspend_user REFUSES WITH 409 when that column is already set. So:
+    request deletion -> account can no longer be suspended by an administrator
+    cancel later      -> back to a clean account
+An abusive user could have used a deletion request to become un-moderatable for as long as the
+attention lasted. The earlier fix stopped deletion ERASING a suspension; it did not stop deletion
+PRE-EMPTING one.
+
+NOW: `suspended_at` means an administrative decision and nothing else. `deletion_hidden_at` is the
+account holder's own request taking effect. Either hides the account; neither cancels the other.
+app/core/account_state.py::account_block(user) is the ONE place both are consulted, because an
+enforcement point that checks a single column is how the other state silently stops being
+enforced. api/deps.py now asks the helper.
+Mutation-proven: writing `suspended_at` from the deletion service again fails three tests,
+including the escape itself and a structural test that the service never writes suspension state.
+
+TESTED CROSS-STATE: all four combinations, and BOTH undo directions — cancelling deletion leaves a
+suspension in place, and lifting a suspension leaves a deletion request in place (an administrator
+deciding someone is no longer suspended has not decided they want their account back).
+
+VERIFICATION METHOD CHANGED, permanently. The character-counting heuristic is abandoned: it read
+"s"/"E" inside tracebacks and reported a green-looking 7,673/357 for a run with 15 failures. The
+redirected -q log also DROPS the final summary line, which is what tempted the heuristic in the
+first place. The rule now is: exit code 0 AND zero ^FAILED/^ERROR lines FIRST, and only then read
+the count — with `--collect-only` (or --junitxml) as the structured denominator, never characters.
+```
+
 ## Phase 9E checkpoint (MOD-002 partial — the audit log stays uneditable)
 
 ```text

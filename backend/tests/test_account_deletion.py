@@ -23,6 +23,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
+from app.core.account_state import account_is_blocked
 from app.models import AccountDeletionRequest, AuthSession, User
 from app.services.account_deletion_service import (
     CANCELLED,
@@ -93,8 +94,11 @@ class TestTheImmediateEffects:
 
         await request_deletion(db_session, person, now=NOW)
 
-        assert person.suspended_at == NOW
-        assert person.suspension_reason is not None
+        assert person.deletion_hidden_at == NOW
+        # And the administrative state is untouched: this is the account
+        # holder's decision, not an administrator's.
+        assert person.suspended_at is None
+        assert person.suspension_reason is None
 
     async def test_every_session_is_ended(self, db_session, person) -> None:
         """Between asking and completing there is a window, and a session that
@@ -131,8 +135,7 @@ class TestChangingYourMind:
 
         assert cancelled.status == CANCELLED
         assert cancelled.cancelled_at is not None
-        assert person.suspended_at is None
-        assert person.suspension_reason is None
+        assert person.deletion_hidden_at is None
 
     async def test_cancelling_without_a_request_is_refused(
         self, db_session, person
@@ -155,6 +158,9 @@ class TestChangingYourMind:
 
         assert person.suspended_at is not None
         assert person.suspension_reason == "Suspended by an administrator for abuse."
+        # And the account is still blocked, by the suspension rather than by a
+        # deletion request it no longer has.
+        assert account_is_blocked(person) is True
 
     async def test_a_cancelled_request_is_no_longer_outstanding(
         self, db_session, person
@@ -173,7 +179,7 @@ class TestChangingYourMind:
         again = await request_deletion(db_session, person, now=NOW)
 
         assert again.status == REQUESTED
-        assert person.suspended_at is not None
+        assert person.deletion_hidden_at is not None
 
 
 class TestOneAccountsRequestIsNotAnothers:
@@ -185,6 +191,7 @@ class TestOneAccountsRequestIsNotAnothers:
 
         await request_deletion(db_session, first, now=NOW)
 
+        assert second.deletion_hidden_at is None
         assert second.suspended_at is None
         assert await open_request(db_session, second.id) is None
 
