@@ -1322,6 +1322,57 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 11A checkpoint (SEO-001 — robots.txt and noindex were cancelling each other out)
+
+```text
+COMMIT: "fix(seo): stop robots.txt from hiding the noindex it was meant to reinforce"
+MIGRATION: none. BACKEND: untouched, EXPECTED_CURRENT_COLLECTION stays 7,499.
+FRONTEND: tsc exit 0, next build exit 0, eslint 0 errors / 1 pre-existing warning,
+          node tests 1,204 -> 1,214 (+10 from tests/routeIndexing.test.mjs).
+
+THE DEFECT, and it is the opposite of what it looks like: robots.txt disallowed /auth/, /you/,
+/admin/, /dev/ and /smart-typing-test, and NONE of those routes carried a noindex. Disallow and
+noindex do not stack — disallow says do not fetch, noindex says do not index, and a crawler has to
+FETCH a page to read its noindex. So the disallow actively guaranteed the directive could never be
+read, while a URL linked from anywhere could still be listed as a bare link with no title and no way
+to remove it. The careful-looking configuration was the weaker one.
+
+WHAT CHANGED: robots.txt now disallows only /api/, which is the one surface that cannot carry a
+directive at all (it serves JSON — there is no meta tag to put one in), so Disallow is the only tool
+available and its weakness is accepted knowingly rather than by default. Every authenticated surface
+is now crawlable and carries `noindex, nofollow` in its own metadata, which is the instruction that
+actually gets honoured. Letting a crawler fetch them costs nothing: they require a session.
+
+lib/seo/routeIndexing.ts classifies all 45 routes as PUBLIC_INDEXABLE / PUBLIC_NOINDEX /
+PRIVATE_NOINDEX / ROBOTS_DISALLOW / DEVELOPMENT_ONLY, each with a reason. Same shape as the config
+contract, for the same reason: the DEFAULT IS INDEXABLE, so an authenticated page added on a Tuesday
+is publicly indexable on Tuesday and nothing in the pull request says so. A page.tsx with no entry
+now fails a test, and so does an entry naming a route that no longer exists.
+
+MECHANICS, because a client component cannot export `metadata`: 31 server pages got a page-level
+`noindexPage(...)`, and /auth, /post-job and /post-talent got a layout that exists only to carry the
+directive (Next merges metadata down, so /auth/reset and /post-job/import inherit it). The test reads
+the page AND its ancestor layouts, so either mechanism satisfies it.
+
+A SECOND REAL GAP FOUND WHILE CLASSIFYING: /u/[slug]/projects/[projectId] — a public portfolio
+project, the kind of page people paste into a message — had NO metadata whatsoever. Every project on
+the platform presented itself with the site-wide title, no description, and no canonical of its own.
+It now derives title, description, canonical, OpenGraph and Twitter cards from the project, and
+NOINDEXES the not-found/moved/missing cases rather than titling them optimistically: a page reading
+"Project not found" must not be offered to a searcher as a project.
+Also added self-canonicals to /faq, /support, /terms and /privacy, which had none.
+
+NON-VACUITY, and this one is worth reading: the mutation (re-adding /you/ and /admin/ to the
+disallow list) initially failed only ONE of the two tests. The other extracted disallowed paths by
+scanning app/robots.ts for quoted paths — and the explanatory comment above the array NAMES /you/
+and /admin/ while saying they are deliberately not disallowed, so the looser match read the prose as
+configuration and the test passed while the defect was present. Rewritten to parse the array literal
+only, with a guard test asserting the parse returns real paths. Both now fail on the mutation.
+The lesson generalises: a source-reading test can be defeated by the comment that explains it.
+
+NEXT READY: SEO-002 sitemap (pagination, real timestamps, coverage), SEO-003 JobPosting lifecycle.
+```
+
 ## Phase 10 certification — LOCALLY COMPLETE
 
 ```text

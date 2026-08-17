@@ -1,3 +1,9 @@
+import { noindexPage } from "../../../lib/seo/noindex";
+
+// Authenticated surface: it carries its own noindex rather than relying on a
+// robots.txt Disallow, which would stop the crawler reading this directive.
+export const metadata = noindexPage("Reports");
+
 import { getServerSession } from "next-auth";
 import AdminReportsClient from "../../../components/admin/AdminReportsClient";
 import { authOptions } from "../../../lib/auth";

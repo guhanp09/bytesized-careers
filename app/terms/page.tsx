@@ -9,6 +9,9 @@ type IconName = Parameters<typeof Icon>[0]["name"];
 export const metadata = {
   title: "Terms | CreatorJobs",
   description: "Beta terms for using CreatorJobs.",
+  // The canonical is the unversioned page; each archived version points here
+  // too, so superseded wording never competes with current wording.
+  alternates: { canonical: "/terms" },
 };
 
 // The wording comes from the published version rather than living here, so an

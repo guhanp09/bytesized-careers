@@ -1,3 +1,9 @@
+import { noindexPage } from "../../lib/seo/noindex";
+
+// Authenticated surface: it carries its own noindex rather than relying on a
+// robots.txt Disallow, which would stop the crawler reading this directive.
+export const metadata = noindexPage("Activity");
+
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";

@@ -9,6 +9,7 @@ type IconName = Parameters<typeof Icon>[0]["name"];
 export const metadata = {
   title: "Privacy | CreatorJobs",
   description: "Beta privacy summary for CreatorJobs.",
+  alternates: { canonical: "/privacy" },
 };
 
 // The wording comes from the published version rather than living here, so an

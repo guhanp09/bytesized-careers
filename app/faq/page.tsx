@@ -1,6 +1,13 @@
 import { faqs } from "../../lib/faqData";
 
-export const metadata = { title: "FAQ — CreatorJobs" };
+export const metadata = {
+  title: "FAQ — CreatorJobs",
+  description:
+    "Answers about roles, applications, hiring, and how CreatorJobs works.",
+  // Self-referencing, so a link carrying a tracking parameter does not compete
+  // with this page and leave the engine to choose a winner.
+  alternates: { canonical: "/faq" },
+};
 
 export default function FaqPage() {
   return (

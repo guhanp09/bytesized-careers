@@ -4,6 +4,7 @@ import { PageHeader, StateCard } from "../../components/ui";
 export const metadata = {
   title: "Support | CreatorJobs",
   description: "Get help with CreatorJobs beta accounts, listings, reports, and marketplace workflows.",
+  alternates: { canonical: "/support" },
 };
 
 const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "support@creatorjobs.in";

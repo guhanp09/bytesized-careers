@@ -1,11 +1,26 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import ProjectDetailPage from "../../../../../components/project/ProjectDetailPage";
 import type { BackendPortfolioItem, BackendPublicProfileResponse } from "../../../../../lib/backendClient";
 import { resolvePublicProfileWithTalentFallback } from "../../../../../lib/publicProfileFallback";
+import { NOINDEX } from "../../../../../lib/seo/noindex";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+/**
+ * Placeholder values the profile API uses where a field was never filled in.
+ * Repeating them in a page title or description would present "not shared" as
+ * the project's own words.
+ */
+const PUBLIC_PLACEHOLDERS = ["not shared", "not set", "creator-economy profile"];
+
+function cleanPublicText(value?: string | null) {
+  const text = value?.trim();
+  if (!text) return null;
+  return PUBLIC_PLACEHOLDERS.includes(text.toLowerCase()) ? null : text;
+}
 
 function PublicProjectUnavailable({
   title,
@@ -34,6 +49,62 @@ function PublicProjectUnavailable({
       </section>
     </main>
   );
+}
+
+/**
+ * A shared portfolio project is a page people link to directly, and until now it
+ * carried no metadata at all: it inherited the site-wide title, so every project
+ * on the platform presented itself as the same page, with no description and no
+ * canonical of its own.
+ *
+ * Every case that does not resolve to a real project — missing profile, moved
+ * profile, missing project — is noindexed rather than titled optimistically. A
+ * page that says "Project not found" must not be offered to a searcher as a
+ * project.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string; projectId: string }>;
+}): Promise<Metadata> {
+  const { slug: rawSlug, projectId: rawProjectId } = await params;
+  const username = decodeURIComponent(rawSlug || "").trim().toLowerCase();
+  const projectId = decodeURIComponent(rawProjectId || "");
+
+  const profile = await resolvePublicProfileWithTalentFallback(username);
+  const project = profile
+    ? [...(profile.portfolio_now || []), ...(profile.portfolio_past || [])].find(
+        (item) => item.id === projectId,
+      )
+    : null;
+
+  if (!profile || profile.moved_to_username || !project) {
+    return { title: "Project unavailable | CreatorJobs", ...NOINDEX };
+  }
+
+  const title = cleanPublicText(project.title) || "Project";
+  const owner = cleanPublicText(profile.display_name) || profile.username;
+  const description =
+    cleanPublicText(project.description) || `A project from ${owner} on CreatorJobs.`;
+
+  return {
+    title: `${title} by ${owner} | CreatorJobs`,
+    description,
+    alternates: {
+      canonical: `/u/${encodeURIComponent(profile.username)}/projects/${encodeURIComponent(project.id)}`,
+    },
+    openGraph: {
+      title: `${title} by ${owner}`,
+      description,
+      type: "article",
+      images: project.thumbnail_url ? [{ url: project.thumbnail_url }] : undefined,
+    },
+    twitter: {
+      card: project.thumbnail_url ? "summary_large_image" : "summary",
+      title: `${title} by ${owner}`,
+      description,
+    },
+  };
 }
 
 export default async function PublicProjectPage({

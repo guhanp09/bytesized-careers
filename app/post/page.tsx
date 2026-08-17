@@ -1,3 +1,9 @@
+import { noindexPage } from "../../lib/seo/noindex";
+
+// Authenticated surface: it carries its own noindex rather than relying on a
+// robots.txt Disallow, which would stop the crawler reading this directive.
+export const metadata = noindexPage("Post");
+
 import Link from "next/link";
 import { Icon } from "../../components/Icons";
 import { isJobImportAllowed } from "../../lib/importJob/flag";
