@@ -173,8 +173,12 @@ jobs:
       # database. Up, down to the pre-interaction revision, seed legacy rows,
       # up again — this is what proves the migration works on data that existed
       # before it, which a fresh-database upgrade cannot show.
+      # Through the release step, because that is the command a deployment runs.
+      # Testing `alembic upgrade head` here while production runs something else
+      # would leave the difference — head checking, advisory locking, the
+      # already-at-head path — untested on a real PostgreSQL.
       - name: Migrate up
-        run: uv run alembic upgrade head
+        run: uv run python -m scripts.release_migrate
 
       - name: Migrate down to the pre-interaction revision
         run: uv run alembic downgrade 0038_interaction_participant_status
@@ -183,7 +187,12 @@ jobs:
         run: PYTHONPATH=. uv run python tests/interaction_migration_fixtures.py
 
       - name: Migrate up again
-        run: uv run alembic upgrade head
+        run: uv run python -m scripts.release_migrate
+
+      # Running it a second time with nothing to do is the case every instance
+      # after the first one hits on a real deploy, so it is worth one line.
+      - name: Migrating again changes nothing
+        run: uv run python -m scripts.release_migrate
 
       # These are the suites whose behaviour differs on PostgreSQL — row locking,
       # SKIP LOCKED, real concurrency. On SQLite several of them cannot fail.

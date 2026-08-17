@@ -93,6 +93,23 @@ test("the migration downgrade target matches the local harness", () => {
   assert.equal(ciTarget, localTarget);
 });
 
+test("CI migrates the way a deployment migrates", () => {
+  // A deployment runs scripts/release_migrate — head checking, an advisory lock
+  // so concurrent instances serialise, and an already-at-head no-op. If CI
+  // proved `alembic upgrade head` instead, every one of those would be untested
+  // against a real PostgreSQL, which is the only place they behave at all.
+  assert.match(ci, /uv run python -m scripts\.release_migrate/);
+  assert.ok(
+    !/run: uv run alembic upgrade head/.test(ci),
+    "CI upgrades with raw alembic; production does not, so the difference is untested",
+  );
+
+  // Twice in a row, because that is what the second and later instances of a
+  // real deploy do, and "nothing to apply" is a distinct code path.
+  const runs = ci.match(/uv run python -m scripts\.release_migrate/g) ?? [];
+  assert.ok(runs.length >= 2, `expected the release step to run more than once, saw ${runs.length}`);
+});
+
 test("the two Playwright suites are not run concurrently", () => {
   // They build from the same .next directory and the QA suite binds fixed
   // ports. Running them together is faster and the evidence is worthless.

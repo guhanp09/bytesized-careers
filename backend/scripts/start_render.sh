@@ -34,8 +34,18 @@ printf '%s\n' "Running migrations: ${run_migrations}"
 printf '%s\n' "Running staging seed: ${run_staging_seed}"
 
 if [ "$run_migrations" = "true" ]; then
+  # Through the release step rather than `alembic upgrade head` directly. Every
+  # instance runs this script on boot, and alembic takes no lock of its own, so
+  # the raw command had two instances applying the same DDL concurrently — one
+  # wins, the other errors, and `set -e` turns that into a crash loop on an
+  # instance that had nothing to do. The release step serialises on a PostgreSQL
+  # advisory lock and refuses to start if the migration graph has two heads.
+  #
+  # Better still is running it as a genuine pre-deploy step, so a failed
+  # migration stops the release before any traffic moves. This path exists
+  # because Render Free has no pre-deploy hook.
   printf '%s\n' "Running database migrations..."
-  uv run alembic upgrade head
+  uv run python -m scripts.release_migrate
 fi
 
 if [ "$run_staging_seed" = "true" ]; then

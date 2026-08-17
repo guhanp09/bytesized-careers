@@ -12,7 +12,10 @@ SCRIPT_PATH = BACKEND_ROOT / "scripts" / "start_render.sh"
 def test_render_startup_script_exists_and_uses_exec_for_uvicorn() -> None:
     script = SCRIPT_PATH.read_text()
 
-    assert "uv run alembic upgrade head" in script
+    # Through the release step, not raw alembic: this script runs on every
+    # instance, and concurrent `alembic upgrade head` runs race each other.
+    # See scripts/release_migrate and tests/test_release_migration.
+    assert "uv run python -m scripts.release_migrate" in script
     assert "uv run python scripts/seed_staging_demo.py --confirm \"$app_env\"" in script
     assert 'exec uv run uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"' in script
 
@@ -75,7 +78,7 @@ def test_render_startup_script_runs_migrations_seed_then_api(
 
     assert result.returncode == 0, result.stderr
     assert command_log.read_text().splitlines() == [
-        "run alembic upgrade head",
+        "run python -m scripts.release_migrate",
         "run python scripts/seed_staging_demo.py --confirm staging",
         "run uvicorn app.main:app --host 0.0.0.0 --port 4321",
     ]

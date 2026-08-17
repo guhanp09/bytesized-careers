@@ -1322,6 +1322,63 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 10G checkpoint (PLATFORM-003 — migrations stop being something every instance races to do)
+
+```text
+COMMIT: "feat(release): make migrations a release step instead of a race"
+MIGRATION: none — this changes HOW migrations are applied, not the schema.
+BACKEND: LAST_FULL_SUITE_OBSERVED 7,471 tests / 0 failures / 0 errors / 65 skipped, exit 0.
+         EXPECTED_CURRENT_COLLECTION 7,471 (was 7,458; +13 from tests/test_release_migration.py).
+FRONTEND: node tests 1,203 -> 1,204 (+1 CI contract case). ci.yml still parses. ruff clean.
+
+THE DEFECT, and it does not look like a migration bug when it happens: migrations ran from the
+container start command (`scripts/start_render.sh`, gated by RUN_DB_MIGRATIONS), so EVERY instance
+executed `alembic upgrade head` on boot. Alembic takes no lock of its own, so two instances applying
+the same DDL concurrently either deadlock or one errors — and the script is `set -e`, so the loser
+CRASH-LOOPS. What an operator sees is one instance failing with a migration error while another has
+already succeeded, on a deploy where nothing was wrong with the migration.
+
+scripts/release_migrate.py does three things in an order that is itself the design:
+  1. SOLE-HEAD CHECK FIRST, touching no database. Two heads is a merge accident; `upgrade head`
+     would fail with an ambiguity error after opening a connection to production. A test asserts
+     the check precedes create_async_engine, because a passing ordering has no visible effect.
+  2. POSTGRESQL ADVISORY LOCK, so concurrent runs serialise. Polled with a deadline rather than
+     blocking: a blocking pg_advisory_lock behind a process that died holding it waits as long as
+     the connection lives, turning one bad migration into a deploy that never finishes and never
+     says why. Released in a `finally`, so a failed migration does not block every later attempt.
+  3. THE UPGRADE, reporting the revision before and after — including the boring case, "already at
+     head, nothing applied", which is what every instance after the first one does.
+It never seeds, never starts the app, and exits non-zero on anything unexpected without dumping a
+traceback: a deploy log is read under pressure.
+
+WIRED SO THE FIXED PATH IS THE PATH TAKEN: start_render.sh now calls the release step, and the
+backend-postgres CI job migrates through it too — twice, so the no-op path is covered. If CI proved
+`alembic upgrade head` while production ran the release step, the head check, the lock and the
+already-at-head branch would be untested on the only engine where they do anything. Asserted from
+both sides (tests/test_release_migration.py and tests/ciWorkflowContract.test.mjs).
+
+WHAT IS AND IS NOT PROVEN LOCALLY, precisely:
+  VERIFIED LOCALLY   — the already-at-head no-op exits 0 and never invokes alembic (real subprocess,
+                       real SQLite database seeded with the head revision); a failing upgrade exits
+                       1 with a one-line reason and no traceback; single head today; two heads
+                       refused (monkeypatched get_heads, so non-vacuous); the ordering, lock-key
+                       symmetry, finally-release and dialect gating.
+  NOT VERIFIABLE HERE — the full chain needs PostgreSQL (migration 0001 declares JSONB, which SQLite
+                       cannot render) and `docker` is permission-denied in this environment. So a
+                       genuine fresh-database upgrade, the downgrade/seed/upgrade sequence, and REAL
+                       two-process lock contention are exercised only by the backend-postgres CI
+                       job — which has never run on a GitHub runner. BLOCKED_ENVIRONMENT for the
+                       local half, BLOCKED_EXTERNAL (RELEASE-001) for the remote half. Do not read
+                       the green local suite as evidence the advisory lock has ever been contended.
+
+STILL OPEN, and it is the better shape: a genuine PRE-DEPLOY step, where a failed migration stops
+the release before any traffic moves. The start-command path exists because Render Free has no
+pre-deploy hook. The release step is now a single idempotent command, so adopting a pre-deploy hook
+is a platform configuration change rather than a code change.
+
+NEXT READY: PLATFORM-005 health contracts (liveness vs readiness vs optional feature health).
+```
+
 ## Phase 10F checkpoint (PLATFORM-002 — every setting classified, and three promises that were not kept)
 
 ```text
