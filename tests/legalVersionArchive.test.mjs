@@ -118,3 +118,45 @@ test("the archive contains wording rather than an empty shell", () => {
   // above while archiving nothing.
   assert.ok(source.length > 1500, "archived version looks suspiciously small");
 });
+
+test("versioned archive routes exist for every published version", () => {
+  const files = readdirSync(versionsDir)
+    .filter((name) => name.endsWith(".ts"))
+    .map((name) => name.replace(/\.ts$/, ""));
+
+  // One dynamic route serves every version, so what matters is that the route
+  // exists at all — without it, a stored version resolves to nothing.
+  for (const kind of ["terms", "privacy"]) {
+    const route = join(here, "..", "app", kind, "[version]", "page.tsx");
+    const source = readFileSync(route, "utf8");
+    assert.match(source, /legalVersion\(version\)/);
+    // An unknown version must 404 rather than fall back: showing current
+    // wording under an old version's URL is worse than showing nothing.
+    assert.match(source, /notFound\(\)/);
+  }
+
+  assert.ok(files.length > 0);
+});
+
+test("archive pages are noindex and point canonically at the active page", () => {
+  for (const kind of ["terms", "privacy"]) {
+    const source = readFileSync(
+      join(here, "..", "app", kind, "[version]", "page.tsx"),
+      "utf8",
+    );
+
+    // A provenance surface, not an acquisition one: indexed old terms would
+    // compete with the current ones in search results.
+    assert.match(source, /index: false/);
+    assert.match(source, new RegExp(`canonical: "/${kind}"`));
+  }
+});
+
+test("archive routes are absent from the sitemap", () => {
+  const sitemap = readFileSync(join(here, "..", "app", "sitemap.ts"), "utf8");
+
+  // The unversioned pages are listed; the versioned permalinks must not be.
+  assert.match(sitemap, /\/terms`/);
+  assert.ok(!sitemap.includes("[version]"));
+  assert.ok(!sitemap.includes("2026-06-01"));
+});

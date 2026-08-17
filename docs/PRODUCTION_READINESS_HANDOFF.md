@@ -1322,6 +1322,29 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 10D checkpoint (legal archive routing — provenance complete)
+
+```text
+COMMIT: "feat(legal): let a superseded version still be read"
+MIGRATION: none. FRONTEND: tsc clean, eslint clean, node tests 1,185 -> 1,188 (+3).
+Unblocked by a resolved product decision: superseded versions SHOULD stay reader-retrievable.
+
+ROUTES: /terms/{version} and /privacy/{version} render exactly the named immutable version.
+  - the UNVERSIONED pages remain the canonical reader surface, and now link the permalink for the
+    active version, so an acceptance record naming it stays readable after the wording changes;
+  - an UNKNOWN version is a 404, never a fallback to current wording. Showing one text while
+    claiming to be another is worse than showing nothing, and is exactly the confusion the archive
+    exists to remove;
+  - noindex + canonical back to the unversioned page: a provenance surface, not an acquisition one.
+    Indexed old terms would compete with the current ones in search results;
+  - ABSENT from the sitemap, asserted by a test that also checks the unversioned pages are present.
+
+No wording was written or altered. Retention policy untouched.
+
+STILL OPEN and unchanged: LEGAL-002 (counsel), retention duration.
+NEXT READY: CI-001/CI-002 workflows.
+```
+
 ## Phase 10C checkpoint (PLATFORM-004 — bounded pool, explicit capacity)
 
 ```text

@@ -56,6 +56,18 @@ export default function PrivacyPage() {
         </div>
 
         <p className="text-sm text-muted">
+          {/* A permalink to this exact wording, so an acceptance record naming
+              this version stays readable after the wording changes. */}
+          Permanent link to this version:{" "}
+          <Link
+            href={`/privacy/${CURRENT_LEGAL_VERSION.version}`}
+            className="font-semibold text-white/78 hover:text-white hover:underline"
+          >
+            /privacy/{CURRENT_LEGAL_VERSION.version}
+          </Link>
+        </p>
+
+        <p className="text-sm text-muted">
           For privacy or account requests,{" "}
           <Link href="/support" className="font-semibold text-white/78 hover:text-white hover:underline">
             contact support
