@@ -7,16 +7,18 @@ from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import String, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db, get_optional_current_user
+from app.core.account_state import account_is_blocked
 from app.core.rate_limit import CHECKOUT_LIMIT, MARKETPLACE_ACTION_LIMIT, REPORT_LIMIT, rate_limit
 from app.models import (
     Conversation,
-    Entitlement,
     EngagementReview,
+    Entitlement,
     InteractionPrivateNote,
     InteractionStatusEvent,
     Job,
@@ -32,32 +34,19 @@ from app.models import (
 )
 from app.notifications import dispatch_notification
 from app.realtime import events as realtime_events
-from app.services.messaging_service import (
-    get_or_create_conversation_for_application,
-    get_or_create_conversation_for_interest,
-)
-from app.services import (
-    blocking_service,
-    interaction_status,
-    interaction_transition_service as transitions,
-    messaging_service as ms,
-    review_service,
-)
 from app.schemas.job import JobRead
-from pydantic import BaseModel
-
 from app.schemas.marketplace import (
     ActivitySummaryResponse,
     ApplicationTransitionResponse,
     EntitlementRead,
+    InteractionArchiveUpdate,
+    InteractionPrivateNoteCreate,
+    InteractionPrivateNoteRead,
+    InteractionTransitionRequest,
     JobApplicationBulkStatusUpdate,
     JobApplicationCreate,
     JobApplicationRead,
     JobApplicationStatusUpdate,
-    InteractionPrivateNoteCreate,
-    InteractionPrivateNoteRead,
-    InteractionArchiveUpdate,
-    InteractionTransitionRequest,
     LaunchCheckoutRequest,
     ManagerNoteUpdate,
     NotificationListResponse,
@@ -80,6 +69,21 @@ from app.schemas.marketplace import (
     TalentListingListResponse,
     TalentListingRead,
     TalentListingUpdate,
+)
+from app.services import (
+    blocking_service,
+    interaction_status,
+    review_service,
+)
+from app.services import (
+    interaction_transition_service as transitions,
+)
+from app.services import (
+    messaging_service as ms,
+)
+from app.services.messaging_service import (
+    get_or_create_conversation_for_application,
+    get_or_create_conversation_for_interest,
 )
 
 router = APIRouter(tags=["marketplace"])
@@ -1700,8 +1704,11 @@ async def get_talent_listing(
     if listing.status not in {"published", "featured"}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent listing not found")
     owner = await session.get(User, listing.owner_user_id)
-    if owner is not None and owner.suspended_at is not None:
-        # Suspended owners' content is hidden from the public marketplace.
+    if owner is not None and account_is_blocked(owner):
+        # Hidden from the public marketplace for EITHER reason: an
+        # administrative suspension, or the owner having asked to be deleted.
+        # Checking only suspension left a listing publicly visible after its
+        # owner had asked to be removed.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent listing not found")
     listing.views = int(listing.views or 0) + 1
     await session.commit()

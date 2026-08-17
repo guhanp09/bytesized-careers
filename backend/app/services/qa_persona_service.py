@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.account_state import account_is_blocked
 from app.core.config import settings
 from app.core.qa_personas import (
     ensure_qa_persona_feature_enabled,
@@ -15,7 +16,12 @@ from app.core.qa_personas import (
     parse_qa_token_claims,
     qa_session_is_revoked,
 )
-from app.core.security import TokenError, create_access_token, decode_access_token, get_token_expires_at
+from app.core.security import (
+    TokenError,
+    create_access_token,
+    decode_access_token,
+    get_token_expires_at,
+)
 from app.db import qa_scenarios
 from app.db import seed_data_personas as personas
 from app.models import (
@@ -108,7 +114,7 @@ async def resolve_qa_controller(
     ).scalar_one_or_none()
     if (
         controller is None
-        or controller.suspended_at is not None
+        or account_is_blocked(controller)
         or not is_qa_controller_email(controller.email)
     ):
         raise _not_found()
@@ -187,7 +193,7 @@ class QaPersonaService:
         persona = (
             await self.session.execute(select(User).where(User.id == persona_id))
         ).scalar_one_or_none()
-        if persona is None or persona.suspended_at is not None:
+        if persona is None or account_is_blocked(persona):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="QA persona is unavailable. Restore the relevant QA scenario first.",

@@ -11,7 +11,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.account_state import account_block
+from app.core.account_state import account_block, account_is_blocked
 from app.core.account_types import isAdmin
 from app.core.auth_assurance import has_fresh_strong_auth
 from app.core.config import settings
@@ -258,7 +258,7 @@ async def resolve_access_token_context(
         ).scalar_one_or_none()
         if (
             controller is None
-            or controller.suspended_at is not None
+            or account_is_blocked(controller)
             or not is_qa_controller_email(controller.email)
             or await qa_session_is_revoked(session, claims.session_id)
         ):

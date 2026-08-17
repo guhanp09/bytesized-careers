@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
+from app.core.account_state import account_is_blocked
 from app.core.account_types import is_admin
 from app.core.config import settings
 from app.core.external_url import ExternalUrlError, canonicalize_external_url
@@ -2305,8 +2306,11 @@ class ProfileService:
 
         user = await self.repository.get_user_by_username(normalized_username)
         if user is not None:
-            if user.suspended_at is not None:
-                # Suspended accounts have no public presence (admin enforcement).
+            if account_is_blocked(user):
+                # No public presence for EITHER reason. Checking only suspension
+                # left a profile publicly visible after its owner had asked to
+                # be deleted, which is the one thing a deletion request is
+                # supposed to stop immediately.
                 raise ProfileNotFoundError("Profile not found")
             return user, None, normalized_username
 
@@ -2316,7 +2320,7 @@ class ProfileService:
         moved_user = await self.repository.get_user_by_id(history.user_id)
         if moved_user is None or not moved_user.username:
             raise ProfileNotFoundError("Profile not found")
-        if moved_user.suspended_at is not None:
+        if account_is_blocked(moved_user):
             raise ProfileNotFoundError("Profile not found")
         return moved_user, moved_user.username, normalized_username
 

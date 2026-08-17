@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.account_state import account_is_blocked
 from app.models import (
     Conversation,
     Engagement,
@@ -27,9 +28,9 @@ from app.schemas.reviews import (
     ProfileReviewCollection,
     PublicReviewItem,
     ReviewOpportunity,
+    ReviewsByMode,
     ReviewSummary,
     ReviewWorkspaceResponse,
-    ReviewsByMode,
 )
 from app.services import messaging_service
 
@@ -760,7 +761,7 @@ async def _published_collection(
     items: list[PublicReviewItem] = []
     for review, reviewer in rows:
         snapshot = review.reviewer_snapshot or {}
-        anonymized = reviewer is None or reviewer.suspended_at is not None
+        anonymized = reviewer is None or account_is_blocked(reviewer)
         items.append(
             PublicReviewItem(
                 id=review.id,

@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.account_state import account_is_blocked
 from app.core.account_types import is_admin
 from app.core.auth_assurance import has_fresh_strong_auth
 from app.core.config import settings
@@ -209,7 +210,7 @@ class StrongAuthService:
                 .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
-        if user is None or user.suspended_at is not None:
+        if user is None or account_is_blocked(user):
             raise StrongAuthSessionError("Authenticated account is unavailable")
         if not is_admin(user):
             raise StrongAuthPermissionError(

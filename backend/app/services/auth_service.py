@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.exc import IntegrityError
 
+from app.core.account_state import account_block, account_is_blocked
 from app.core.account_types import PublicAccountType
 from app.core.config import settings
 from app.core.oauth_scopes import (
@@ -740,8 +741,9 @@ class AuthService:
             raise InvalidCredentialsError("Invalid email or password")
         if user.email_verified_at is None:
             raise EmailNotVerifiedError("Email is not verified")
-        if user.suspended_at is not None:
-            raise AccountSuspendedError("Account suspended")
+        blocked = account_block(user)
+        if blocked.blocked:
+            raise AccountSuspendedError(blocked.reason)
 
         tokens = await self._issue_login_token_pair(
             user,
@@ -778,7 +780,7 @@ class AuthService:
                     raise OAuthAccountCollisionError(
                         "Google identity linkage is inconsistent"
                     ) from exc
-                if email_user.suspended_at is not None:
+                if account_is_blocked(email_user):
                     raise AccountSuspendedError("Account suspended") from exc
                 logger.info(
                     "google_oauth_concurrent_exchange_converged",
@@ -849,7 +851,7 @@ class AuthService:
                         "A different Google identity is already linked to this account"
                     )
 
-        if user is not None and user.suspended_at is not None:
+        if user is not None and account_is_blocked(user):
             raise AccountSuspendedError("Account suspended")
 
         normalized_username: str | None = None
@@ -951,8 +953,9 @@ class AuthService:
             user = await self.repository.get_user_by_id(user_id)
             if user is None:
                 raise InvalidCredentialsError("Invalid refresh token subject")
-            if user.suspended_at is not None:
-                raise AccountSuspendedError("Account suspended")
+            blocked = account_block(user)
+            if blocked.blocked:
+                raise AccountSuspendedError(blocked.reason)
             return user, self.create_token_pair(user)
 
         if session_id is None:
@@ -961,8 +964,9 @@ class AuthService:
             user = await self.repository.get_user_by_id(user_id)
             if user is None:
                 raise InvalidCredentialsError("Invalid refresh token subject")
-            if user.suspended_at is not None:
-                raise AccountSuspendedError("Account suspended")
+            blocked = account_block(user)
+            if blocked.blocked:
+                raise AccountSuspendedError(blocked.reason)
             tokens = await self._create_persistent_token_pair(
                 user,
                 authentication_method="legacy_refresh_migration",
@@ -1028,7 +1032,7 @@ class AuthService:
             )
             await self.repository.commit()
             raise InvalidCredentialsError("Invalid refresh token subject")
-        if user.suspended_at is not None:
+        if account_is_blocked(user):
             await self.repository.revoke_auth_session(
                 session,
                 revoked_at=now,

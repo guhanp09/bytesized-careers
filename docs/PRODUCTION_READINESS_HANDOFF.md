@@ -991,6 +991,39 @@ REALTIME-002 (typing/presence TTL; typing expiry already exists in the manager, 
 building).
 ```
 
+## Phase 9G checkpoint (MOD-001 — both blocking states enforced everywhere)
+
+```text
+COMMIT: "fix(moderation): enforce both blocking states everywhere, not just the one in mind"
+MIGRATION: none. SCOPE: enforcement hardening, not a new moderation product (per scope decision).
+VERIFICATION (new mandatory method): pytest exit 0, zero ^FAILED/^ERROR lines, THEN junitxml:
+  7,308 tests / 0 failures / 0 errors / 64 skipped / 7,244 passed. Collection 7,294 -> 7,308 (+14).
+
+THE AUDIT FOUND THREE REAL GAPS, all the same shape — code that remembered suspension and forgot
+the deletion state:
+  1. LOGIN. auth_service gated credential ISSUANCE on suspended_at alone, so a deletion-hidden
+     account could still log in and collect fresh tokens, then meet 403 on every request.
+  2. PUBLIC PROFILE. profile_service hid suspended accounts only, so someone who had asked to be
+     deleted stayed publicly visible — the one thing a deletion request is meant to stop at once.
+  3. PUBLIC TALENT LISTING. Same omission in marketplace.py.
+  Also converted: review anonymisation, strong-auth, QA persona/controller, refresh revocation.
+
+NOW: every blocking/visibility read goes through account_block() / account_is_blocked().
+The admin suspend/unsuspend endpoints STILL read suspended_at directly and correctly — they are
+about suspension specifically, and reading the combined state there would be wrong.
+A structural test forbids `.suspended_at is (not) None` anywhere else in app/, with that exemption
+named, and it guards its own regex.
+
+ENFORCEMENT IS TESTED THROUGH AN ALREADY-ISSUED TOKEN, for both states, across: posting a job,
+applying, sending a message, the authenticated door, public profile, and login. The token is
+obtained BEFORE the block in every case — testing with a token issued afterwards would only prove
+login is gated, which is the easy half.
+Mutation-proven: reverting the door to suspended_at alone fails five tests, all deletion variants.
+
+NEXT READY: SUPPORT-001 (minimal internal operations capability — no customer-facing intake),
+then LEGAL-001 inventory, then Phase 9 certification, then Phase 10.
+```
+
 ## Phase 9F checkpoint (deletion and suspension become independent states)
 
 ```text
