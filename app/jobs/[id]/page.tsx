@@ -22,6 +22,7 @@ import { buildProfileReviewsHref, profileRatingSummaryFromProfile } from "../../
 import { getSeoFilterRoute, isSeoRouteIndexApproved } from "../../../lib/seoFilterRoutes";
 import type { Job } from "../../../lib/types";
 import { serializeJsonLd } from "../../../lib/jsonLd";
+import { jobPostingVisibility } from "../../../lib/seo/jobPostingLifecycle";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -121,9 +122,16 @@ export async function generateMetadata({
     workSetupForJob(job) !== "Work setup not specified" ? workSetupForJob(job) : "",
   ].filter(Boolean).join(" · ");
   const image = job.channel.logoUrl || undefined;
+  // A closed, paused, archived or expired role stops being indexable, and the
+  // same rule decides whether it may publish JobPosting data below. Both live in
+  // lib/seo/jobPostingLifecycle so they cannot disagree — a page that noindexes
+  // itself while still emitting an open JobPosting is the worst of the possible
+  // combinations, because the aggregator keeps the listing after search drops it.
+  const visibility = jobPostingVisibility(job);
   return {
     title: `${job.title} | CreatorJobs`,
     description,
+    ...(visibility.indexable ? {} : { robots: { index: false, follow: true } }),
     alternates: {
       canonical: `/jobs/${encodeURIComponent(String(job.id))}`,
     },
@@ -192,6 +200,11 @@ export default async function JobDetailsPage({
   const location = cleanJobText(job.location);
   const workMode = cleanJobText(job.workMode).toLowerCase();
   const isRemote = workMode === "remote" || (!workMode && location.toLowerCase() === "remote");
+  // The same rule the metadata used. A closed or expired role publishes NO
+  // JobPosting rather than a modified one: the vocabulary has no way to say
+  // "this was a job", so an aggregator reads any JobPosting block as an open
+  // role and keeps showing it to people who then find nothing.
+  const visibility = jobPostingVisibility(job);
   const jobPostingJsonLd = {
     "@context": "https://schema.org",
     "@type": "JobPosting",
@@ -199,6 +212,9 @@ export default async function JobDetailsPage({
     description: description || undefined,
     datePosted: schemaDate(job.createdAt),
     validThrough: schemaDate(job.deadlineAt),
+    // Applications always run through CreatorJobs, never an external form, so
+    // this is a statement of fact rather than an optimisation.
+    directApply: true,
     employmentType: engagementType ? SCHEMA_EMPLOYMENT_TYPES[engagementType] : undefined,
     hiringOrganization: hiringOrganizationName
       ? {
@@ -223,10 +239,12 @@ export default async function JobDetailsPage({
 
   return (
     <main className="min-h-screen text-white bg-[#0b0b0f]">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jobPostingJsonLd) }}
-      />
+      {visibility.structuredData ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(jobPostingJsonLd) }}
+        />
+      ) : null}
       <div className="px-4 pb-28 pt-8 sm:px-6 lg:pb-8">
         <div className="mx-auto grid max-w-6xl min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
           <div className="min-w-0 space-y-6">

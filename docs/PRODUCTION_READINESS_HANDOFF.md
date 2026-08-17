@@ -1322,6 +1322,60 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 11C checkpoint (SEO-003 — a closed job was still telling aggregators it was open)
+
+```text
+COMMIT: "fix(seo): stop closed jobs advertising themselves as open"
+MIGRATION: none. BACKEND: untouched, EXPECTED_CURRENT_COLLECTION stays 7,499.
+FRONTEND: tsc exit 0, next build exit 0, node tests 1,226 -> 1,242 (+16).
+
+THE DEFECT: app/jobs/[id]/page.tsx emitted a full `JobPosting` block for EVERY job it could load,
+whatever its status. `JobPosting` is not decoration — it is a machine-readable claim that a role
+exists and can be applied to, and aggregators act on it. A closed, archived, paused or draft job kept
+advertising itself indefinitely, with no expiry to contradict it. This is precisely what Google's
+"remove the posting when it closes" requirement exists for, and what manual actions get issued over.
+
+THE SECOND DEFECT, subtler: `validThrough` came from `deadlineAt`, so a published job PAST its own
+deadline still published as open. Status alone does not decide this — the database says open while
+the posting says otherwise, and an applicant relies on the posting.
+
+lib/seo/jobPostingLifecycle.ts holds one rule, consulted from BOTH `generateMetadata` and the page
+body. That co-location is the point: they are separate functions in a Next route, and duplicating
+the condition eventually yields a page that noindexes itself while still emitting an open
+JobPosting — worse than either mistake alone, because search drops the page while the aggregator
+keeps the listing. A test asserts both call sites use the shared rule and that no hand-rolled status
+check exists beside it.
+
+DECISIONS INSIDE THE RULE, each with a test:
+  - `featured` counts as open — it is a promoted published job, not a lifecycle state, and treating
+    it as unrecognised would delist every promoted role.
+  - `paused` does NOT. It means "not accepting applications right now", and the vocabulary cannot
+    express a pause: an aggregator reads a JobPosting as open or reads nothing.
+  - An unknown or missing status fails CLOSED, so a status added later by someone who has not read
+    this file cannot default to advertising a role that may not exist.
+  - An UNPARSEABLE deadline does not delist an open job. A bad date is a data problem, not a
+    closure, and reading it as expiry would remove a live job over a formatting error.
+  - The clock is a parameter, so expiry is testable rather than only observable on the day.
+
+ALSO ADDED: `directApply: true`, which is a statement of fact here — an application never leaves for
+an external form — and stops an aggregator advertising an apply-elsewhere flow that does not exist.
+
+DELIBERATELY NOT ADDED, and a test enforces the absence: `baseSalary`. Publishing compensation into
+a machine-readable contract requires exact source amount and currency, and the rules for presenting
+compensation truthfully are TRUST-001, which is NOT_STARTED. A guessed or converted figure would be
+worst in exactly this place.
+
+NON-VACUITY PROVEN BY MUTATION: OPEN_STATUSES widened to include every status, restoring the
+original behaviour — 5 cases failed. Restored from a scratch copy and re-verified.
+
+BEHAVIOURAL, not source-reading: 13 of the 16 cases call the rule directly with real inputs, because
+the module is importable TypeScript (CI already runs node --test --experimental-strip-types). Only
+the three wiring assertions read the page source.
+
+NEXT READY: SEO-004 profile/project metadata — partly done already by the SEO-001 work on
+/u/[slug]/projects/[projectId]; then PERF-001, A11Y-001.
+```
+
 ## Phase 11B checkpoint (SEO-002 — a sitemap that was valid, well-formed and wrong)
 
 ```text
