@@ -21,6 +21,7 @@ from app.api.deps import get_db, get_google_identity_verifier
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import enable_sqlite_foreign_keys
+from app.health.router import get_readiness_session_factory
 from app.main import app
 from app.models import Role
 from app.services.email_service import clear_dev_auth_emails
@@ -208,6 +209,12 @@ async def setup_test_db() -> AsyncGenerator[None, None]:
     app.dependency_overrides[get_google_identity_verifier] = (
         override_get_google_identity_verifier
     )
+    # The readiness probe opens its own session rather than taking the
+    # request-scoped one, so that a database outage answers 503 instead of 500.
+    # Without this override it would use `settings.database_url`, which during a
+    # test run is the DEVELOPER'S database — the same escape that once had a
+    # webhook test writing to dev.db, and equally invisible from a passing test.
+    app.dependency_overrides[get_readiness_session_factory] = lambda: TestSessionLocal
     yield
 
     app.dependency_overrides.clear()

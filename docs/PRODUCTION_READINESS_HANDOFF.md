@@ -1322,6 +1322,62 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 10H checkpoint (PLATFORM-005 — three probes, three questions, and none of them talking)
+
+```text
+COMMIT: "feat(health): separate readiness from liveness, and keep both quiet"
+MIGRATION: none.
+BACKEND: LAST_FULL_SUITE_OBSERVED 7,499 tests / 0 failures / 0 errors / 65 skipped, exit 0.
+         EXPECTED_CURRENT_COLLECTION 7,499 (was 7,471; +28 from tests/test_health_contracts.py).
+         ruff clean on every touched file.
+
+THE THREE QUESTIONS, and conflating any two causes an outage rather than preventing one:
+  LIVENESS  GET /health        is this process alive? Consults NOTHING.
+  READINESS GET /health/ready  would a request succeed? Only what EVERY request needs.
+  FEATURE   GET /health/{job-import,realtime}  what can one optional feature promise? Always 200.
+
+WHAT WAS MISSING: there was no readiness probe at all. `/health/db` was the closest thing and is
+the wrong shape — it takes the request-scoped session via Depends(get_db), so an unreachable
+database fails during DEPENDENCY RESOLUTION, the handler never runs, and the answer is 500
+"internal server error" when the true answer is 503 "not ready". A load balancer treats those
+differently and so does whoever is paged. `/health/db` is kept as a dependency probe.
+
+WHY THE SEPARATION IS NOT PEDANTRY: a liveness probe that consults the database reports every
+container unhealthy during a database blip, the orchestrator restarts all of them, and the restarts
+add connection load to the thing already struggling — a recoverable dependency outage becomes a
+total one, caused by the monitoring. A readiness probe that consults an OPTIONAL feature drops every
+instance out of rotation because AI job import is unconfigured. Both are asserted behaviourally AND
+structurally, the latter because a `Depends` added to liveness later would break no behavioural
+test: in a test, the database is up.
+
+THE REDACTION CONTRACT: every probe is unauthenticated, so anything it says is public — and the
+natural way to write a useful health endpoint is to report what went wrong. The test stuffs
+recognisably-shaped secrets into settings (a DSN with a password, SMTP credentials, a Redis URL with
+inline auth) and asserts none of them, nor their host fragments, appears in ANY probe's body.
+Parametrised over a list of probes, so one added later is covered without anyone remembering to.
+Guarded by a twin that proves the leak check could actually fire.
+
+A REAL BUG FOUND WHILE WRITING IT, and the reason the factory is injectable: the readiness probe
+opens its own session, and `settings.database_url` under APP_ENV=test is the DEVELOPER'S dev.db —
+so the probe connected to it from inside the suite. Identical in shape to the webhook router that
+once wrote a row to dev.db, and equally invisible from a green run. Fixed with a dependency that
+returns a session FACTORY rather than a session: it cannot fail, so an outage still reaches the
+handler and still answers 503, while remaining overridable — conftest points it at TestSessionLocal
+for the whole suite. Two tests pin both sides (the suite overrides it; production uses the
+application's own sessionmaker, not a second engine with its own pool). Verified by md5 of dev.db
+before and after the module: UNCHANGED.
+
+CONTAINER PROBE UNCHANGED, deliberately, and now asserted: the Dockerfile HEALTHCHECK still points
+at liveness. A healthcheck decides whether to RESTART, so aiming it at readiness would reintroduce
+exactly the restart storm readiness exists to avoid.
+
+NON-VACUITY PROVEN BY MUTATION: readiness was made to consult job import and to echo the exception
+text; 4 cases failed (503-not-500, no-exception-echo, unconfigured-provider-stays-ready, and the
+structural no-feature check). Restored from a scratch copy and re-verified green.
+
+NEXT READY: remaining Phase 10 items, then Phase 10 certification.
+```
+
 ## Phase 10G checkpoint (PLATFORM-003 — migrations stop being something every instance races to do)
 
 ```text
