@@ -1322,6 +1322,44 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 11E checkpoint (PERF-001 — analysed, and deliberately not "fixed")
+
+```text
+COMMIT: "docs: record why the obvious image-optimization fix must not be applied"
+No production code changed. All gates unchanged: backend 7,499, node 1,251, tsc/build exit 0.
+
+WHY THIS ROW IS NOT IMPLEMENTED, and why that is the correct outcome rather than a shortfall:
+
+All 38 raw `<img>` tags bypass Next's image optimizer, and next.config.ts has no `images` block at
+all — which means `next/image` on a remote URL would throw "hostname not configured" at runtime.
+That is WHY the raw tags exist; it is not an oversight.
+
+The tempting fix is a `remotePatterns` wildcard. IT MUST NOT BE DONE. Creators link work from
+arbitrary hosts — the CSP allows `img-src https:` for exactly that reason and a test pins the
+allowance to that one directive — and pointing the optimizer at arbitrary hosts turns `/_next/image`
+into an OPEN IMAGE PROXY: an SSRF surface and a bandwidth-abuse surface, fetching whatever a URL
+parameter names. It is also a wildcard, which is out of bounds by standing instruction.
+
+THE DEFENSIBLE SPLIT for whoever implements this: media on OUR OWN origin
+(MEDIA_PUBLIC_BASE_URL avatars and banners) may go through the optimizer behind an EXACT host
+pattern; arbitrary creator-linked images stay raw `<img>` forever. Those are two different trust
+classes and one config key, which is precisely how the mistake gets made.
+
+THE CHEAP WIN NOT TAKEN, and why: none of the 38 declares `loading` or `decoding`, so every
+below-the-fold avatar and thumbnail loads eagerly. Fixing that is per-image rather than global,
+because `loading="lazy"` on the actual LCP element makes LCP WORSE — and identifying the LCP element
+on each route needs a browser. Applying it blindly would trade a measured problem for an unmeasured
+one. Explicit width/height is largely moot here: these images carry fixed Tailwind boxes, so missing
+intrinsic dimensions are not the CLS source they usually are.
+
+NOT DONE, stated plainly: no LCP has been measured. That is a browser task.
+
+REMAINING IN PHASE 11: PERF-001 implementation (needs a browser and the trust-class decision above),
+PERF-002 workspace scale, A11Y-001 axe sweep — axe-core 4.11.1 is present in node_modules but is an
+UNDECLARED transitive dependency, so that suite should declare it before relying on it. A11Y-002 is
+BLOCKED_EXTERNAL (manual review by a person).
+```
+
 ## Phase 11D checkpoint (SEO-004 — the same lifecycle hole on the talent side)
 
 ```text
