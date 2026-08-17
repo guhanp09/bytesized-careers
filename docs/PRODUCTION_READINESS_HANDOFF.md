@@ -1322,6 +1322,74 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 10 certification — LOCALLY COMPLETE
+
+```text
+Scope: CI gates, supply chain, container, configuration contract, migration release, pool, health.
+
+FINAL GATE RUN, all in one pass, nothing inferred:
+  backend    APP_ENV=test pytest tests/ -q     exit 0 — 7,499 tests, 0 failures, 0 errors, 65 skipped
+                                               (junitxml parsed; zero FAILED/ERROR lines)
+  frontend   node --test tests/*.test.mjs      exit 0 — 1,204 pass, 0 fail
+  types      npx tsc --noEmit                  exit 0
+  build      npm run build                     exit 0
+  audit      scripts/audit-production-dependencies.mjs  exit 0 — 0 analysed, 0 unanalysed
+  alembic    single head, 0069_support_tickets
+  ruff       clean on every file this phase touched; 67 pre-existing findings elsewhere, untouched
+  workflows  ci.yml and security.yml both parse
+
+  CI-001       IMPLEMENTED  5 jobs. Locally validated as a workflow — YAML parses, every npm script
+                            and backend path exists, the Postgres image and the alembic downgrade
+                            target are PINNED to the local harness by tests, so CI cannot drift from
+                            it. NOT elevated: the tests-required column asks for runs in CI, and no
+                            GitHub runner has executed any of it.
+  CI-002       IMPLEMENTED  Gitleaks on full history, pip-audit on the --no-dev locked set, SBOM,
+                            container source assertions. Found a REAL misclassification — see below.
+  PLATFORM-001 IMPLEMENTED  non-root uid 10001, prod-only install, bounded HEALTHCHECK, asserted
+                            from source. The image has never been BUILT: Docker unavailable here.
+  PLATFORM-002 VALIDATED    all 71 settings classified; 33 CORE_REQUIRED each proven by mutation.
+  PLATFORM-003 IMPLEMENTED  local half validated; a fresh PostgreSQL upgrade and real two-process
+                            lock contention have run NOWHERE. Not elevated for that reason.
+  PLATFORM-004 IMPLEMENTED  bounded pool, capacity supplied by the deployment. Predates this pass
+                            and was not re-verified in it, so its status is left where it was.
+  PLATFORM-005 VALIDATED    liveness / readiness / feature health separated, redaction proven.
+  RELEASE-001  BLOCKED_EXTERNAL  no push, no remote, no protected main. Genuinely blocked, not
+                            pending — nothing in this environment can advance it.
+
+FOUR REAL DEFECTS, none of which was a ledger item, all found by reading code or by running a gate
+rather than by a failing test:
+  1. The three HIGH Prisma-chain advisories were recorded as not reachable on a MANIFEST argument.
+     A clean `npm ci --omit=dev` install contains all three: npm installs the peer dependencies of
+     production packages, and @prisma/client declares `prisma` as a peer. Remediated with an
+     override to the fixed major of deepmerge-ts — NOT the semver-major Prisma downgrade npm
+     proposes, and not by suppressing anything. The allowlist is now empty, which is correct: the
+     advisories are fixed rather than excepted, and a stale exception is a standing permission the
+     next advisory in that package would inherit.
+  2. REALTIME_BUS documented a startup refusal that nothing called. Its only caller was the health
+     probe, which catches it; the delivery path builds the process-local bus directly. A second
+     production instance would have served half of every conversation with no error anywhere.
+  3. SMTP_USE_TLS could be false in production. The line after the STARTTLS check logs in with the
+     mail password, so it and every reset link in the body went in the clear.
+  4. LOG_LEVEL could be DEBUG, which enables SQLAlchemy's engine logger — statements WITH bound
+     parameters: addresses, tokens, password hashes — into stdout for the life of the log sink.
+  And one test-integrity defect: the new readiness probe opened its own session against
+  settings.database_url, which under APP_ENV=test is the developer's dev.db. Same shape as the
+  earlier webhook/dev.db escape, invisible from a green run, fixed with an overridable factory and
+  verified by md5 of dev.db before and after.
+
+THE PATTERN WORTH CARRYING FORWARD: three of the four were documented requirements with nothing
+behind them. They were not found by writing more tests about behaviour — they were found by writing
+down a claim per field and then demanding that something refuse. "CORE_REQUIRED implies BOOT or
+SCHEMA enforcement" is a one-line rule, and it is what turned prose into failures.
+
+WHAT PHASE 10 DOES NOT CLAIM, stated once and plainly: no workflow has run on GitHub. No container
+image has been built or scanned. No migration has been applied to a PostgreSQL database in this
+environment. No advisory lock has ever been contended. Everything above is local evidence, and the
+gap between it and a release is RELEASE-001.
+
+NEXT: Phase 11 — metadata, SEO, performance, accessibility.
+```
+
 ## Phase 10H checkpoint (PLATFORM-005 — three probes, three questions, and none of them talking)
 
 ```text
