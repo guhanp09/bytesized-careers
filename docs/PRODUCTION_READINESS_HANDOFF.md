@@ -991,6 +991,35 @@ REALTIME-002 (typing/presence TTL; typing expiry already exists in the manager, 
 building).
 ```
 
+## Phase 9I checkpoint (LEGAL-001 — inventory only)
+
+```text
+COMMIT: "docs(legal): inventory the legal surface so counsel review is bounded"
+MIGRATION: none. FILES: docs/LEGAL_SURFACE_INVENTORY.md (new). No code changed.
+
+WHAT IT IS: a description of what the software actually does, so counsel reviews behaviour rather
+than guessing, and so the questions needing a human decision sit in one list instead of being
+found one at a time. Every surface is classified TECHNICAL CONTROL / NEEDS LEGAL COPY /
+NEEDS PRODUCT DECISION / NEEDS COUNSEL REVIEW.
+
+Third-party processors are named WITH WHAT ACTUALLY CROSSES THE BOUNDARY, read from the code —
+including that the AI provider receives source job text and the schema but no account, email,
+session or internal id (pinned by a test), and that the realtime broker currently receives
+nothing at all because no broker adapter is implemented.
+
+OPEN FINDING, recorded rather than fixed: the rendered Terms and Privacy pages carry NO version
+marker, while acceptances are stored against version 2026-06-01. Nothing ties the wording somebody
+accepted to the wording they were shown. Fixing it needs two decisions first — how a version is
+surfaced to the reader, and whether superseded wording must remain retrievable (archive versus
+replace). Implementing before those are answered would be guessing.
+
+EIGHT QUESTIONS LEFT OPEN ON PURPOSE, retention period among them: a plausible thirty or ninety
+days would be indistinguishable from a decided one.
+Contains no legal wording, no retention period, and no compliance claim.
+
+NEXT: Phase 9 certification, then Phase 10.
+```
+
 ## Phase 9H checkpoint (SUPPORT-001 — internal support queue)
 
 ```text
