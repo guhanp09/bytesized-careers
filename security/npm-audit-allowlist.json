@@ -1,0 +1,32 @@
+{
+  "$comment": [
+    "Advisories examined and found not reachable in the deployed runtime.",
+    "Every entry must say WHY, with enough detail that the next person can",
+    "check the claim rather than trust it. An advisory absent from this file",
+    "fails the gate — that is the point.",
+    "This is not a severity threshold and must not become one."
+  ],
+  "advisories": [
+    {
+      "package": "prisma",
+      "severity": "high",
+      "reason": "The Prisma CLI, reachable only as a PEER dependency of @prisma/client. @prisma/client declares no runtime dependencies of its own (verified in node_modules/@prisma/client/package.json), so the CLI and its tree are build-and-generate-time only and are not loaded serving a request. The published fix is a semver-major DOWNGRADE to prisma 6.12.0, which is a data-layer decision rather than a patch — tracked as a product decision, not silently accepted.",
+      "reviewed": "2026-08-17",
+      "remediation": "BLOCKED_PRODUCT_DECISION — prisma major-version change"
+    },
+    {
+      "package": "@prisma/config",
+      "severity": "high",
+      "reason": "Pulled in by the Prisma CLI for config loading. Same reachability analysis as `prisma`: build/generate time only, never on a request path.",
+      "reviewed": "2026-08-17",
+      "remediation": "BLOCKED_PRODUCT_DECISION — prisma major-version change"
+    },
+    {
+      "package": "deepmerge-ts",
+      "severity": "high",
+      "reason": "Transitive through @prisma/config, so it inherits that reachability: CLI configuration parsing, not request handling. The advisory affects merge behaviour on untrusted input, and the only input here is the repository's own prisma config.",
+      "reviewed": "2026-08-17",
+      "remediation": "BLOCKED_PRODUCT_DECISION — prisma major-version change"
+    }
+  ]
+}

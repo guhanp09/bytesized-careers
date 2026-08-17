@@ -16,7 +16,8 @@
     "lint": "eslint",
     "generate:logo": "node scripts/generate-logo-assets.mjs",
     "generate:logo-v2": "node scripts/generate-logo-source-v2-variants.mjs",
-    "extract:logo": "python scripts/extract_logo_mark.py"
+    "extract:logo": "python scripts/extract_logo_mark.py",
+    "audit:production": "node scripts/audit-production-dependencies.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

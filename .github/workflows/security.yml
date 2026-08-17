@@ -1,0 +1,127 @@
+# Supply-chain and secret checks.
+#
+# Separate from ci.yml because these run on a schedule as well as on change: a
+# dependency that was clean on Tuesday can have an advisory on Thursday without
+# anybody touching this repository.
+
+name: Security
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  schedule:
+    # Weekly. New advisories arrive whether or not anyone commits.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: a secret committed and then removed is still in the
+      # history, and still valid until it is rotated.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  backend-dependencies:
+    name: Backend production dependency audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The PRODUCTION set, and only that. Auditing a developer environment
+      # reports findings for pytest and ruff, which never ship — and worse, it
+      # can miss what does ship if the two sets have drifted.
+      - name: Install production dependencies only
+        run: uv sync --locked --no-dev
+
+      - name: Audit the locked production environment
+        run: |
+          uv run --with pip-audit pip-audit \
+            --progress-spinner off \
+            --strict
+
+  sbom:
+    name: SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: npm ci
+      - name: Backend production dependencies
+        working-directory: backend
+        run: uv sync --locked --no-dev
+
+      # Generated as an artifact rather than committed. An SBOM changes with
+      # every dependency bump, and a checked-in one is a permanent source of
+      # diff noise that is stale the moment it is written.
+      - name: Frontend SBOM
+        run: npm sbom --sbom-format cyclonedx --omit dev > sbom-frontend.json
+
+      - name: Backend SBOM
+        working-directory: backend
+        run: uv export --locked --no-dev --format requirements-txt > sbom-backend-requirements.txt
+
+      - name: Upload SBOMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: |
+            sbom-frontend.json
+            backend/sbom-backend-requirements.txt
+          if-no-files-found: error
+
+  container:
+    name: Container source checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+
+      # Source-level properties: non-root, no dev dependencies, nothing secret in
+      # the build context, bounded healthcheck. These are assertions about the
+      # Dockerfile, not about a built image — an actual build and vulnerability
+      # scan is a separate gate that needs a Docker daemon.
+      - name: Container hardening assertions
+        env:
+          APP_ENV: test
+        run: uv run pytest tests/test_container_hardening.py -q

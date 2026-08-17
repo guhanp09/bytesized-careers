@@ -1,0 +1,254 @@
+# Required checks for CreatorJobs.
+#
+# Every command here is one that exists in this repository and has been run
+# locally; nothing is invented for the workflow's benefit. See
+# .github/workflows/README.md for what that does and does not prove.
+#
+# Job boundaries follow STATE, not speed. Two backend pytest processes sharing a
+# database produce false failures — this repository has already lost time to
+# exactly that — so anything sharing mutable state runs sequentially inside one
+# job, and only genuinely isolated work runs in parallel across jobs.
+
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+# A second push supersedes the first. Cancelling in-progress runs on the same
+# ref saves runner time without discarding evidence for the current head.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend (types, lint, unit, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # `npm ci` installs the lockfile exactly. `npm install` would resolve
+      # afresh and could pass here while failing on a colleague's machine.
+      - name: Install dependencies from lockfile
+        run: npm ci
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Frontend unit tests
+        run: node --test --experimental-strip-types tests/*.test.mjs
+
+      # Build last: it is the slowest step and the least specific failure. A type
+      # error should be reported as a type error, not as a build that broke.
+      - name: Production build
+        run: npm run build
+
+  frontend-audit:
+    name: Frontend production dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Production dependencies only, through the gate in
+      # scripts/audit-production-dependencies.mjs. Bare `npm audit` cannot say
+      # "this advisory was examined and is not reachable at runtime" — its only
+      # alternative is raising the severity threshold, which stops whole classes
+      # of finding being reported at all. The gate fails on any advisory that is
+      # NOT recorded with an analysis, which is the finding that matters.
+      - name: Production dependency audit
+        run: npm run audit:production
+
+  backend:
+    name: Backend (ruff, pytest, alembic)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # `--locked` fails if the lock disagrees with pyproject.toml, so an
+      # un-relocked manifest edit is a build error rather than a silent
+      # re-resolution. The dev group is included here because the test suite and
+      # ruff live in it; the production image installs `--no-dev`.
+      - name: Install locked dependencies
+        run: uv sync --locked
+
+      - name: Ruff
+        run: uv run ruff check app tests
+
+      # APP_ENV=test is mandatory: without it roughly thirty tests cascade-fail
+      # on the auth rate limiter. SQLite, so the database is disposable and
+      # per-runner — never a shared or hosted one.
+      - name: Pytest
+        env:
+          APP_ENV: test
+        run: uv run pytest tests/ -q --junitxml=junit-backend.xml
+
+      - name: Alembic single head
+        env:
+          APP_ENV: test
+        run: |
+          heads=$(uv run alembic heads | grep -c '(head)')
+          if [ "$heads" -ne 1 ]; then
+            echo "Expected exactly one alembic head, found $heads:"
+            uv run alembic heads
+            exit 1
+          fi
+
+      # Uploaded on failure AND success: the count is evidence even when green,
+      # because a suite that silently loses tests still passes.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-junit
+          path: backend/junit-backend.xml
+          if-no-files-found: error
+
+  backend-postgres:
+    name: Backend on PostgreSQL (migrations, concurrency)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    # Version matches backend/docker-compose.interaction-test.yml so CI and the
+    # local harness exercise the same database.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: creatorjobs_test
+          POSTGRES_PASSWORD: creatorjobs_test
+          POSTGRES_DB: creatorjobs_interaction_test
+        ports:
+          - 55439:5432
+        options: >-
+          --health-cmd "pg_isready -U creatorjobs_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+asyncpg://creatorjobs_test:creatorjobs_test@127.0.0.1:55439/creatorjobs_interaction_test
+      POSTGRES_TEST_DATABASE_URL: postgresql+asyncpg://creatorjobs_test:creatorjobs_test@127.0.0.1:55439/creatorjobs_interaction_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+
+      # The same sequence as scripts/test_interaction_status_postgres.sh, minus
+      # its docker-compose lifecycle: the service container above provides the
+      # database. Up, down to the pre-interaction revision, seed legacy rows,
+      # up again — this is what proves the migration works on data that existed
+      # before it, which a fresh-database upgrade cannot show.
+      - name: Migrate up
+        run: uv run alembic upgrade head
+
+      - name: Migrate down to the pre-interaction revision
+        run: uv run alembic downgrade 0038_interaction_participant_status
+
+      - name: Seed legacy rows
+        run: PYTHONPATH=. uv run python tests/interaction_migration_fixtures.py
+
+      - name: Migrate up again
+        run: uv run alembic upgrade head
+
+      # These are the suites whose behaviour differs on PostgreSQL — row locking,
+      # SKIP LOCKED, real concurrency. On SQLite several of them cannot fail.
+      - name: PostgreSQL-specific tests
+        run: |
+          uv run pytest \
+            tests/test_auth_oauth_postgres.py \
+            tests/test_auth_session_migration.py \
+            tests/test_auth_sessions_postgres.py \
+            tests/test_oauth_credential_migration.py \
+            tests/test_strong_auth_postgres.py \
+            tests/test_interaction_migration_postgres.py \
+            tests/test_interaction_transitions_postgres.py \
+            -q --junitxml=junit-postgres.xml
+
+      - name: Upload PostgreSQL test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-postgres-junit
+          path: backend/junit-postgres.xml
+          if-no-files-found: error
+
+  browser:
+    name: Browser (Playwright, then QA)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: npm ci
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --locked
+
+      - name: Install browsers
+        run: npx playwright install --with-deps
+
+      # SEQUENTIAL, and not as a performance compromise. Both suites build and
+      # serve from the same `.next` directory and the QA suite binds fixed ports;
+      # running them together produces failures that describe the harness rather
+      # than the product.
+      - name: Playwright (standard)
+        run: npm run test:e2e
+
+      - name: Playwright (QA)
+        run: npm run test:e2e:qa
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          # Traces and screenshots only. Never .env, never a database file — an
+          # artifact is downloadable by anyone who can read the run.
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore

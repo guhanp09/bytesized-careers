@@ -1322,6 +1322,50 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 10E checkpoint (CI-001 + CI-002 — workflows written, locally validated, never remotely run)
+
+```text
+COMMIT: "ci: define the release gates, and be exact about what that proves"
+MIGRATION: none. FRONTEND: tsc clean, node tests 1,188 -> 1,198 (+10 workflow-contract tests).
+EXPECTED_CURRENT_COLLECTION (backend) UNCHANGED at 7,369 — no backend tests added by this slice.
+
+EVIDENCE STATUS, and the distinction is the point:
+  IMPLEMENTED        — ci.yml (5 jobs) + security.yml (4 jobs) encode the gates.
+  LOCALLY VALIDATED  — YAML parses; every npm script exists in package.json; every backend test
+                       path exists; the postgres image and the alembic downgrade target MATCH the
+                       local harness (tests assert both, so CI cannot drift from it); each gate has
+                       been run locally where the environment allows.
+  NOT REMOTELY RUN   — no GitHub runner has executed any of it. BLOCKED_EXTERNAL under RELEASE-001.
+  Do NOT describe these as passing. A workflow can be valid, call real commands, and still fail on
+  a fresh runner. NOT locally validated: the `uv`-based steps — uv is not installed on this
+  machine (the repo uses .venv/bin/python directly), so setup-uv's behaviour is unverified here.
+
+JOB BOUNDARIES FOLLOW STATE: backend and backend-postgres are separate runners with separate
+disposable databases, so parallel is safe. Inside `browser`, standard then QA run SEQUENTIALLY —
+they build from the same .next and QA binds fixed ports; running them together is faster and the
+evidence is worthless. A test asserts the ordering and that the job does not fan out.
+
+A REAL PRODUCTION SECURITY FINDING, found by running the audit rather than assuming the recorded
+"zero findings" still held: `npm audit --omit=dev` reports THREE HIGH advisories —
+prisma -> @prisma/config -> deepmerge-ts.
+  Reachability: @prisma/client declares NO runtime dependencies and lists `prisma` as a PEER
+  dependency (verified in node_modules/@prisma/client/package.json), which is why npm counts the
+  CLI's tree as production. The vulnerable code is CLI config parsing at build/generate time, not
+  on a request path.
+  The published fix is a semver-major DOWNGRADE to prisma 6.12.0 — a data-layer decision, so
+  remediation is BLOCKED_PRODUCT_DECISION rather than quietly accepted.
+  NOT SUPPRESSED. scripts/audit-production-dependencies.mjs compares reported advisories against
+  security/npm-audit-allowlist.json, where each entry records WHY it does not apply; anything NOT
+  analysed FAILS the gate. It also reports stale exceptions, because an allowlist entry for an
+  advisory npm no longer reports is how a real finding gets waved through later.
+  Deliberately NOT `--audit-level`: raising a threshold stops whole classes of finding being
+  reported at all, which is suppression wearing a threshold's clothes. A test asserts the flag is
+  absent.
+  Mutation-proven: removing one allowlist entry fails the gate (exit 1).
+
+NEXT READY: PLATFORM-002 config contract, PLATFORM-003 migration release step, PLATFORM-005 health.
+```
+
 ## Phase 10D checkpoint (legal archive routing — provenance complete)
 
 ```text
