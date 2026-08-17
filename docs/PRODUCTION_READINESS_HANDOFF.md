@@ -4,11 +4,11 @@
 
 ```text
 LAST COMPLETED PHASE: Phase 5 — Invite-only beta and durable transactional email (locally complete and certified; EMAIL-005 remains BLOCKED_EXTERNAL). Phases 2 and 4 were certified earlier under the same terms
-LAST COMPLETED PHASE: Phase 8 — Realtime and scalable shared state (locally complete and certified; the broker adapter and real cross-process delivery are BLOCKED_EXTERNAL). Phases 2, 4, 5, 6 and 7 were certified earlier under the same terms
-CURRENT PHASE: Phase 9 — Privacy, legal mechanics, support, and moderation
-LAST COMPLETED ATOMIC SLICE: Phase 8 certification. Realtime now has a seam a broker plugs into, per-connection duplicate suppression, a publish that cannot fail a write, a production refusal of process-local delivery, and a probe that distinguishes configured from cross-instance.
-NEXT ATOMIC SLICE: Phase 9 — privacy, legal mechanics, support and moderation. Read the Phase 9 ledger rows first, and SURVEY BEFORE BUILDING: this codebase already has an admin panel with an append-only audit rule, suspension enforcement, and a report taxonomy (see the admin-panel memory and docs/ADMIN_PANEL_PLAN.md). Counsel approval and legal text stay external; build the versioning/acceptance/export/deletion mechanics that do not depend on them, and mark any retention DURATION that needs legal policy as BLOCKED_PRODUCT_DECISION rather than inventing one.
-CURRENT ALEMBIC HEAD: 0064_job_import_quota_counters (single head; 0060, 0061, 0062, 0063_job_import_execution_lease, 0064)
+LAST COMPLETED PHASE: Phase 9 — Privacy, legal mechanics, support and moderation (locally complete and certified; erasure/retention is BLOCKED_PRODUCT_DECISION and legal wording is BLOCKED_EXTERNAL). Phases 2, 4, 5, 6, 7 and 8 were certified earlier under the same terms
+CURRENT PHASE: Phase 10 — CI/CD and production platform
+LAST COMPLETED ATOMIC SLICE: Phase 9 certification. Found and fixed two live defects on the way: a deletion request could make an account un-suspendable, and three enforcement points honoured suspension while ignoring deletion hiding.
+NEXT ATOMIC SLICE: Phase 10 — CI/CD. Inventory .github/workflows, package.json scripts and backend/Dockerfile BEFORE writing anything; extend rather than duplicate. No push, no deploy, no remote settings. Docker build/scan stays BLOCKED_ENVIRONMENT; source-level hardening is READY. CI must not run two backend pytest jobs against shared mutable state, and should make collection movement reviewable (junitxml artifact) without pinning a brittle exact count.
+CURRENT ALEMBIC HEAD: 0069_support_tickets (single head; 0060-0064 earlier, then 0065_legal_acceptances, 0066_notification_preferences, 0067_account_deletion_requests, 0068_account_deletion_hidden_at, 0069)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
 IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
 NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRET; GOOGLE_OAUTH_EXCHANGE_SECRET shared only between NextAuth and FastAPI; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID; INVITE_ONLY_BETA (default false — leaving it unset preserves open registration exactly); MAX_REQUEST_BODY_BYTES and MAX_MEDIA_REQUEST_BODY_BYTES from RATE-004; EMAIL_WORKER_IN_PROCESS (default false) and EMAIL_WORKER_INTERVAL_SECONDS (default 5) from EMAIL-002; EMAIL_WEBHOOK_SECRET from EMAIL-004 (unset means the delivery webhook refuses everything, which is the intended fail-closed posture, not a bug). These are documented in backend/app/core/config.py rather than backend/.env.example, which tooling may not read or write (BLOCKED_ENVIRONMENT)
@@ -1320,6 +1320,50 @@ approved. The version registry is the machinery that will carry whatever the wor
 NEXT READY: the acceptance API surface (present outstanding documents, record acceptance), then
 PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST — the admin
 panel already has an append-only audit rule and suspension enforcement.
+```
+
+## Phase 9 certification — LOCALLY COMPLETE
+
+```text
+Scope: privacy, legal mechanics, support, moderation. Two live security defects were found and
+fixed during this phase, neither of which was a ledger item — both were found by reading the code.
+
+  PRIV-001  IMPLEMENTED  versioned legal acceptance (0065): rows, not a boolean; server owns the
+                         version; a superseded acceptance counts for nothing.
+  PRIV-002  IN_PROGRESS  export content rule done (their messages only, no credentials, every
+                         field named by hand). Delivery — reauth, expiring link, async archive —
+                         not built.
+  PRIV-003  IN_PROGRESS  request/hide/revoke/cancel done (0067, 0068). ERASURE needs a retention
+                         period: BLOCKED_PRODUCT_DECISION.
+  PRIV-006  IMPLEMENTED  consent (0066) + signed POST-only unsubscribe with no expiry by design.
+  MOD-001   IMPLEMENTED  enforcement hardening: both blocking states, everywhere, one helper.
+  MOD-002   IN_PROGRESS  append-only enforced structurally. Retention/export of audit open.
+  SUPPORT-001 IMPLEMENTED internal queue (0069). No customer-facing intake by design.
+  LEGAL-001 INVENTORY_COMPLETE  docs/LEGAL_SURFACE_INVENTORY.md.
+  LEGAL-002 BLOCKED_EXTERNAL  counsel.
+  PRIV-004/005  NOT_STARTED  both depend on the retention decision.
+
+THE TWO DEFECTS, stated plainly because they were real:
+  1. A deletion request wrote `suspended_at`, and the suspend endpoint refuses an already-suspended
+     account — so requesting deletion made an account IMPOSSIBLE TO SUSPEND, and cancelling
+     restored a clean account. Fixed by separating the states (0068).
+  2. Three enforcement points read suspension alone, so a deletion-hidden account could still LOG
+     IN, keep a PUBLIC PROFILE, and keep a public TALENT LISTING.
+  Both are the same class: two independent lifecycles sharing one column, or one column being
+  checked where two should be.
+
+Evidence, uncontended and local, in the mandated order:
+  pytest exit code   0
+  FAILED / ERROR     0 / 0
+  junitxml           7,335 tests / 7,271 passed / 64 skipped / 0 failed / 0 errors
+  collection         7,282 -> 7,294 -> 7,308 -> 7,335, every delta accounted for
+  alembic            single head 0069_support_tickets (0065, 0066, 0067, 0068, 0069)
+  frontend           untouched by this phase after the acceptance API; not re-run for backend-only
+                     support/legal work (risk-based, per the phase instruction)
+
+Every protection added in this phase was mutation-tested: the escape itself, the enforcement door,
+the audit append-only guard, the assignee validation, the resolve guard, the message-ownership
+filter in export, the unsubscribe signature, and the consent check.
 ```
 
 ## Phase 8 certification — LOCALLY COMPLETE

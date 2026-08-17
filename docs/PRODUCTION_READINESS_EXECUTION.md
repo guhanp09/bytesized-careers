@@ -141,6 +141,8 @@ Locally complete and certified. The architecture was already the one this phase 
 
 ## Phase 9 — Privacy, legal mechanics, support, and moderation
 
+Locally complete and certified for everything that does not require a decision nobody in this repository has authority to make. Deliberately open, and named rather than rounded up: erasure and every retention duration (`BLOCKED_PRODUCT_DECISION`), final legal wording and counsel approval (`BLOCKED_EXTERNAL`, LEGAL-002), export delivery mechanics, and the Terms/Privacy version-marker decision recorded in `docs/LEGAL_SURFACE_INVENTORY.md`. Certification totals are in the handoff under "Phase 9 certification".
+
 | ID | Severity | Subsystem | Dependencies | Status | Tests required | Migration | Infra | Blocks beta | Blocks unrestricted | Resolving commit |
 |---|---|---|---|---|---|---|---|---|---|---|
 | PRIV-001 | CRITICAL | Legal acceptance | AUTH-005 | IMPLEMENTED | Versioning, acceptance, reacceptance and audit tests | YES | NO | Yes | Yes | "feat(legal): record which version someone agreed to, not that they agreed" — migration 0065, one row per (user, document, version), idempotent by unique constraint, superseded acceptance counts for nothing. Versions live in CODE so a running server cannot reference wording it does not ship. The document TEXT is LEGAL-001 and remains external; the API surface that presents outstanding documents is the next slice |
