@@ -36,6 +36,10 @@ PERMISSION_KEYS: frozenset[str] = frozenset(
         "compliance.deletion",
         "admin.manage_roles",
         "audit.view",
+        # Internal support queue. Separate from users.view because reading a
+        # support ticket and browsing accounts are different jobs, and a
+        # moderator does not need the first to do the second.
+        "support.tickets",
     }
 )
 
@@ -56,6 +60,10 @@ ROLE_PRESETS: dict[str, frozenset[str]] = {
             "listings.state",
             "messages.moderate",
             "audit.view",
+        # Internal support queue. Separate from users.view because reading a
+        # support ticket and browsing accounts are different jobs, and a
+        # moderator does not need the first to do the second.
+        "support.tickets",
         }
     ),
     "support": frozenset({"view.overview", "view.queues", "users.view", "conversations.metadata", "audit.view"}),

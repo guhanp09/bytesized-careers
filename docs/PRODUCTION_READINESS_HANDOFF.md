@@ -991,6 +991,49 @@ REALTIME-002 (typing/presence TTL; typing expiry already exists in the manager, 
 building).
 ```
 
+## Phase 9H checkpoint (SUPPORT-001 — internal support queue)
+
+```text
+COMMIT: "feat(support): give staff somewhere to track support work"
+MIGRATION: 0069_support_tickets, parents 0068, SINGLE HEAD, new table only.
+VERIFICATION: pytest exit 0, zero ^FAILED/^ERROR, junitxml 7,335 tests / 0 failures / 0 errors /
+  64 skipped. Collection 7,308 -> 7,335 (+27). Accounted for.
+
+SCOPE HELD DELIBERATELY SMALL. Staff log requests that arrive by email; there is NO customer-facing
+intake, and inventing one to populate the table would be a product decision disguised as
+plumbing. A scope-guard test asserts the model has no attachment, thread, SLA, priority or CSAT
+column — each of those is its own decision and none is needed to know who is handling what.
+
+DESIGN POINTS WORTH KEEPING:
+  - ESCALATION IS A FLAG, NOT A STATUS. A ticket can be escalated while assigned and stays
+    escalated once resolved; one column could not hold both facts. Escalating twice keeps the
+    FIRST reason and timestamp, and records ONE audit entry — a repeated click is not a second
+    escalation, and an audit row for it would invent an event.
+  - RESOLUTION IS NOT A TOGGLE. Resolving an already-resolved ticket is refused (409) rather than
+    overwriting the original note and close time. Reopening is not implemented because it is a
+    product decision about what happens to those fields, and a silent overwrite is the wrong
+    answer to it.
+  - ASSIGNEE IS VALIDATED against the account, not a role string in the request. Assigning to a
+    member of the public would leave a ticket looking handled by someone who will never see it.
+  - RESPONSES NAME EVERY FIELD. Support means looking at accounts and the lazy way is to return
+    the user row, which carries a password hash and whatever is added next.
+  - NO ACCOUNT-MUTATION ACTIONS. The ledger asked for ticketing/assignment/escalation; adding
+    suspend-from-support would have created a second path around account_block() and moderation
+    authorization.
+  Uses the existing admin permission scaffold via a new "support.tickets" key, and the existing
+  append-only audit log. A refused action records NOTHING — a misleading success entry is worse
+  than no entry.
+
+TEST NOTE: the same timestamp serialises with a Z suffix when freshly written and without when
+read back, because SQLite drops tzinfo. Compare instants, not strings.
+
+PRE-EXISTING, UNTOUCHED: app/core/admin_permissions.py carries four E402 ruff findings that
+predate this work (verified by stashing the change). Part of the known whole-tree baseline.
+
+NEXT READY: LEGAL-001 inventory (inventory ONLY — no wording, no retention duration), then
+Phase 9 certification, then Phase 10.
+```
+
 ## Phase 9G checkpoint (MOD-001 — both blocking states enforced everywhere)
 
 ```text
