@@ -71,6 +71,36 @@ export function jobPostingVisibility(job: {
   };
 }
 
+/**
+ * The same lifecycle question for a talent listing, which shares the status
+ * vocabulary and needs a different answer in one respect.
+ *
+ * There is no structured data to suppress here — a talent listing emits no
+ * `JobPosting`, so nothing is making a machine-readable claim — but indexing a
+ * closed listing still sends a recruiter to a creator who has taken it down.
+ *
+ * `availability_status` is deliberately NOT consulted, and that is the whole
+ * reason this is a separate function rather than a reuse. "Unavailable" is not
+ * "gone": the creator exists, the listing is still theirs, and a recruiter
+ * planning next quarter's work has every reason to find them and start a
+ * conversation. Delisting on availability would hide real people over a field
+ * they flip weekly.
+ */
+export function talentListingVisibility(listing: {
+  status?: string | null;
+}): { indexable: boolean; reason: string } {
+  const status = (listing.status || "").trim().toLowerCase();
+
+  if (!OPEN_STATUSES.has(status)) {
+    return {
+      indexable: false,
+      reason: `status is ${status || "unset"}, so the listing is not live`,
+    };
+  }
+
+  return { indexable: true, reason: "the listing is live" };
+}
+
 function parseDeadline(value?: string | null): Date | null {
   const raw = value?.trim();
   if (!raw) return null;

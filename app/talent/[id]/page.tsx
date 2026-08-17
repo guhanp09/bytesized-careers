@@ -25,6 +25,7 @@ import { getSeoFilterRoute, isSeoRouteIndexApproved } from "../../../lib/seoFilt
 import { formatTalentListingExperience } from "../../../lib/talentListing";
 import { getTalentInterestedRecruiters, getTalentResponseRate } from "../../../lib/listingStats";
 import { serializeJsonLd } from "../../../lib/jsonLd";
+import { talentListingVisibility } from "../../../lib/seo/jobPostingLifecycle";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -380,9 +381,17 @@ export async function generateMetadata({
     .filter(Boolean)
     .join(" · ");
   const image = listing.owner_avatar_url || undefined;
+  // A closed, paused, archived or draft listing stops being indexable. Without
+  // this a recruiter searches, finds a listing, and reaches a creator who took it
+  // down — the talent-side equivalent of an expired job posting.
+  //
+  // Availability is deliberately not part of this: "unavailable" means busy, not
+  // gone, and a recruiter planning next quarter should still be able to find them.
+  const visibility = talentListingVisibility(listing);
   return {
     title: `${listing.title} | CreatorJobs`,
     description,
+    ...(visibility.indexable ? {} : { robots: { index: false, follow: true } }),
     alternates: {
       canonical: `/talent/${encodeURIComponent(listing.id)}`,
     },

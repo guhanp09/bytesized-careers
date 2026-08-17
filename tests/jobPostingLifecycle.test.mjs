@@ -4,7 +4,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { jobPostingVisibility } from "../lib/seo/jobPostingLifecycle.ts";
+import {
+  jobPostingVisibility,
+  talentListingVisibility,
+} from "../lib/seo/jobPostingLifecycle.ts";
 
 /**
  * A closed job must stop telling search engines it is open.
@@ -159,4 +162,74 @@ test("no compensation is published in the structured data yet", () => {
 
   assert.ok(jsonLdBlock.length > 0, "could not locate the JobPosting object");
   assert.ok(!jsonLdBlock.includes("baseSalary"), "compensation is TRUST-001's decision");
+});
+
+/**
+ * The talent side of the same lifecycle, which shares the status vocabulary and
+ * differs in one respect that matters.
+ *
+ * A closed talent listing had no indexing rule at all, so a recruiter could find
+ * a listing the creator had taken down. But availability is NOT part of the rule,
+ * and that distinction is the reason this is a separate function: "unavailable"
+ * means busy, not gone. Delisting on availability would hide real people over a
+ * field they flip weekly, and a recruiter planning next quarter has every reason
+ * to find them anyway.
+ */
+
+const talentPageSource = readFileSync(
+  join(here, "..", "app", "talent", "[id]", "page.tsx"),
+  "utf8",
+);
+
+test("a published talent listing is indexable", () => {
+  assert.equal(talentListingVisibility({ status: "published" }).indexable, true);
+  assert.equal(talentListingVisibility({ status: "featured" }).indexable, true);
+});
+
+for (const status of ["closed", "archived", "paused", "draft"]) {
+  test(`a ${status} talent listing is not indexable`, () => {
+    assert.equal(talentListingVisibility({ status }).indexable, false, status);
+  });
+}
+
+test("an unknown talent listing status fails closed", () => {
+  for (const status of [undefined, null, "", "retired"]) {
+    assert.equal(talentListingVisibility({ status }).indexable, false, String(status));
+  }
+});
+
+test("availability never decides indexability", () => {
+  // The deliberate difference from the job rule, and the one someone would
+  // "fix" by mistake. An unavailable creator is findable; a withdrawn listing
+  // is not.
+  for (const availability of ["available", "selective", "unavailable"]) {
+    assert.equal(
+      talentListingVisibility({ status: "published", availability_status: availability }).indexable,
+      true,
+      availability,
+    );
+  }
+});
+
+test("the talent rule reads no availability field at all", () => {
+  // Structural, because the behavioural test above can only cover the values
+  // that exist today.
+  const source = readFileSync(
+    join(here, "..", "lib", "seo", "jobPostingLifecycle.ts"),
+    "utf8",
+  );
+  const rule = source.slice(
+    source.indexOf("export function talentListingVisibility"),
+  );
+  const body = rule.slice(0, rule.indexOf("\n}"));
+
+  assert.ok(!body.includes("availability"), "the talent rule consults availability");
+});
+
+test("the talent page consults the shared rule", () => {
+  assert.match(talentPageSource, /talentListingVisibility\(listing\)/);
+  assert.ok(
+    !/listing\.status\s*===\s*"closed"/.test(talentPageSource),
+    "the page checks a status directly instead of using the shared rule",
+  );
 });

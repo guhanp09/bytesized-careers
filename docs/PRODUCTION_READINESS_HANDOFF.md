@@ -1322,6 +1322,39 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 11D checkpoint (SEO-004 — the same lifecycle hole on the talent side)
+
+```text
+COMMIT: "fix(seo): withdraw a closed talent listing from search, but not a busy creator"
+MIGRATION: none. BACKEND: untouched, EXPECTED_CURRENT_COLLECTION stays 7,499.
+FRONTEND: tsc exit 0, next build exit 0, node tests 1,242 -> 1,251 (+9).
+
+Talent listings share the job status vocabulary — draft|published|paused|closed|archived|featured —
+and had NO lifecycle check at all. A recruiter could search, find a listing, and reach a creator who
+had taken it down. The talent-side twin of SEO-003, minus the structured-data half: talent pages emit
+no JobPosting, so nothing was making a false machine-readable claim; only the indexing was wrong.
+
+THE DISTINCTION THAT MATTERS, and the reason this is a separate function rather than reusing the job
+rule: `availability_status` is NOT consulted. "Unavailable" means busy, not gone. The creator exists,
+the listing is still theirs, and a recruiter planning next quarter's work has every reason to find
+them and open a conversation. Delisting on availability would hide real people over a field they flip
+weekly. A behavioural test covers all three availability values, and a structural test asserts the
+rule's body never reads the field at all — because the behavioural one can only cover today's values.
+
+The project half of SEO-004 was already done as a side finding in SEO-001: /u/[slug]/projects/
+[projectId] had no metadata whatsoever, so every public portfolio project presented the site-wide
+title with no description and no canonical of its own.
+
+NON-VACUITY PROVEN BY MUTATION: made the talent rule return not-indexable for
+availability_status === "unavailable" — exactly the 2 cases guarding that distinction failed.
+Restored and re-verified.
+
+PHASE 11 SO FAR: SEO-001 VALIDATED, SEO-002 IMPLEMENTED (source-level; pagination against a real API
+needs a backend), SEO-003 VALIDATED, SEO-004 VALIDATED.
+REMAINING IN PHASE 11: PERF-001 (images/LCP), PERF-002 (workspace scale), A11Y-001 (axe across
+routes and viewports), A11Y-002 (BLOCKED_EXTERNAL — manual review).
+```
+
 ## Phase 11C checkpoint (SEO-003 — a closed job was still telling aggregators it was open)
 
 ```text
