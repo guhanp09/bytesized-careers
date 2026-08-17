@@ -25,7 +25,14 @@ class Settings(BaseSettings):
     # production domain + provider are ready. Auth emails keep using EMAIL_MODE.
     email_delivery_enabled: bool = Field(default=False, alias="EMAIL_DELIVERY_ENABLED")
     debug: bool = Field(default=False, alias="DEBUG")
-    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    # Normalised and checked at parse time, because `configure_logging` resolves
+    # the name with a getattr default: `LOG_LEVEL=WARN` or `INF0` used to become
+    # INFO silently, and the operator who set it believed they had turned the
+    # volume down. Production additionally refuses DEBUG — see
+    # validate_production_settings.
+    log_level: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"] = Field(
+        default="INFO", alias="LOG_LEVEL"
+    )
     rate_limit_backend: Literal["memory", "redis"] = Field(default="memory", alias="RATE_LIMIT_BACKEND")
     redis_url: str | None = Field(default=None, alias="REDIS_URL")
     allow_memory_rate_limit_in_production: bool = Field(
@@ -340,6 +347,20 @@ class Settings(BaseSettings):
         default=30, ge=5, le=120, alias="QA_PERSONA_ACCESS_TOKEN_MINUTES"
     )
 
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def normalise_log_level(cls, value: str | None) -> str | None:
+        """Accept the casing people actually write, reject the names they mistype.
+
+        Existing deployments carry `LOG_LEVEL=info`, and breaking their boot over
+        capitalisation would be a regression rather than a safeguard. An unknown
+        *name* is a different thing and does not survive.
+        """
+
+        if isinstance(value, str):
+            return value.strip().upper()
+        return value
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, value: str | list[str] | None) -> list[str]:
@@ -423,7 +444,11 @@ def validate_production_settings() -> None:
             "JWT_ACCESS_TOKEN_EXPIRES_MINUTES must be 60 or less in production."
         )
     if settings.jwt_refresh_token_expires_minutes <= settings.jwt_access_token_expires_minutes:
-        failures.append("JWT refresh-token lifetime must exceed the access-token lifetime.")
+        failures.append(
+            "JWT_REFRESH_TOKEN_EXPIRES_MINUTES must exceed "
+            "JWT_ACCESS_TOKEN_EXPIRES_MINUTES: otherwise every refresh returns a "
+            "token that expires before the one it replaced."
+        )
     if settings.auth_session_mode == "legacy":
         failures.append("AUTH_SESSION_MODE cannot be legacy in production.")
     if (
@@ -483,6 +508,24 @@ def validate_production_settings() -> None:
         failures.append("SMTP_PASSWORD is required in production.")
     if settings.smtp_port <= 0:
         failures.append("SMTP_PORT must be a positive integer.")
+    if not settings.smtp_use_tls:
+        # Without STARTTLS the very next thing the client does is call login()
+        # with SMTP_PASSWORD on that plaintext connection, and every reset link
+        # in the body follows it in the clear.
+        failures.append(
+            "SMTP_USE_TLS must be true in production: the mail password is sent "
+            "on this connection immediately after it is opened."
+        )
+    if settings.log_level.strip().upper() == "DEBUG":
+        # Root-level DEBUG enables SQLAlchemy's engine logger, which logs
+        # statements together with their bound parameters. That is email
+        # addresses, tokens and password hashes into stdout, for as long as the
+        # log sink keeps anything.
+        failures.append(
+            "LOG_LEVEL must not be DEBUG in production: it enables statement "
+            "logging with bound parameters, which writes personal data and "
+            "credentials to the log stream."
+        )
     if (
         not settings.google_client_id
         or not settings.google_client_id.strip()
@@ -551,6 +594,20 @@ def validate_production_settings() -> None:
         )
     if settings.rate_limit_backend == "redis" and not settings.redis_url:
         failures.append("REDIS_URL is required when RATE_LIMIT_BACKEND=redis.")
+    # The realtime bus documents a startup refusal, and until this was added
+    # nothing called it: `build_realtime_bus()` had exactly one caller, the
+    # health probe, which catches the error and reports it. The delivery path
+    # builds `InProcessRealtimeBus()` directly, so a multi-instance production
+    # deployment ran process-local realtime with no acknowledgement and no
+    # error — each instance serving half of every conversation. Asking the bus
+    # here makes the documented refusal the actual one, and keeps the rule in
+    # the module that owns it rather than restating it.
+    from app.realtime.bus import UnsafeRealtimeConfigurationError, build_realtime_bus
+
+    try:
+        build_realtime_bus()
+    except UnsafeRealtimeConfigurationError as exc:
+        failures.append(f"REALTIME_BUS is unsafe for production: {exc}")
     if not settings.trusted_proxy_ips and not settings.allow_direct_client_ips_in_production:
         failures.append(
             "TRUSTED_PROXY_IPS must list the proxies in front of this deployment, or "

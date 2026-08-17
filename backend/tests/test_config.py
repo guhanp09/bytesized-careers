@@ -158,6 +158,10 @@ def _safe_production_settings(**overrides: object) -> config.Settings:
         "OAUTH_CREDENTIAL_KEYS": json.dumps({"production_key": key}),
         "OAUTH_CREDENTIAL_ACTIVE_KEY_ID": "production_key",
         "OAUTH_CREDENTIAL_WRITE_MODE": "encrypted_only",
+        # Only the process-local bus is implemented, so a booting production
+        # configuration has to acknowledge it. Removing this line is the mutation
+        # that proves the refusal — see test_config_contract.
+        "ALLOW_PROCESS_LOCAL_REALTIME_IN_PRODUCTION": True,
     }
     values.update(overrides)
     return config.Settings(**values)
@@ -286,7 +290,7 @@ def test_production_requires_valid_dedicated_strong_auth_secret_keys(
                 "JWT_ACCESS_TOKEN_EXPIRES_MINUTES": 60,
                 "JWT_REFRESH_TOKEN_EXPIRES_MINUTES": 60,
             },
-            "refresh-token lifetime must exceed",
+            "JWT_REFRESH_TOKEN_EXPIRES_MINUTES must exceed",
         ),
     ],
 )

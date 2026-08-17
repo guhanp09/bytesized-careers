@@ -1322,6 +1322,83 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 10F checkpoint (PLATFORM-002 — every setting classified, and three promises that were not kept)
+
+```text
+COMMIT: "feat(config): classify every setting for production, and enforce what that claims"
+MIGRATION: none.
+BACKEND: LAST_FULL_SUITE_OBSERVED 7,458 tests / 0 failures / 0 errors / 65 skipped, exit 0.
+         EXPECTED_CURRENT_COLLECTION 7,458 (was 7,369; +89 from tests/test_config_contract.py).
+         Predicted 7,369 + 89 and observed exactly that. ruff clean on every touched file.
+
+WHAT THIS IS: app/core/config_contract.py classifies all 71 Settings fields as CORE_REQUIRED /
+FEATURE_CONDITIONAL / OPTIONAL_DEVELOPMENT / TEST_ONLY, each with the enforcement that backs it and
+a reason written for whoever is deciding at 2am whether they may change it. A test fails when a
+field is added without a classification, and when an entry names a field that no longer exists.
+
+THE LOAD-BEARING RULE, and the only reason this found anything: CORE_REQUIRED implies enforcement
+is BOOT or SCHEMA. Declaring a field required is therefore not sufficient to make the test pass —
+each entry names a value that must be REFUSED, the test sets that value on top of a configuration
+that otherwise boots, and demands a RuntimeError naming the env var. A comment saying production
+must set X is not enforcement, and the registry cannot be used to claim otherwise.
+
+THREE REAL GAPS FOUND BY APPLYING IT. All were documented requirements with nothing behind them:
+
+  1. REALTIME_BUS. `build_realtime_bus()` carried the docstring "Refusing at startup is the point"
+     and had exactly ONE caller — the health probe, which catches the refusal and reports it.
+     Startup never called it, and the delivery path (`realtime/manager.py:313`) constructs
+     `InProcessRealtimeBus()` directly. So a multi-instance production deployment ran process-local
+     realtime with no acknowledgement and no error anywhere: each instance delivering only to its
+     own connections, presenting as "messaging is flaky". Fixed by asking the bus during
+     validate_production_settings(), keeping the rule in the module that owns it.
+  2. SMTP_USE_TLS could be false in production. The line after the STARTTLS check calls
+     `smtp.login(username, password)` — so the mail password, and every password-reset link in the
+     body, travel in the clear. Now refused; there is no production case for it.
+  3. LOG_LEVEL could be DEBUG. Root-level DEBUG enables SQLAlchemy's engine logger, which logs
+     statements WITH their bound parameters — addresses, tokens, password hashes — to stdout for
+     as long as the sink retains anything. Now refused in production, and the level name is
+     schema-validated: `LOG_LEVEL=WARN` previously resolved to INFO via a getattr default, so an
+     operator who turned the volume down had not.
+
+Also fixed: the JWT lifetime failure said "refresh-token lifetime must exceed the access-token
+lifetime" without naming either variable, so an operator could not grep for what to change.
+
+NON-VACUITY PROVEN BY MUTATION: all three new refusals were disabled simultaneously, and 4 cases
+failed (log_level, realtime_bus, smtp_use_tls, plus the dedicated realtime boot-path test). Config
+restored from a scratch copy and re-verified green.
+
+ENFORCEMENT VOCABULARY, because "required" alone hides the distinction that matters:
+  BOOT (33) validate_production_settings raises · SCHEMA the value cannot be represented at all,
+  which is stronger since no later code path can reintroduce it · ACKNOWLEDGEMENT an explicit
+  opt-in to a documented risk, asserted to default false and to name the field it unblocks — an
+  acknowledgement defaulting true acknowledges nothing · FEATURE_GATE absent means the feature
+  refuses, never degrades · BOUNDED safe default plus schema bounds · INERT_IN_PRODUCTION cannot
+  take effect there by construction, proven by configuring it as an attacker would want AND by the
+  non-vacuity twin showing the same configuration works in staging · DEPLOYMENT_CHOICE topology
+  or naming, must never block a boot.
+
+BASELINE GUARD: `TestTheBaselineItselfBoots` exists because every parametrised case starts from
+_safe_production_settings(). If that baseline stopped booting, all 33 would pass for the wrong
+reason — the RuntimeError would be there and the alias would appear in it by coincidence.
+
+OPERATOR SURFACE: `python -m scripts.print_config_contract` renders the checklist from the
+registry, so it cannot fall behind. A test asserts it lists every CORE_REQUIRED alias, and that it
+reads NO values — `model_fields` metadata only, never `settings`, never get_secret_value, never
+os.environ, so it is safe to run and paste while holding real production configuration.
+
+NOT DONE, and deliberately: backend/.env.example is permission-denied in this environment (.env*
+is blocked), so the operator-facing env template still does not mention SMTP_USE_TLS's production
+requirement, the LOG_LEVEL restriction, or ALLOW_PROCESS_LOCAL_REALTIME_IN_PRODUCTION. The
+registry and the printer are the authoritative record until someone with access adds them.
+
+UNSUBSCRIBE_TOKEN_SECRET is classified FEATURE_CONDITIONAL rather than CORE_REQUIRED on a finding
+worth carrying forward: `issue_unsubscribe_token` has NO caller. No outbound template embeds an
+unsubscribe link yet, so the secret is not required at boot today — and it becomes CORE_REQUIRED
+the moment one does. The consent machinery is built and not yet wired into mail.
+
+NEXT READY: PLATFORM-003 migration release step, PLATFORM-005 health contracts.
+```
+
 ## Phase 10E-2 checkpoint (SEC-010 — the artifact disagreed with the manifest, so the exception died)
 
 ```text
