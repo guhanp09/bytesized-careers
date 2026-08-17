@@ -1322,6 +1322,40 @@ PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST 
 panel already has an append-only audit rule and suspension enforcement.
 ```
 
+## Phase 10C checkpoint (PLATFORM-004 — bounded pool, explicit capacity)
+
+```text
+COMMIT: "feat(db): bound the connection pool in code, and make production state its capacity"
+MIGRATION: none. VERIFICATION: pytest exit 0, zero ^FAILED/^ERROR, junitxml 7,369 tests /
+  0 failures / 0 errors / 64 skipped.
+COLLECTION 7,335 -> 7,369 (+34), fully accounted for: +22 test_container_hardening.py (added in
+  PLATFORM-001 and never present in a full run, since source-level container assertions cannot
+  affect application behaviour) and +12 test_db_pool_bounds.py.
+
+THE SPLIT, per explicit decision: the CODE enforces BOUNDEDNESS, the DEPLOYMENT supplies CAPACITY.
+No production default exists for pool size, and that is the point — "20 connections, that seems
+normal" is fine for one process and exhausts a small managed Postgres plan the moment eight of
+them run against it. The failure is not an error: the pool blocks, requests queue, and the
+application is merely slow. Nobody checks a connection limit when the symptom is latency.
+  Code guarantees: finite pool_size, finite max_overflow, bounded pool_timeout (without it,
+  exhaustion becomes requests hanging until their client gives up — an outage with no error
+  anywhere), and pool_recycle so a connection is replaced by us rather than found dead.
+  Production requires DB_POOL_SIZE and DB_MAX_OVERFLOW or refuses to start, and the refusal says
+  what the number depends on — an operator forced to set a variable with no explanation picks
+  something as arbitrary as the default would have been.
+  Schema bounds the bound: 0 or 500 are both refused.
+SQLite gets NO pool options: the driver serialises access, so pool arguments either error or mean
+nothing.
+Mutation-proven: removing pool_timeout or making max_overflow unbounded fails two tests.
+
+REMINDER for future production settings: tests/test_config.py::_safe_production_settings must gain
+any new production requirement, or every production-validation test fails at once. That is the
+intended signal, and it has now fired twice.
+
+NEXT READY: CI-001/CI-002 workflows (.github/workflows does not exist), PLATFORM-002 config
+contract, PLATFORM-005 health contracts.
+```
+
 ## Phase 10B checkpoint (legal version provenance — the gap LEGAL-001 found, closed)
 
 ```text

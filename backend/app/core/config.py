@@ -92,6 +92,31 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
 
+    # Connection pool capacity. Deliberately has NO production default, because a
+    # sensible-looking number is the dangerous kind: "20 connections, that seems
+    # normal" is fine for one process and exhausts a small managed Postgres plan
+    # the moment eight of them run against it. The pool then blocks, requests
+    # queue behind it, and the symptom is a slow application rather than an
+    # obvious misconfiguration.
+    #
+    # So the code enforces BOUNDEDNESS — a pool that cannot grow without limit
+    # and cannot wait forever — and production supplies the actual capacity once
+    # the database topology and instance count are known. Left unset outside
+    # production, a small local pool applies.
+    db_pool_size: int | None = Field(default=None, alias="DB_POOL_SIZE", ge=1, le=200)
+    db_max_overflow: int | None = Field(default=None, alias="DB_MAX_OVERFLOW", ge=0, le=200)
+    #: How long a request waits for a connection before failing. A bound rather
+    #: than a preference: without one, pool exhaustion turns into requests
+    #: hanging until their client gives up, which reads as an outage with no
+    #: error anywhere.
+    db_pool_timeout_seconds: float = Field(
+        default=10.0, alias="DB_POOL_TIMEOUT_SECONDS", gt=0, le=120
+    )
+    #: Recycled before common proxy and managed-database idle timeouts, so a
+    #: connection is replaced by us rather than found dead by a request.
+    db_pool_recycle_seconds: int = Field(
+        default=1800, alias="DB_POOL_RECYCLE_SECONDS", gt=0, le=86400
+    )
     jwt_secret: str = Field(default="change-me", alias="JWT_SECRET")
     # HMAC only, and the restriction is deliberate. Tokens are signed with
     # `jwt_secret`, a shared secret — the asymmetric families need a key pair, so
@@ -371,6 +396,21 @@ def validate_production_settings() -> None:
         return
 
     failures: list[str] = []
+    # Capacity is a deployment fact, not a code default. Requiring it in
+    # production means the numbers are chosen against the database plan actually
+    # bought, rather than inherited from whatever looked reasonable here.
+    if settings.db_pool_size is None:
+        failures.append(
+            "DB_POOL_SIZE must be set in production: the right value depends on the "
+            "database plan and how many application processes share it, and a "
+            "default chosen here would silently exhaust a small plan."
+        )
+    if settings.db_max_overflow is None:
+        failures.append(
+            "DB_MAX_OVERFLOW must be set in production: it bounds how far the pool "
+            "may burst beyond DB_POOL_SIZE, and an unbounded burst is how one "
+            "instance takes every connection the database has."
+        )
     if not (settings.media_public_base_url or "").strip():
         failures.append(
             "MEDIA_PUBLIC_BASE_URL must be set in production: without it, stored media URLs "

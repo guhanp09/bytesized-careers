@@ -138,6 +138,10 @@ def _safe_production_settings(**overrides: object) -> config.Settings:
         "STRONG_AUTH_SECRET_ACTIVE_KEY_ID": "strong_auth_key",
         "FRONTEND_BASE_URL": "https://creatorjobs.example",
         "MEDIA_PUBLIC_BASE_URL": "https://media.creatorjobs.example",
+        # Capacity is a deployment fact with no safe default; production refuses
+        # to boot without it. See test_db_pool_bounds.
+        "DB_POOL_SIZE": 5,
+        "DB_MAX_OVERFLOW": 5,
         "CORS_ORIGINS": '["https://creatorjobs.example"]',
         "DATABASE_URL": "postgresql+asyncpg://user:pass@database.example/creatorjobs",
         "EMAIL_MODE": "smtp",
