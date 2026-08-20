@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 10 — CI/CD and production platform (locally complete; remote CI, image build/scan and platform configuration remain external/environment gates)
 CURRENT PHASE: Phase 11 — metadata, SEO, performance and accessibility
-LAST COMPLETED ATOMIC SLICE: Phase 11H — first-party image optimization is exact-origin and exact-key only; creator-linked media stays browser-fetched. The implementation commit is named `perf(images): optimize only owned media`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
-NEXT ATOMIC SLICE: Phase 11 PERF-002/CORRECT-007 — finish the remaining measurable workspace-scale work: reproducible bundle report, 100-concurrent-session correctness exercise, and activity-summary payload pagination. Survey existing paging/API consumers before changing the response contract.
+LAST COMPLETED ATOMIC SLICE: Phase 11I — `npm run report:bundle` now measures actual cold client entry payloads from the production artifact without a new analyzer dependency or a fabricated budget. The implementation commit is named `perf(bundles): add reproducible route payload report`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
+NEXT ATOMIC SLICE: Phase 11 PERF-002/CORRECT-007 — run a 100-concurrent-session correctness exercise against an owned local production artifact. Prove response/status correctness and isolation; do not claim latency while host load is severe. Activity-summary payload pagination remains after that and requires an additive API/client contract survey.
 PHASE 11 STATUS: SEO-001/003/004 and PERF-001 VALIDATED; SEO-002 IMPLEMENTED pending real-backend pagination; PERF-002 and CORRECT-007 IN_PROGRESS; A11Y-001 NOT_STARTED; A11Y-002 BLOCKED_EXTERNAL for the genuinely manual review.
 CURRENT ALEMBIC HEAD: 0069_support_tickets (single head; 0060-0064 earlier, then 0065_legal_acceptances, 0066_notification_preferences, 0067_account_deletion_requests, 0068_account_deletion_hidden_at, 0069)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -15,9 +15,9 @@ NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRE
 NEW DEPENDENCIES: backend now declares its already-locked runtime `httpx==0.28.1` and `httpcore==1.0.9` usage directly; no package version changed
 NEW SERVICES: app.services.safe_outbound_fetch shared public-URL boundary; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md complete caller inventory; plus all previously documented OAuth/session/strong-auth services
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
-KNOWN TEST FAILURES: no task-caused failure is open. Phase 11H frontend node is 1,257/1,257; focused image/header security is 28/28; production browser image delivery is 2/2; TypeScript and the final production build exit 0. Focused lint exits 0 with 27 warnings: 26 intentional raw-image warnings at untrusted/browser-only sinks and one pre-existing PostJobPage hook warning. Phase 11G's query-bound test is 1 passed; its six-file semantic matrix exited 0, with its numeric total unavailable because that historical command accidentally became `-qq`. Do not use this contended host for timing claims. The last backend broad count remains 7,499 passed / 65 skipped.
-COMMANDS TO RESUME: `git status --short`; inspect PERF-002/CORRECT-007 and the existing `workspacePaging`/activity consumers; implement the smallest independently measurable remaining scale slice. Never run two pytest processes against the shared test database, and never run Next build concurrently with Playwright against `.next`.
-FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase 11G/11H in this handoff; lib/workspacePaging.ts; backend/app/api/v1/routers/marketplace.py (activity summary route); lib/backendClient.ts; components/you/ApplicationsWorkspace.tsx; package.json/build tooling
+KNOWN TEST FAILURES: no task-caused failure is open. Phase 11I focused bundle tests are 4/4, lint exits 0, production-like build exits 0 and the real report completes. LAST_FULL_SUITE_OBSERVED frontend is Phase 11H's 1,257/1,257; EXPECTED_CURRENT_COLLECTION is 1,261 (+4 focused bundle-report tests). Phase 11H focused image/header security is 28/28 and production browser image delivery is 2/2. Phase 11G's query-bound test is 1 passed; its six-file semantic matrix exited 0, with its numeric total unavailable because that historical command accidentally became `-qq`. Do not use this contended host for timing claims. The last backend broad count remains 7,499 passed / 65 skipped.
+COMMANDS TO RESUME: `git status --short`; design the 100-session exercise around an exact local process and correctness assertions, then inspect the additive pagination shape for `/me/activity/summary`. Never run two pytest processes against the shared test database, and never run Next build concurrently with Playwright against `.next`.
+FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase 11G/11I in this handoff; scripts/report-client-bundles.mjs; backend/app/api/v1/routers/marketplace.py; backend/app/schemas/marketplace.py; lib/backendClient.ts; components/you/ApplicationsWorkspace.tsx; lib/workspacePaging.ts
 RELEASE ASSESSMENT: NO-GO
 ```
 
@@ -1320,6 +1320,44 @@ approved. The version registry is the machinery that will carry whatever the wor
 NEXT READY: the acceptance API surface (present outstanding documents, record acceptance), then
 PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST — the admin
 panel already has an append-only audit rule and suspension enforcement.
+```
+
+## Phase 11I checkpoint (PERF-002 — a bundle report that measures this build)
+
+```text
+STATUS: IMPLEMENTED AND FOCUSED-VALIDATED. Migration: none. Dependency: none.
+INITIAL HEAD: 1be4bcc8d1a064203cdf01bd3adf1380ec38f04e
+COMMIT: `perf(bundles): add reproducible route payload report`
+
+CONTRACT: `npm run report:bundle` reads the completed Next 16 App Router client-reference manifests and
+the bytes they actually name. For each route it unions layout/page JavaScript and CSS entries, deduplicates
+shared files inside that cold route, and reports raw plus gzip-level-9 sizes. It also reports the union of
+client entry artifacts and how many routes use each large file. Stable sort order and `--json` make the
+same artifact reproducibly comparable. Missing artifacts, malformed manifests and paths escaping `.next`
+fail closed. No analyzer package was added and no arbitrary release budget was invented.
+
+PRODUCTION-LIKE BASELINE: a clean build with local mocks, dev switch and QA persona switch disabled gave:
+  /you             212.3 KiB JS + 42.2 KiB CSS = 254.6 KiB gzip
+  /applications    205.3 KiB JS + 42.2 KiB CSS = 247.5 KiB gzip
+  /jobs/[id]       194.0 KiB JS + 42.2 KiB CSS = 236.2 KiB gzip
+  unique union     56 client entry files, 2,407.2 KiB raw / 638.9 KiB gzip
+The preceding E2E build with dev switches enabled produced materially identical totals, so these are not
+QA-only measurements. They establish where future work should look; they do not by themselves prove a
+customer regression or authorize speculative code splitting.
+
+FILES: scripts/report-client-bundles.mjs; tests/bundleReport.test.mjs; package.json; execution ledger;
+handoff. EXPECTED_CURRENT_COLLECTION (frontend): 1,261, +4 focused tests. Backend remains 7,499.
+
+VALIDATION:
+  node --test tests/bundleReport.test.mjs                       -> 4 passed
+  npx eslint scripts/report-client-bundles.mjs
+    tests/bundleReport.test.mjs                                 -> exit 0
+  production-like npm run build                                 -> exit 0, 32 generated entries
+  npm run report:bundle                                         -> exit 0, 52 normal/special page rows
+  git diff --check                                              -> exit 0
+
+NOT COMPLETE: PERF-002/CORRECT-007 still require the 100-concurrent-session correctness exercise and
+activity-summary payload pagination. No latency claim is made under the contended host.
 ```
 
 ## Phase 11H checkpoint (PERF-001 — optimize owned media without creating an open proxy)

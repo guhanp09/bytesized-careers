@@ -9,6 +9,7 @@
     "seed": "curl -fsS -X POST http://127.0.0.1:8000/api/v1/dev/seed/marketplace && echo",
     "seed:demo-jobs": "curl -fsS -X POST http://127.0.0.1:8000/api/v1/dev/seed/jobs && echo",
     "build": "next build",
+    "report:bundle": "node scripts/report-client-bundles.mjs",
     "start": "next start",
     "test:e2e": "playwright test",
     "test:e2e:qa": "playwright test -c playwright.qa.config.ts",
