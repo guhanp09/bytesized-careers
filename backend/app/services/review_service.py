@@ -238,6 +238,7 @@ async def reconcile_engagement(
     engagement: Engagement,
     *,
     now: datetime | None = None,
+    loaded_reviews: list[EngagementReview] | None = None,
 ) -> bool:
     """Apply deadline-driven transitions once, on any relevant read or action."""
     current = now or utcnow()
@@ -264,7 +265,12 @@ async def reconcile_engagement(
         changed = True
     if changed:
         await session.flush()
-    await reconcile_review_publication(session, engagement, now=current)
+    await reconcile_review_publication(
+        session,
+        engagement,
+        now=current,
+        loaded_reviews=loaded_reviews,
+    )
     return changed
 
 
@@ -273,15 +279,24 @@ async def reconcile_review_publication(
     engagement: Engagement,
     *,
     now: datetime | None = None,
+    loaded_reviews: list[EngagementReview] | None = None,
 ) -> bool:
     current = now or utcnow()
     if engagement.status not in TERMINAL_REVIEWABLE or engagement.started_at is None:
         return False
-    reviews = (
-        await session.execute(
-            select(EngagementReview).where(EngagementReview.engagement_id == engagement.id)
+    reviews = loaded_reviews
+    if reviews is None:
+        reviews = list(
+            (
+                await session.execute(
+                    select(EngagementReview).where(
+                        EngagementReview.engagement_id == engagement.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
         )
-    ).scalars().all()
     submitted = [review for review in reviews if review.status == "submitted"]
     both_submitted = len({review.direction for review in submitted}) == 2
     window_ended = bool(
@@ -607,10 +622,20 @@ def _my_review_read(review: EngagementReview, engagement: Engagement) -> MyRevie
 
 
 async def review_state_for(
-    session: AsyncSession, engagement: Engagement, viewer_id: UUID
+    session: AsyncSession,
+    engagement: Engagement,
+    viewer_id: UUID,
+    *,
+    loaded_reviews: list[EngagementReview] | None = None,
 ) -> str:
     direction, _, _ = _direction_for(engagement, viewer_id)
-    review = await _review_for_direction(session, engagement.id, direction)
+    if loaded_reviews is None:
+        review = await _review_for_direction(session, engagement.id, direction)
+    else:
+        review = next(
+            (item for item in loaded_reviews if item.direction == direction),
+            None,
+        )
     if review:
         return "submitted" if review.status == "submitted" else "published"
     if engagement.status not in TERMINAL_REVIEWABLE or engagement.started_at is None:
@@ -621,23 +646,11 @@ async def review_state_for(
     return "available"
 
 
-async def engagement_summary(
-    session: AsyncSession,
+def _engagement_summary_read(
     engagement: Engagement,
     viewer_id: UUID,
+    state: str,
 ) -> EngagementSummary:
-    # Reads can finalize expired start/completion/review windows. Lock the row so
-    # concurrent Inbox/profile reads cannot apply the same transition twice.
-    locked = (
-        await session.execute(
-            select(Engagement).where(Engagement.id == engagement.id).with_for_update()
-        )
-    ).scalar_one_or_none()
-    if locked is not None:
-        engagement = locked
-    _require_participant(engagement, viewer_id)
-    await reconcile_engagement(session, engagement)
-    state = await review_state_for(session, engagement, viewer_id)
     actions: list[str] = []
     if engagement.status == "ready_to_start":
         actions = ["request_start", "cancel_before_start"]
@@ -648,14 +661,21 @@ async def engagement_summary(
             actions = ["cancel_before_start"]
     elif engagement.status == "active":
         actions = ["request_completion"]
-    elif engagement.status == "completion_pending" and engagement.completion_requested_by_user_id != viewer_id:
+    elif (
+        engagement.status == "completion_pending"
+        and engagement.completion_requested_by_user_id != viewer_id
+    ):
         actions = ["confirm_completion", "flag_completion_issue"]
     elif state == "available":
         actions = ["write_review"]
     elif state == "submitted":
         actions = ["edit_review"]
     snapshot = engagement.context_snapshot or {}
-    counterpart_key = "talent_name" if viewer_id == engagement.recruiter_user_id else "recruiter_name"
+    counterpart_key = (
+        "talent_name"
+        if viewer_id == engagement.recruiter_user_id
+        else "recruiter_name"
+    )
     response_due = (
         engagement.start_response_due_at
         if engagement.status == "start_pending"
@@ -680,6 +700,87 @@ async def engagement_summary(
         available_actions=actions,
         review_state=state,
     )
+
+
+async def engagement_summaries(
+    session: AsyncSession,
+    engagements: list[Engagement],
+    viewer_id: UUID,
+    *,
+    rows_locked: bool = False,
+) -> dict[UUID, EngagementSummary]:
+    """Summarize a list with a bounded set of ordinary-read queries.
+
+    Deadline reconciliation remains a write path and may perform the messages
+    and notifications required by each transition. The stable read path locks
+    all rows together and loads review state once, rather than issuing three
+    queries for every visible interaction.
+    """
+    by_id = {engagement.id: engagement for engagement in engagements}
+    if not by_id:
+        return {}
+    if not rows_locked:
+        locked_rows = list(
+            (
+                await session.execute(
+                    select(Engagement)
+                    .where(Engagement.id.in_(by_id))
+                    .order_by(Engagement.id)
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_id.update({engagement.id: engagement for engagement in locked_rows})
+
+    review_rows = list(
+        (
+            await session.execute(
+                select(EngagementReview).where(
+                    EngagementReview.engagement_id.in_(by_id)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    reviews_by_engagement: dict[UUID, list[EngagementReview]] = {
+        engagement_id: [] for engagement_id in by_id
+    }
+    for review in review_rows:
+        reviews_by_engagement[review.engagement_id].append(review)
+
+    result: dict[UUID, EngagementSummary] = {}
+    for engagement in by_id.values():
+        _require_participant(engagement, viewer_id)
+        loaded_reviews = reviews_by_engagement[engagement.id]
+        await reconcile_engagement(
+            session,
+            engagement,
+            loaded_reviews=loaded_reviews,
+        )
+        state = await review_state_for(
+            session,
+            engagement,
+            viewer_id,
+            loaded_reviews=loaded_reviews,
+        )
+        result[engagement.id] = _engagement_summary_read(
+            engagement,
+            viewer_id,
+            state,
+        )
+    return result
+
+
+async def engagement_summary(
+    session: AsyncSession,
+    engagement: Engagement,
+    viewer_id: UUID,
+) -> EngagementSummary:
+    summaries = await engagement_summaries(session, [engagement], viewer_id)
+    return summaries[engagement.id]
 
 
 async def upsert_review(

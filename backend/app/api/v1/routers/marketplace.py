@@ -8,7 +8,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import String, delete, func, or_, select
+from sqlalchemy import String, and_, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +17,7 @@ from app.core.account_state import account_is_blocked
 from app.core.rate_limit import CHECKOUT_LIMIT, MARKETPLACE_ACTION_LIMIT, REPORT_LIMIT, rate_limit
 from app.models import (
     Conversation,
+    Engagement,
     EngagementReview,
     Entitlement,
     InteractionPrivateNote,
@@ -2302,9 +2303,17 @@ async def activity_summary(
         if getattr(row, "job_id", None) is not None
     }
     related_jobs = (
-        await session.execute(select(Job).where(Job.id.in_(related_job_ids), Job.deleted_at.is_(None)))
+        await session.execute(
+            select(Job).where(
+                Job.id.in_(related_job_ids),
+                Job.deleted_at.is_(None),
+            )
+        )
         if related_job_ids
         else None
+    )
+    related_job_rows = (
+        list(related_jobs.scalars().all()) if related_jobs is not None else []
     )
     related_listing_ids = {
         interest.talent_listing_id for interest in [*received_interests, *sent_interests]
@@ -2321,34 +2330,281 @@ async def activity_summary(
     )
     related_listing_rows = list(related_listings.scalars().all()) if related_listings is not None else []
 
+    all_applications = {
+        row.id: row for row in [*sent_applications, *received_applications]
+    }
+    all_interests = {
+        row.id: row for row in [*received_interests, *sent_interests]
+    }
+    all_talent_listings = {
+        row.id: row for row in [*my_talent_listings, *related_listing_rows]
+    }
+    application_ids = set(all_applications)
+    interest_ids = set(all_interests)
+
+    user_ids = {
+        application.applicant_user_id for application in all_applications.values()
+    }
+    user_ids.update(
+        interest.recruiter_user_id for interest in all_interests.values()
+    )
+    user_ids.update(
+        listing.owner_user_id for listing in all_talent_listings.values()
+    )
+    user_rows = (
+        list(
+            (
+                await session.execute(select(User).where(User.id.in_(user_ids)))
+            )
+            .scalars()
+            .all()
+        )
+        if user_ids
+        else []
+    )
+    users_by_id = {user.id: user for user in user_rows}
+
+    conversation_scopes = []
+    if application_ids:
+        conversation_scopes.append(Conversation.application_id.in_(application_ids))
+    if interest_ids:
+        conversation_scopes.append(Conversation.talent_interest_id.in_(interest_ids))
+    conversation_rows = (
+        list(
+            (
+                await session.execute(
+                    select(Conversation).where(or_(*conversation_scopes))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if conversation_scopes
+        else []
+    )
+    conversations_by_application = {
+        row.application_id: row
+        for row in conversation_rows
+        if row.application_id is not None
+    }
+    conversations_by_interest = {
+        row.talent_interest_id: row
+        for row in conversation_rows
+        if row.talent_interest_id is not None
+    }
+
+    engagement_scopes = []
+    if application_ids:
+        engagement_scopes.append(Engagement.application_id.in_(application_ids))
+    if interest_ids:
+        engagement_scopes.append(Engagement.talent_interest_id.in_(interest_ids))
+    engagement_rows = (
+        list(
+            (
+                await session.execute(
+                    select(Engagement)
+                    .where(or_(*engagement_scopes))
+                    .order_by(Engagement.id)
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if engagement_scopes
+        else []
+    )
+    engagements_by_application = {
+        row.application_id: row
+        for row in engagement_rows
+        if row.application_id is not None
+    }
+    engagements_by_interest = {
+        row.talent_interest_id: row
+        for row in engagement_rows
+        if row.talent_interest_id is not None
+    }
+    engagement_summaries = await review_service.engagement_summaries(
+        session,
+        engagement_rows,
+        current_user.id,
+        rows_locked=True,
+    )
+
+    sent_application_ids = {row.id for row in sent_applications}
+    received_application_ids = {row.id for row in received_applications}
+    received_interest_ids = {row.id for row in received_interests}
+    sent_interest_ids = {row.id for row in sent_interests}
+    history_scopes = []
+    if sent_application_ids:
+        history_scopes.append(
+            and_(
+                InteractionStatusEvent.interaction_type == "application",
+                InteractionStatusEvent.interaction_id.in_(sent_application_ids),
+                InteractionStatusEvent.audience == "participants",
+            )
+        )
+    if received_application_ids:
+        history_scopes.append(
+            and_(
+                InteractionStatusEvent.interaction_type == "application",
+                InteractionStatusEvent.interaction_id.in_(received_application_ids),
+            )
+        )
+    if received_interest_ids:
+        history_scopes.append(
+            and_(
+                InteractionStatusEvent.interaction_type == "hiring_request",
+                InteractionStatusEvent.interaction_id.in_(received_interest_ids),
+            )
+        )
+    if sent_interest_ids:
+        history_scopes.append(
+            and_(
+                InteractionStatusEvent.interaction_type == "hiring_request",
+                InteractionStatusEvent.interaction_id.in_(sent_interest_ids),
+                InteractionStatusEvent.audience == "participants",
+            )
+        )
+    history_rows = (
+        list(
+            (
+                await session.execute(
+                    select(InteractionStatusEvent)
+                    .where(or_(*history_scopes))
+                    .order_by(
+                        InteractionStatusEvent.interaction_type,
+                        InteractionStatusEvent.interaction_id,
+                        InteractionStatusEvent.created_at,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if history_scopes
+        else []
+    )
+    histories_by_interaction: dict[tuple[str, UUID], list[InteractionStatusEvent]] = {}
+    for history in history_rows:
+        histories_by_interaction.setdefault(
+            (history.interaction_type, history.interaction_id), []
+        ).append(history)
+
+    def application_read(
+        application: JobApplication,
+        *,
+        sender_view: bool,
+    ) -> JobApplicationRead:
+        read = (
+            _application_read_for_sender(application)
+            if sender_view
+            else JobApplicationRead.model_validate(application)
+        )
+        applicant = users_by_id.get(application.applicant_user_id)
+        snapshot = application.applicant_snapshot or {}
+        read.applicant_display_name = (
+            applicant.display_name or applicant.username
+            if applicant is not None
+            else snapshot.get("display_name")
+            or snapshot.get("username")
+            or "Former collaborator"
+        )
+        read.applicant_username = (
+            applicant.username if applicant is not None else snapshot.get("username")
+        )
+        read.applicant_avatar_url = applicant.avatar_url if applicant is not None else None
+        conversation = conversations_by_application.get(application.id)
+        if conversation is not None:
+            read.archived_at = (
+                conversation.participant_a_archived_at
+                if current_user.id == conversation.participant_a_user_id
+                else conversation.participant_b_archived_at
+            )
+        engagement = engagements_by_application.get(application.id)
+        if engagement is not None:
+            read.engagement = engagement_summaries.get(engagement.id)
+        status_history = histories_by_interaction.get(
+            ("application", application.id), []
+        )
+        read.status_history = [
+            history
+            for history in status_history
+            if not sender_view or history.audience == "participants"
+        ]
+        return read
+
+    def interest_read(
+        interest: TalentInterest,
+        *,
+        sender_view: bool,
+    ) -> TalentInterestRead:
+        if interest.status == "contacted":
+            interest.status = "accepted"
+        if interest.participant_status == "contacted":
+            interest.participant_status = "accepted"
+        read = (
+            _interest_read_for_sender(interest)
+            if sender_view
+            else TalentInterestRead.model_validate(interest)
+        )
+        recruiter = users_by_id.get(interest.recruiter_user_id)
+        if recruiter is not None:
+            read.recruiter_display_name = (
+                recruiter.display_name or recruiter.username or "Recruiter"
+            )
+            read.recruiter_username = recruiter.username
+            read.recruiter_avatar_url = recruiter.avatar_url
+        conversation = conversations_by_interest.get(interest.id)
+        if conversation is not None:
+            read.archived_at = (
+                conversation.participant_a_archived_at
+                if current_user.id == conversation.participant_a_user_id
+                else conversation.participant_b_archived_at
+            )
+        engagement = engagements_by_interest.get(interest.id)
+        if engagement is not None:
+            read.engagement = engagement_summaries.get(engagement.id)
+        status_history = histories_by_interaction.get(
+            ("hiring_request", interest.id), []
+        )
+        read.status_history = [
+            history
+            for history in status_history
+            if not sender_view or history.audience == "participants"
+        ]
+        return read
+
     response = ActivitySummaryResponse(
         my_jobs=[JobRead.model_validate(row) for row in my_jobs],
-        my_talent_listings=await _talent_reads_with_owners(session, list(my_talent_listings)),
+        my_talent_listings=[
+            _talent_read(row, users_by_id.get(row.owner_user_id))
+            for row in my_talent_listings
+        ],
         sent_applications=[
-            await _application_read(session, row, current_user.id, sender_view=True)
+            application_read(row, sender_view=True)
             for row in sent_applications
         ],
         received_applications=[
-            await _application_read(session, row, current_user.id, sender_view=False)
+            application_read(row, sender_view=False)
             for row in received_applications
         ],
         received_interests=[
-            await _interest_read(session, row, current_user.id, sender_view=False)
+            interest_read(row, sender_view=False)
             for row in received_interests
         ],
         sent_interests=[
-            await _interest_read(session, row, current_user.id, sender_view=True)
+            interest_read(row, sender_view=True)
             for row in sent_interests
         ],
         related_jobs=[
             _candidate_safe_job_read(row)
-            for row in (
-                related_jobs.scalars().all()
-                if related_jobs is not None
-                else []
-            )
+            for row in related_job_rows
         ],
-        related_talent_listings=await _talent_reads_with_owners(session, related_listing_rows),
+        related_talent_listings=[
+            _talent_read(row, users_by_id.get(row.owner_user_id))
+            for row in related_listing_rows
+        ],
     )
     await session.commit()
     return response

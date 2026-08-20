@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 10 — CI/CD and production platform (locally complete; remote CI, image build/scan and platform configuration remain external/environment gates)
 CURRENT PHASE: Phase 11 — metadata, SEO, performance and accessibility
-LAST COMPLETED ATOMIC SLICE: Phase 11F — dynamic-route prefetch fan-out removed and validated on the production server. The implementation commit is named `perf(navigation): stop dynamic route prefetch fan-out`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
-NEXT ATOMIC SLICE: Phase 11 performance — remove the `/me/activity/summary` per-record query amplification with a bounded-query regression test. Keep the single-record serializers compatible; do not start image changes until that slice is tested, documented and committed cleanly.
+LAST COMPLETED ATOMIC SLICE: Phase 11G — `/me/activity/summary` ordinary reads changed from per-record expansion to bounded bulk reads. The implementation commit is named `perf(activity): batch workspace summary reads`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
+NEXT ATOMIC SLICE: Phase 11 PERF-001 — implement the previously analysed image trust split: exact `MEDIA_PUBLIC_BASE_URL` optimizer configuration only, arbitrary creator-linked images kept raw, and deliberate eager/lazy/decoding classification. Read Phase 11E/11F first; never introduce a wildcard remote pattern.
 PHASE 11 STATUS: SEO-001/003/004 VALIDATED; SEO-002 IMPLEMENTED pending real-backend pagination; PERF-001 IN_PROGRESS (actual LCP elements measured; safe exact-origin image work remains); PERF-002 and CORRECT-007 IN_PROGRESS; A11Y-001 NOT_STARTED; A11Y-002 BLOCKED_EXTERNAL for the genuinely manual review.
 CURRENT ALEMBIC HEAD: 0069_support_tickets (single head; 0060-0064 earlier, then 0065_legal_acceptances, 0066_notification_preferences, 0067_account_deletion_requests, 0068_account_deletion_hidden_at, 0069)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -15,9 +15,9 @@ NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRE
 NEW DEPENDENCIES: backend now declares its already-locked runtime `httpx==0.28.1` and `httpcore==1.0.9` usage directly; no package version changed
 NEW SERVICES: app.services.safe_outbound_fetch shared public-URL boundary; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md complete caller inventory; plus all previously documented OAuth/session/strong-auth services
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
-KNOWN TEST FAILURES: no task-caused failure is open. Phase 11F focused TypeScript and ESLint passed; its production-server browser regression is 3 passed. One Playwright launch hit the 120-second web-server startup limit while unrelated host load exceeded 60, after the build itself completed; running that same artifact manually produced the green result. Do not use this contended host for timing claims. The last certified broad counts remain frontend node 1,251 and backend 7,499 passed / 65 skipped.
-COMMANDS TO RESUME: `git status --short`; inspect `backend/app/api/v1/routers/marketplace.py` around `activity_summary`; inspect `backend/app/services/review_service.py`; run the new focused query-count test before broader backend tests. Never run two pytest processes against the shared test database.
-FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; the "Phase 11F checkpoint" below; backend/app/api/v1/routers/marketplace.py; backend/app/services/review_service.py; backend/app/services/marketplace_interaction_service.py; backend/tests/conftest.py
+KNOWN TEST FAILURES: no task-caused failure is open. Phase 11G's query-bound test is 1 passed; its six-file marketplace/applicant/review/payment/transition/messaging semantic matrix exited 0. That matrix was accidentally invoked at `-qq` (the repository already supplies `-q`), so pytest suppressed its numeric pass total; this is recorded rather than invented. Phase 11F focused TypeScript/ESLint and its 3-case production browser regression remain green. Do not use this contended host for timing claims. The last certified broad counts remain frontend node 1,251 and backend 7,499 passed / 65 skipped.
+COMMANDS TO RESUME: `git status --short`; read Phase 11E through 11G; inspect `next.config.ts`, `app/u/[slug]/page.tsx`, the raw `<img>` inventory, and the existing `MEDIA_PUBLIC_BASE_URL`/`MEDIA_BASE_PATH` contract before editing. Never run two pytest processes against the shared test database.
+FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase 11E/11F/11G in this handoff; next.config.ts; app/u/[slug]/page.tsx; backend/app/core/config.py; backend/app/services/media_storage.py
 RELEASE ASSESSMENT: NO-GO
 ```
 
@@ -1320,6 +1320,53 @@ approved. The version registry is the machinery that will carry whatever the wor
 NEXT READY: the acceptance API surface (present outstanding documents, record acceptance), then
 PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST — the admin
 panel already has an append-only audit rule and suspension enforcement.
+```
+
+## Phase 11G checkpoint (PERF-002/CORRECT-007 — one workspace summary, not hundreds of reads)
+
+```text
+STATUS: IMPLEMENTED AND FOCUSED-VALIDATED. Migration: none. Dependency: none.
+INITIAL HEAD: 0e9e7220e7371443789dcf88b7c7f8f4d929614c
+COMMIT: `perf(activity): batch workspace summary reads`
+
+PROVEN DEFECT: a non-vacuous query listener around the real activity-summary function measured:
+  1 received application + 1 received hiring request   -> 22 SELECTs
+  24 received applications + 24 received requests      -> 298 SELECTs
+The old path expanded each record through separate user, conversation, engagement, engagement-lock,
+review-state and history reads. This was database round-trip growth, not a wall-clock benchmark.
+
+CHANGE: activity summary now loads each relation class in a bounded query: participant users (also reused
+for talent-listing owners), conversations, interaction histories, engagement rows and engagement reviews.
+Engagement locks are acquired in deterministic ID order. `review_service.engagement_summaries` preserves
+the existing reconcile-before-read behavior but preloads review rows once. The ordinary/stable read path
+therefore stays within the 18-SELECT contract as record count grows.
+
+BOUNDARY: a deadline-triggered engagement transition is a write event. It still performs the messages,
+notifications and flushes that transition requires; claiming those writes are query-free would be false.
+The stable read path is bounded, while actual due state changes remain durable and idempotent under the
+same row locks as before.
+
+SECURITY/PARITY: sender views still blank manager_note and legacy archive state, and receive only
+participant-audience history. Manager views still receive private history. A record that somehow appears
+in both roles is filtered again during serialization, so the broad bulk history query cannot leak a
+manager-only event through its sender representation. Archive timestamps, deleted-user snapshots,
+counterpart names, review actions and payment passthrough retain their existing contracts. Single-record
+serializers remain callable and now delegate only the engagement-summary portion to the compatible bulk
+primitive.
+
+VALIDATION:
+  pre-fix query regression                                      -> FAIL (22 SELECTs -> 298)
+  ruff check changed Python + new test                          -> all checks passed
+  APP_ENV=test pytest tests/test_activity_summary_query_bound.py -> 1 passed, 4 known warnings
+  APP_ENV=test pytest test_marketplace_core.py test_applicant_management.py
+    test_engagement_reviews.py test_engagement_payment_state.py
+    test_interaction_transitions.py test_messaging.py            -> exit 0, 100%
+The six-file numeric total is deliberately not stated: explicit `-q` combined with pyproject's existing
+`-q` into `-qq`, which suppressed it. Subsequent commands should not add `-q`.
+
+NOT COMPLETE: CORRECT-007/PERF-002 remain IN_PROGRESS because the activity payload itself is still
+unpaginated, and the bundle report plus 100-session correctness exercise remain. No timing claim was
+made under the contended host. Next bounded slice is PERF-001's safe image trust split.
 ```
 
 ## Phase 11F checkpoint (PERF-002/CORRECT-007 — stop rendering every visible destination in the background)
