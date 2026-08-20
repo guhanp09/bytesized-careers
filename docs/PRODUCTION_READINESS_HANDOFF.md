@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 10 — CI/CD and production platform (locally complete; remote CI, image build/scan and platform configuration remain external/environment gates)
 CURRENT PHASE: Phase 11 — metadata, SEO, performance and accessibility
-LAST COMPLETED ATOMIC SLICE: Phase 11I — `npm run report:bundle` now measures actual cold client entry payloads from the production artifact without a new analyzer dependency or a fabricated budget. The implementation commit is named `perf(bundles): add reproducible route payload report`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
-NEXT ATOMIC SLICE: Phase 11 PERF-002/CORRECT-007 — run a 100-concurrent-session correctness exercise against an owned local production artifact. Prove response/status correctness and isolation; do not claim latency while host load is severe. Activity-summary payload pagination remains after that and requires an additive API/client contract survey.
+LAST COMPLETED ATOMIC SLICE: Phase 11J — a loopback-only exercise proves 100 concurrent encrypted sessions remain isolated through both the session API and an authenticated dynamic workspace render. The implementation commit is named `perf(sessions): verify 100 concurrent identities`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
+NEXT ATOMIC SLICE: Phase 11 PERF-002/CORRECT-007 — add activity-summary payload pagination without breaking the current workspace. Survey response schema, all serializers and the sole frontend consumer; prefer an additive cursor/page contract and preserve deterministic ordering/security.
 PHASE 11 STATUS: SEO-001/003/004 and PERF-001 VALIDATED; SEO-002 IMPLEMENTED pending real-backend pagination; PERF-002 and CORRECT-007 IN_PROGRESS; A11Y-001 NOT_STARTED; A11Y-002 BLOCKED_EXTERNAL for the genuinely manual review.
 CURRENT ALEMBIC HEAD: 0069_support_tickets (single head; 0060-0064 earlier, then 0065_legal_acceptances, 0066_notification_preferences, 0067_account_deletion_requests, 0068_account_deletion_hidden_at, 0069)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -15,9 +15,9 @@ NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRE
 NEW DEPENDENCIES: backend now declares its already-locked runtime `httpx==0.28.1` and `httpcore==1.0.9` usage directly; no package version changed
 NEW SERVICES: app.services.safe_outbound_fetch shared public-URL boundary; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md complete caller inventory; plus all previously documented OAuth/session/strong-auth services
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
-KNOWN TEST FAILURES: no task-caused failure is open. Phase 11I focused bundle tests are 4/4, lint exits 0, production-like build exits 0 and the real report completes. LAST_FULL_SUITE_OBSERVED frontend is Phase 11H's 1,257/1,257; EXPECTED_CURRENT_COLLECTION is 1,261 (+4 focused bundle-report tests). Phase 11H focused image/header security is 28/28 and production browser image delivery is 2/2. Phase 11G's query-bound test is 1 passed; its six-file semantic matrix exited 0, with its numeric total unavailable because that historical command accidentally became `-qq`. Do not use this contended host for timing claims. The last backend broad count remains 7,499 passed / 65 skipped.
-COMMANDS TO RESUME: `git status --short`; design the 100-session exercise around an exact local process and correctness assertions, then inspect the additive pagination shape for `/me/activity/summary`. Never run two pytest processes against the shared test database, and never run Next build concurrently with Playwright against `.next`.
-FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase 11G/11I in this handoff; scripts/report-client-bundles.mjs; backend/app/api/v1/routers/marketplace.py; backend/app/schemas/marketplace.py; lib/backendClient.ts; components/you/ApplicationsWorkspace.tsx; lib/workspacePaging.ts
+KNOWN TEST FAILURES: no task-caused failure is open. Phase 11J focused concurrent-session tests are 4/4, lint exits 0 and the production artifact passes 100/100 session responses plus 100/100 workspace renders. LAST_FULL_SUITE_OBSERVED frontend is Phase 11H's 1,257/1,257; EXPECTED_CURRENT_COLLECTION is 1,265 (+4 bundle-report and +4 concurrent-session tests). Phase 11I focused bundle tests are 4/4 and its production-like build/report pass. Phase 11G's query-bound test is 1 passed. Do not use this contended host for timing claims. The last backend broad count remains 7,499 passed / 65 skipped.
+COMMANDS TO RESUME: `git status --short`; inspect the complete `/me/activity/summary` response/consumer contract, design an additive bounded page, add backend and frontend contract tests, and preserve all six role-based collections. Never run two pytest processes against the shared test database, and never run Next build concurrently with Playwright against `.next`.
+FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase 11G/11J in this handoff; backend/app/api/v1/routers/marketplace.py; backend/app/schemas/marketplace.py; backend/tests/test_activity_summary_query_bound.py; lib/backendClient.ts; components/you/ApplicationsWorkspace.tsx; lib/workspacePaging.ts
 RELEASE ASSESSMENT: NO-GO
 ```
 
@@ -1320,6 +1320,45 @@ approved. The version registry is the machinery that will carry whatever the wor
 NEXT READY: the acceptance API surface (present outstanding documents, record acceptance), then
 PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST — the admin
 panel already has an append-only audit rule and suspension enforcement.
+```
+
+## Phase 11J checkpoint (PERF-002/CORRECT-007 — 100 identities, never one shared context)
+
+```text
+STATUS: IMPLEMENTED AND FOCUSED-VALIDATED. Migration: none. Dependency: none.
+INITIAL HEAD: 38fc1c704c41643c6fbc7b8fa6481679eeebc920
+COMMIT: `perf(sessions): verify 100 concurrent identities`
+
+CONTRACT: `npm run check:concurrent-sessions` creates 100 distinct encrypted NextAuth JWT cookies, then
+starts all 100 reads before awaiting any. It validates each response's allowlisted user fields and backend
+identity exactly, rejects any crossed identity, and proves provider credential sentinels from legacy cookie
+state are stripped. It then repeats the isolation proof through 100 simultaneous authenticated renders of
+the real dynamic `/applications` route, using the same URL so any unsafe route cache/request-context reuse
+is observable. The route response must carry exactly that cookie's user/access identity and no anonymous
+state or provider sentinel. One mismatch fails the whole exercise; it is never averaged away.
+
+SAFETY: target parsing accepts only literal 127.0.0.1 or [::1] origins (not localhost DNS, credentials,
+paths or remote hosts). The signing secret is accepted only through SESSION_CHECK_NEXTAUTH_SECRET and is
+never printed. Sensitive mismatches are redacted. The exercise performs no application/database write,
+does not call the backend, and cannot target a hosted deployment. It measures correctness/security only:
+no latency, throughput, multi-instance, database or load-balancer capacity claim is made.
+
+FILES: scripts/check-concurrent-sessions.mjs; tests/concurrentSessionCheck.test.mjs; package.json; ledger;
+handoff. EXPECTED_CURRENT_COLLECTION (frontend): 1,265, +4 focused tests. Backend remains 7,499.
+
+VALIDATION:
+  node --test tests/concurrentSessionCheck.test.mjs             -> 4 passed
+  npx eslint scripts/check-concurrent-sessions.mjs
+    tests/concurrentSessionCheck.test.mjs                       -> exit 0
+  SESSION_CHECK_NEXTAUTH_SECRET=<local build secret>
+    npm run check:concurrent-sessions --
+      --base-url http://127.0.0.1:3100 --sessions 100            -> 100/100 session API,
+                                                                    100/100 workspace,
+                                                                    100 identities
+  owned next start process output                               -> no application error
+  git diff --check                                              -> exit 0
+
+NOT COMPLETE: activity-summary payload pagination is the remaining PERF-002/CORRECT-007 implementation.
 ```
 
 ## Phase 11I checkpoint (PERF-002 — a bundle report that measures this build)
