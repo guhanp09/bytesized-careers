@@ -56,6 +56,7 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              prefetch={false}
               className={navClass(active)}
               aria-label={item.label}
               aria-current={active ? "page" : undefined}

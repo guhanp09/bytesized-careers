@@ -37,7 +37,7 @@ function Chip({ label, active, href, onClick }: { label: string; active?: boolea
       ? "bg-[var(--vt-chip-active-bg,#ffffff)] [background-image:var(--vt-chip-active-grad,none)] text-[var(--vt-chip-active-text,#000000)] shadow-[var(--vt-chip-active-glow,none)]"
       : "bg-[var(--vt-chip-bg,rgba(255,255,255,0.1))] text-[var(--vt-ink,#ffffff)] shadow-[var(--vt-chip-shell,none)] hover:bg-[var(--vt-chip-hover,rgba(255,255,255,0.15))]",
   ].join(" ");
-  return href ? <Link href={href} className={className}>{label}</Link> : <button type="button" onClick={onClick} className={className}>{label}</button>;
+  return href ? <Link href={href} prefetch={false} className={className}>{label}</Link> : <button type="button" onClick={onClick} className={className}>{label}</button>;
 }
 
 type JobSortKey = "relevance" | "newest" | "rate";

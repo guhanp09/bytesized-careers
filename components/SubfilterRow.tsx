@@ -46,6 +46,7 @@ export default function SubfilterRow({ seoRoute }: { seoRoute?: SeoFilterRoute |
                 ) : null}
                 <Link
                   href={href}
+                  prefetch={false}
                   scroll={false}
                   data-testid="subfilter-chip"
                   aria-pressed={active}

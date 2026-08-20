@@ -254,6 +254,7 @@ export default function TalentCard({
               {publicProfileHref ? (
                 <Link
                   href={publicProfileHref}
+                  prefetch={false}
                   onClick={(event) => {
                     event.stopPropagation();
                   }}

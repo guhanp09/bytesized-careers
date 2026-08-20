@@ -34,6 +34,7 @@ export function HomeBrowseCategories() {
           </div>
           <Link
             href="/jobs"
+            prefetch={false}
             className="group/link inline-flex h-9 w-fit shrink-0 items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.04] px-4 text-sm font-semibold text-white/80 transition-colors hover:border-white/25 hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0b0f]"
           >
             All categories
@@ -56,6 +57,7 @@ export function HomeBrowseCategories() {
             <Link
               key={category.label}
               href={`/jobs?q=${encodeURIComponent(category.query)}`}
+              prefetch={false}
               className="group flex h-[152px] w-[156px] shrink-0 snap-start flex-col items-center justify-center gap-3.5 rounded-2xl border border-white/[0.07] bg-white/[0.028] px-4 text-center transition-colors hover:border-white/15 hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0b0f]"
             >
               <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/85 transition-colors group-hover:bg-white/[0.1] group-hover:text-white">

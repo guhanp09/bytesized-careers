@@ -3,11 +3,11 @@
 ## Resume summary
 
 ```text
-LAST COMPLETED PHASE: Phase 5 — Invite-only beta and durable transactional email (locally complete and certified; EMAIL-005 remains BLOCKED_EXTERNAL). Phases 2 and 4 were certified earlier under the same terms
-LAST COMPLETED PHASE: Phase 9 — Privacy, legal mechanics, support and moderation (locally complete and certified; erasure/retention is BLOCKED_PRODUCT_DECISION and legal wording is BLOCKED_EXTERNAL). Phases 2, 4, 5, 6, 7 and 8 were certified earlier under the same terms
-CURRENT PHASE: Phase 10 — CI/CD and production platform
-LAST COMPLETED ATOMIC SLICE: Phase 9 certification. Found and fixed two live defects on the way: a deletion request could make an account un-suspendable, and three enforcement points honoured suspension while ignoring deletion hiding.
-NEXT ATOMIC SLICE: Phase 10 — CI/CD. Inventory .github/workflows, package.json scripts and backend/Dockerfile BEFORE writing anything; extend rather than duplicate. No push, no deploy, no remote settings. Docker build/scan stays BLOCKED_ENVIRONMENT; source-level hardening is READY. CI must not run two backend pytest jobs against shared mutable state, and should make collection movement reviewable (junitxml artifact) without pinning a brittle exact count.
+LAST COMPLETED PHASE: Phase 10 — CI/CD and production platform (locally complete; remote CI, image build/scan and platform configuration remain external/environment gates)
+CURRENT PHASE: Phase 11 — metadata, SEO, performance and accessibility
+LAST COMPLETED ATOMIC SLICE: Phase 11F — dynamic-route prefetch fan-out removed and validated on the production server. The implementation commit is named `perf(navigation): stop dynamic route prefetch fan-out`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
+NEXT ATOMIC SLICE: Phase 11 performance — remove the `/me/activity/summary` per-record query amplification with a bounded-query regression test. Keep the single-record serializers compatible; do not start image changes until that slice is tested, documented and committed cleanly.
+PHASE 11 STATUS: SEO-001/003/004 VALIDATED; SEO-002 IMPLEMENTED pending real-backend pagination; PERF-001 IN_PROGRESS (actual LCP elements measured; safe exact-origin image work remains); PERF-002 and CORRECT-007 IN_PROGRESS; A11Y-001 NOT_STARTED; A11Y-002 BLOCKED_EXTERNAL for the genuinely manual review.
 CURRENT ALEMBIC HEAD: 0069_support_tickets (single head; 0060-0064 earlier, then 0065_legal_acceptances, 0066_notification_preferences, 0067_account_deletion_requests, 0068_account_deletion_hidden_at, 0069)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
 IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
@@ -15,9 +15,9 @@ NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRE
 NEW DEPENDENCIES: backend now declares its already-locked runtime `httpx==0.28.1` and `httpcore==1.0.9` usage directly; no package version changed
 NEW SERVICES: app.services.safe_outbound_fetch shared public-URL boundary; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md complete caller inventory; plus all previously documented OAuth/session/strong-auth services
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
-KNOWN TEST FAILURES: 17 deterministic standard Playwright failures and 6 real-backend QA failures from the Phase 0 matrix remain unrerun as a whole and are owned by later phases; Phase 2C's 12-case hiring-identity fetch suite, 196-case dependent matrix, and complete uncontended 6,649-case backend suite are green alongside TypeScript, ESLint, the 1,138-case frontend unit suite and the production build; Phase 2B's 29-case link-preview suite, 72-case shared-boundary suite, 175-case dependent matrix, complete uncontended 6,637-case backend suite, TypeScript, ESLint, 1,138-case frontend unit suite, and production build are green; whole-tree Ruff retains unrelated baseline findings while every changed Python file passes; one overlapping pytest run during this session produced 158 shared-test-state failures that vanished on an uncontended rerun — never run a second pytest against the shared test database
-COMMANDS TO RESUME: see "Phase 2C atomic checkpoint" and "Important commands"
-FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md; backend/app/services/safe_outbound_fetch.py; backend/tests/test_hiring_identity_public_fetch.py; app/api/profile/organization-identity/route.ts; lib/youtubeIdentity.ts; backend/app/services/profile_service.py
+KNOWN TEST FAILURES: no task-caused failure is open. Phase 11F focused TypeScript and ESLint passed; its production-server browser regression is 3 passed. One Playwright launch hit the 120-second web-server startup limit while unrelated host load exceeded 60, after the build itself completed; running that same artifact manually produced the green result. Do not use this contended host for timing claims. The last certified broad counts remain frontend node 1,251 and backend 7,499 passed / 65 skipped.
+COMMANDS TO RESUME: `git status --short`; inspect `backend/app/api/v1/routers/marketplace.py` around `activity_summary`; inspect `backend/app/services/review_service.py`; run the new focused query-count test before broader backend tests. Never run two pytest processes against the shared test database.
+FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; the "Phase 11F checkpoint" below; backend/app/api/v1/routers/marketplace.py; backend/app/services/review_service.py; backend/app/services/marketplace_interaction_service.py; backend/tests/conftest.py
 RELEASE ASSESSMENT: NO-GO
 ```
 
@@ -1320,6 +1320,52 @@ approved. The version registry is the machinery that will carry whatever the wor
 NEXT READY: the acceptance API surface (present outstanding documents, record acceptance), then
 PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST — the admin
 panel already has an append-only audit rule and suspension enforcement.
+```
+
+## Phase 11F checkpoint (PERF-002/CORRECT-007 — stop rendering every visible destination in the background)
+
+```text
+STATUS: IMPLEMENTED AND FOCUSED-VALIDATED. Migration: none. External service: none.
+INITIAL HEAD: 5d0273117d279a53c32911128c58116a5b11d5ab
+COMMIT: `perf(navigation): stop dynamic route prefetch fan-out`
+
+CAUSE: the nonce-bearing CSP intentionally makes every HTML route dynamic. Next Link prefetch therefore
+does not merely download a static route artifact here: each visible destination can cause a server render.
+A browser request inventory proved the amplification before editing: `/` issued 8 automatic RSC
+prefetches, `/jobs` issued 22, and `/u/aarav-mehta` issued 10. The jobs count included the full filter
+chip row; talent additionally rendered each visible profile destination.
+
+CHANGE: high-fan-out marketplace/filter/profile links and the global shell now set `prefetch={false}`.
+This changes only speculative background work; click navigation remains the same. The rule is narrow:
+it is not a ban on every Link, and it does not introduce a cache that could accidentally reuse a nonce.
+
+REGRESSION TEST: `tests/e2e/navigation-prefetch.spec.ts` observes requests with the actual
+`next-router-prefetch: 1` header on `/`, `/jobs` and `/talent`, strips only Next's `_rsc` cache-buster,
+and asserts that no automatic destination render occurred. It waits for the browser's real intersection
+and idle scheduling rather than an arbitrary sleep. The first focused run correctly FAILED on `/talent`
+because TalentCard and ChannelAttribution still prefetched card destinations; those call sites were fixed,
+not the assertion weakened.
+
+ACTUAL LCP-ELEMENT INVENTORY (production artifact, 1440x900, mock data): all sampled routes had a TEXT
+LCP, not an image: `/` hero H1; `/jobs` job-title H3; `/jobs/1` description paragraph; `/talent` card
+title H2; `/talent/mock-talent-retention-editor` H1; `/u/aarav-mehta` H1. This is an element finding,
+not a performance timing claim: unrelated host load was 48–61, so numeric timings would be misleading.
+It means below-fold/list media can be lazy while public-profile hero media must still be treated
+deliberately; there is no evidence for blindly marking an image `preload`.
+
+VALIDATION:
+  npx eslint <11 changed components> tests/e2e/navigation-prefetch.spec.ts  -> exit 0
+  npx tsc --noEmit                                                      -> exit 0
+  git diff --check                                                      -> exit 0
+  PLAYWRIGHT_BASE_URL=http://127.0.0.1:3100 npx playwright test
+    tests/e2e/navigation-prefetch.spec.ts --workers=1                   -> 3 passed (26.7s)
+The green browser run used the exact completed production build through `next start`. One earlier config-
+managed run timed out waiting 120 seconds for startup under host load >60; that was infrastructure
+contention, not a test or application failure, and the completed artifact passed when started manually.
+
+NOT COMPLETE: CORRECT-007 and PERF-002 stay IN_PROGRESS. The UI already bounds inbox/pipeline/focused
+pages, but `/me/activity/summary` still expands records through per-item reads; bundle measurement and
+the 100-session correctness exercise also remain. Next slice is the activity-summary bounded-query fix.
 ```
 
 ## Phase 11E checkpoint (PERF-001 — analysed, and deliberately not "fixed")

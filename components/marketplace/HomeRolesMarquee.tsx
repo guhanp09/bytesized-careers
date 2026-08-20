@@ -21,6 +21,7 @@ function MarqueeList({ hidden }: { hidden?: boolean }) {
         <li key={name} className="mx-3 flex items-center whitespace-nowrap">
           <Link
             href={`/jobs?q=${encodeURIComponent(name)}`}
+            prefetch={false}
             tabIndex={hidden ? -1 : undefined}
             className="cursor-pointer text-sm font-medium text-muted transition-colors hover:text-white"
           >

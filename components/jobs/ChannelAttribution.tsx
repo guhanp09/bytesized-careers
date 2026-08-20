@@ -70,6 +70,7 @@ export default function ChannelAttribution({
         ) : (
           <Link
             href={href}
+            prefetch={false}
             onClick={stopParentNavigation}
             onKeyDown={stopParentKeyboardNavigation}
             className={baseClass}

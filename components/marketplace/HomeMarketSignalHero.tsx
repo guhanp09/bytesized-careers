@@ -341,12 +341,14 @@ export function HomeMarketSignalHero() {
           <div className="home-rise home-rise-delay-cta mt-8 flex flex-wrap items-center gap-3">
             <Link
               href="/jobs"
+              prefetch={false}
               className="home-cta-sheen inline-flex h-11 cursor-pointer items-center justify-center rounded-full bg-white px-6 text-sm font-semibold text-[#0b0b0f] transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
             >
               Browse jobs
             </Link>
             <Link
               href="/talent"
+              prefetch={false}
               className="inline-flex h-11 cursor-pointer items-center justify-center rounded-full border border-white/15 px-6 text-sm font-semibold text-white/85 transition-colors hover:border-white/30 hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
             >
               Browse talent

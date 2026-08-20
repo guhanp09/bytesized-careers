@@ -208,6 +208,7 @@ export default function Header() {
           <div className="flex min-w-0 flex-1 items-center gap-2 px-2 sm:gap-3 sm:px-4">
             <Link
               href="/"
+              prefetch={false}
               aria-label="CreatorJobs"
               className="inline-flex cursor-pointer items-center gap-[11px] leading-none text-white"
             >
@@ -392,6 +393,7 @@ export default function Header() {
                               <Link
                                 key={item.id}
                                 href={item.action_url}
+                                prefetch={false}
                                 className="block cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20"
                                 onClick={() => {
                                   setBellOpen(false);
@@ -426,6 +428,7 @@ export default function Header() {
                     </div>
                     <Link
                       href="/notifications"
+                      prefetch={false}
                       className="block cursor-pointer border-t border-white/[0.08] px-4 py-2.5 text-center text-sm font-semibold text-white/72 transition-colors hover:bg-white/[0.05] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20"
                       onClick={() => setBellOpen(false)}
                     >
