@@ -231,6 +231,8 @@ function RowAvatar({ name, src }: { name: string; src?: string | null }) {
         <img
           src={src}
           alt=""
+          loading="lazy"
+          decoding="async"
           onError={() => setBroken(true)}
           className="absolute inset-0 h-full w-full object-cover"
         />

@@ -58,6 +58,8 @@ function ReviewIdentity({
         <img
           src={item.reviewer_avatar_url}
           alt={item.reviewer_name}
+          loading="lazy"
+          decoding="async"
           className="h-10 w-10 shrink-0 rounded-full border border-white/12 bg-white/8 object-cover"
         />
       ) : (

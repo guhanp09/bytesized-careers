@@ -80,7 +80,13 @@ export default function ProfileHeaderCard({
         <div className="min-w-0 flex items-start gap-4">
           <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full border border-white/15 bg-white/10 overflow-hidden flex items-center justify-center shrink-0">
             {avatarUrl ? (
-              <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+              <img
+                src={avatarUrl}
+                alt={displayName}
+                loading="eager"
+                decoding="async"
+                className="h-full w-full object-cover"
+              />
             ) : (
               <span className="text-sm sm:text-base font-semibold tracking-wide text-white/85">
                 {avatarFallback}

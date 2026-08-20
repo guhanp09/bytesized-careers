@@ -600,6 +600,8 @@ export default function ProjectDetailPage({
                     <img
                       src={project.thumbnail_url}
                       alt={project.title}
+                      loading="eager"
+                      decoding="async"
                       className="h-full w-full object-cover transition-[filter,transform] duration-300 group-hover/project:brightness-[0.82] group-focus-visible/project:brightness-[0.82]"
                     />
                   ) : (
@@ -617,7 +619,13 @@ export default function ProjectDetailPage({
               ) : (
                 <div className="aspect-video overflow-hidden bg-white/[0.035]">
                   {project.thumbnail_url ? (
-                    <img src={project.thumbnail_url} alt={project.title} className="h-full w-full object-cover" />
+                    <img
+                      src={project.thumbnail_url}
+                      alt={project.title}
+                      loading="eager"
+                      decoding="async"
+                      className="h-full w-full object-cover"
+                    />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_34%),linear-gradient(135deg,#202126,#111216)] text-subtle">
                       <Icon name={project.source_type === "youtube" ? "youtube" : "briefcase"} className="h-14 w-14" />
@@ -864,7 +872,13 @@ export default function ProjectDetailPage({
                     aria-label={`Open profile: ${displayName}`}
                     className="block rounded-2xl transition-[box-shadow,filter] hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-white/15"
                   >
-                    <img src={avatarUrl} alt={displayName} className="h-12 w-12 rounded-2xl object-cover" />
+                    <img
+                      src={avatarUrl}
+                      alt={displayName}
+                      loading="lazy"
+                      decoding="async"
+                      className="h-12 w-12 rounded-2xl object-cover"
+                    />
                   </Link>
                 ) : (
                   <Link

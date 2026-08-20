@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import PublicProfileTabs from "../../../components/profile/PublicProfileTabs";
 import ProfileModeSwitch from "../../../components/profile/ProfileModeSwitch";
@@ -7,6 +8,10 @@ import RatingDisplay from "../../../components/RatingDisplay";
 import { type BackendPublicProfileResponse } from "../../../lib/backendClient";
 import { buildSocialIconLinks } from "../../../lib/profileSocialLinks";
 import { resolvePublicProfileWithTalentFallback } from "../../../lib/publicProfileFallback";
+import {
+  isTrustedStoredMediaUrl,
+  trustedMediaConfiguration,
+} from "../../../lib/trustedMedia";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -214,6 +219,15 @@ export default async function PublicProfilePage({
   }
 
   const publicProfile = sanitizePublicProfile(profile);
+  const trustedMedia = trustedMediaConfiguration(process.env);
+  const optimizeBanner = isTrustedStoredMediaUrl(
+    publicProfile.banner_url,
+    trustedMedia,
+  );
+  const optimizeAvatar = isTrustedStoredMediaUrl(
+    publicProfile.avatar_url,
+    trustedMedia,
+  );
   const activeProfileView = resolveProfileView(publicProfile, view);
   const initialProfileTab = ["portfolio", "jobs", "reviews"].includes(tab || "")
     ? (tab as "portfolio" | "jobs" | "reviews")
@@ -257,8 +271,28 @@ export default async function PublicProfilePage({
         <section className="overflow-hidden rounded-[30px] border border-white/10 bg-[#141519] shadow-[0_28px_90px_-52px_rgba(0,0,0,1)]">
           <div className="relative min-h-[150px] border-b border-white/10 bg-[#18191d] sm:min-h-[226px]">
             {publicProfile.banner_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={publicProfile.banner_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+              optimizeBanner ? (
+                <Image
+                  src={publicProfile.banner_url}
+                  alt=""
+                  fill
+                  sizes="(max-width: 1560px) 100vw, 1560px"
+                  loading="eager"
+                  decoding="async"
+                  className="object-cover"
+                />
+              ) : (
+                // Arbitrary creator-linked images stay browser-fetched. Sending
+                // them through /_next/image would turn it into an open proxy.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={publicProfile.banner_url}
+                  alt=""
+                  loading="eager"
+                  decoding="async"
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              )
             ) : (
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(255,255,255,0.16),transparent_30%),radial-gradient(circle_at_78%_6%,rgba(255,255,255,0.08),transparent_26%),linear-gradient(135deg,rgba(255,255,255,0.09),rgba(255,255,255,0.018)_48%,rgba(0,0,0,0.28))]" />
             )}
@@ -270,11 +304,27 @@ export default async function PublicProfilePage({
               <div className="min-w-0 flex flex-col gap-4 sm:flex-row sm:items-start">
                 <div className="relative z-10 -mt-8 shrink-0 sm:-mt-12">
                   {publicProfile.avatar_url ? (
-                    <img
-                      src={publicProfile.avatar_url}
-                      alt={publicProfile.display_name}
-                      className="h-28 w-28 rounded-[28px] border border-white/20 bg-[#2a2b30] object-cover shadow-[0_24px_70px_-34px_rgba(0,0,0,1)] sm:h-[136px] sm:w-[136px]"
-                    />
+                    optimizeAvatar ? (
+                      <Image
+                        src={publicProfile.avatar_url}
+                        alt={publicProfile.display_name}
+                        width={136}
+                        height={136}
+                        sizes="(max-width: 640px) 112px, 136px"
+                        loading="eager"
+                        decoding="async"
+                        className="h-28 w-28 rounded-[28px] border border-white/20 bg-[#2a2b30] object-cover shadow-[0_24px_70px_-34px_rgba(0,0,0,1)] sm:h-[136px] sm:w-[136px]"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={publicProfile.avatar_url}
+                        alt={publicProfile.display_name}
+                        loading="eager"
+                        decoding="async"
+                        className="h-28 w-28 rounded-[28px] border border-white/20 bg-[#2a2b30] object-cover shadow-[0_24px_70px_-34px_rgba(0,0,0,1)] sm:h-[136px] sm:w-[136px]"
+                      />
+                    )
                   ) : (
                     <GenericAvatar />
                   )}

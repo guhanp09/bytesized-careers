@@ -5,19 +5,19 @@
 ```text
 LAST COMPLETED PHASE: Phase 10 — CI/CD and production platform (locally complete; remote CI, image build/scan and platform configuration remain external/environment gates)
 CURRENT PHASE: Phase 11 — metadata, SEO, performance and accessibility
-LAST COMPLETED ATOMIC SLICE: Phase 11G — `/me/activity/summary` ordinary reads changed from per-record expansion to bounded bulk reads. The implementation commit is named `perf(activity): batch workspace summary reads`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
-NEXT ATOMIC SLICE: Phase 11 PERF-001 — implement the previously analysed image trust split: exact `MEDIA_PUBLIC_BASE_URL` optimizer configuration only, arbitrary creator-linked images kept raw, and deliberate eager/lazy/decoding classification. Read Phase 11E/11F first; never introduce a wildcard remote pattern.
-PHASE 11 STATUS: SEO-001/003/004 VALIDATED; SEO-002 IMPLEMENTED pending real-backend pagination; PERF-001 IN_PROGRESS (actual LCP elements measured; safe exact-origin image work remains); PERF-002 and CORRECT-007 IN_PROGRESS; A11Y-001 NOT_STARTED; A11Y-002 BLOCKED_EXTERNAL for the genuinely manual review.
+LAST COMPLETED ATOMIC SLICE: Phase 11H — first-party image optimization is exact-origin and exact-key only; creator-linked media stays browser-fetched. The implementation commit is named `perf(images): optimize only owned media`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
+NEXT ATOMIC SLICE: Phase 11 PERF-002/CORRECT-007 — finish the remaining measurable workspace-scale work: reproducible bundle report, 100-concurrent-session correctness exercise, and activity-summary payload pagination. Survey existing paging/API consumers before changing the response contract.
+PHASE 11 STATUS: SEO-001/003/004 and PERF-001 VALIDATED; SEO-002 IMPLEMENTED pending real-backend pagination; PERF-002 and CORRECT-007 IN_PROGRESS; A11Y-001 NOT_STARTED; A11Y-002 BLOCKED_EXTERNAL for the genuinely manual review.
 CURRENT ALEMBIC HEAD: 0069_support_tickets (single head; 0060-0064 earlier, then 0065_legal_acceptances, 0066_notification_preferences, 0067_account_deletion_requests, 0068_account_deletion_hidden_at, 0069)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
 IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
-NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRET; GOOGLE_OAUTH_EXCHANGE_SECRET shared only between NextAuth and FastAPI; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID; INVITE_ONLY_BETA (default false — leaving it unset preserves open registration exactly); MAX_REQUEST_BODY_BYTES and MAX_MEDIA_REQUEST_BODY_BYTES from RATE-004; EMAIL_WORKER_IN_PROCESS (default false) and EMAIL_WORKER_INTERVAL_SECONDS (default 5) from EMAIL-002; EMAIL_WEBHOOK_SECRET from EMAIL-004 (unset means the delivery webhook refuses everything, which is the intended fail-closed posture, not a bug). These are documented in backend/app/core/config.py rather than backend/.env.example, which tooling may not read or write (BLOCKED_ENVIRONMENT)
+NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRET; GOOGLE_OAUTH_EXCHANGE_SECRET shared only between NextAuth and FastAPI; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID; INVITE_ONLY_BETA (default false — leaving it unset preserves open registration exactly); MAX_REQUEST_BODY_BYTES and MAX_MEDIA_REQUEST_BODY_BYTES from RATE-004; EMAIL_WORKER_IN_PROCESS (default false) and EMAIL_WORKER_INTERVAL_SECONDS (default 5) from EMAIL-002; EMAIL_WEBHOOK_SECRET from EMAIL-004 (unset means the delivery webhook refuses everything, which is the intended fail-closed posture, not a bug); frontend server-only MEDIA_PUBLIC_BASE_URL plus MEDIA_BASE_PATH, which must match the backend canonical media configuration. Backend settings are documented in backend/app/core/config.py; the frontend media settings are also documented in `.env.example` and `DEPLOYMENT.md`.
 NEW DEPENDENCIES: backend now declares its already-locked runtime `httpx==0.28.1` and `httpcore==1.0.9` usage directly; no package version changed
 NEW SERVICES: app.services.safe_outbound_fetch shared public-URL boundary; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md complete caller inventory; plus all previously documented OAuth/session/strong-auth services
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
-KNOWN TEST FAILURES: no task-caused failure is open. Phase 11G's query-bound test is 1 passed; its six-file marketplace/applicant/review/payment/transition/messaging semantic matrix exited 0. That matrix was accidentally invoked at `-qq` (the repository already supplies `-q`), so pytest suppressed its numeric pass total; this is recorded rather than invented. Phase 11F focused TypeScript/ESLint and its 3-case production browser regression remain green. Do not use this contended host for timing claims. The last certified broad counts remain frontend node 1,251 and backend 7,499 passed / 65 skipped.
-COMMANDS TO RESUME: `git status --short`; read Phase 11E through 11G; inspect `next.config.ts`, `app/u/[slug]/page.tsx`, the raw `<img>` inventory, and the existing `MEDIA_PUBLIC_BASE_URL`/`MEDIA_BASE_PATH` contract before editing. Never run two pytest processes against the shared test database.
-FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase 11E/11F/11G in this handoff; next.config.ts; app/u/[slug]/page.tsx; backend/app/core/config.py; backend/app/services/media_storage.py
+KNOWN TEST FAILURES: no task-caused failure is open. Phase 11H frontend node is 1,257/1,257; focused image/header security is 28/28; production browser image delivery is 2/2; TypeScript and the final production build exit 0. Focused lint exits 0 with 27 warnings: 26 intentional raw-image warnings at untrusted/browser-only sinks and one pre-existing PostJobPage hook warning. Phase 11G's query-bound test is 1 passed; its six-file semantic matrix exited 0, with its numeric total unavailable because that historical command accidentally became `-qq`. Do not use this contended host for timing claims. The last backend broad count remains 7,499 passed / 65 skipped.
+COMMANDS TO RESUME: `git status --short`; inspect PERF-002/CORRECT-007 and the existing `workspacePaging`/activity consumers; implement the smallest independently measurable remaining scale slice. Never run two pytest processes against the shared test database, and never run Next build concurrently with Playwright against `.next`.
+FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase 11G/11H in this handoff; lib/workspacePaging.ts; backend/app/api/v1/routers/marketplace.py (activity summary route); lib/backendClient.ts; components/you/ApplicationsWorkspace.tsx; package.json/build tooling
 RELEASE ASSESSMENT: NO-GO
 ```
 
@@ -1320,6 +1320,57 @@ approved. The version registry is the machinery that will carry whatever the wor
 NEXT READY: the acceptance API surface (present outstanding documents, record acceptance), then
 PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST — the admin
 panel already has an append-only audit rule and suspension enforcement.
+```
+
+## Phase 11H checkpoint (PERF-001 — optimize owned media without creating an open proxy)
+
+```text
+STATUS: VALIDATED LOCALLY. Migration: none. Dependency: none.
+INITIAL HEAD: 16192bff9b7048187192f37d1aad480a8cbe9c0e
+COMMIT: `perf(images): optimize only owned media`
+
+CONTRACT: Next's image optimizer is a server-side network boundary. In production the frontend now
+requires the same server-only MEDIA_PUBLIC_BASE_URL and MEDIA_BASE_PATH as the backend. Only URLs that
+match both that exact origin and the backend's actual stored object shape are eligible:
+  avatars|banners / 32-hex owner / 16-hex token / gif|jpg|png|webp
+The emitted config has eight extension-specific, two-segment remote patterns. It allows no wildcard
+hostname, no redirect, no local IP, no SVG, and no response above 10 MiB. Arbitrary creator/channel/
+portfolio URLs remain ordinary browser requests; they never become attacker-directed `/_next/image`
+fetches. The classifier also refuses credentials, query, fragment and encoded separator/dot forms.
+
+PERFORMANCE DECISION: the Phase 11F production-artifact inventory established that all six sampled LCPs
+were text, so no image was blindly preloaded. CreatorJobs-owned public-profile hero media uses responsive
+Next Image sizing and eager async decode; every raw image in app/components now states a literal eager or
+lazy decision and async decode. Repeated/below-fold images are lazy; shell, visible hero, preview and
+editor images remain eager. This is classification, not a timing claim under host load >50.
+
+DEFECT CAUGHT BY BEHAVIORAL TEST: the first implementation allowed the owned prefix without restricting
+the extension. A same-origin SVG reached the network path and failed only at DNS (HTTP 500). The live
+test was kept; remote patterns were narrowed to the eight raster extensions, after which that SVG and
+all other out-of-contract inputs return 400 before fetch.
+
+MATERIALLY CHANGED: lib/trustedMedia.ts; next.config.ts; app/u/[slug]/page.tsx; raw image loading/decoding
+attributes across app components; .env.example; DEPLOYMENT.md; tests/imageDeliverySecurity.test.mjs;
+tests/e2e/image-delivery.spec.ts; tests/securityHeaders.test.mjs. The security-header test changed because
+its old structural assertion required a duplicated inline production predicate; the intended contract is
+now one shared predicate used by both HSTS and media classification, while all behavior assertions remain.
+
+VALIDATION:
+  node --test tests/imageDeliverySecurity.test.mjs tests/securityHeaders.test.mjs -> 28 passed
+  node --test tests/*.test.mjs                                                    -> 1,257 passed
+  npx tsc --noEmit                                                               -> exit 0
+  focused ESLint                                                                 -> exit 0, 27 warnings
+    (26 deliberate browser-only raw-image warnings; 1 pre-existing hook warning)
+  final production npm run build                                                 -> exit 0, 32 routes
+  emitted .next config inspection                                                -> 8 exact patterns,
+    redirects 0, body cap 10,485,760, local IP false, SVG false
+  Playwright production artifact tests/e2e/image-delivery.spec.ts --workers=1    -> 2 passed (9.3s)
+  git diff --check                                                               -> exit 0
+
+LAST_FULL_SUITE_OBSERVED (frontend): 1,257 passed, 0 failed, 0 skipped.
+EXPECTED_CURRENT_COLLECTION (backend): unchanged at 7,499; no backend test was added.
+EXTERNAL: production media origin/storage provisioning and live-origin delivery remain under MEDIA-004.
+NEXT: PERF-002/CORRECT-007 — bundle report, 100-session correctness and activity payload pagination.
 ```
 
 ## Phase 11G checkpoint (PERF-002/CORRECT-007 — one workspace summary, not hundreds of reads)

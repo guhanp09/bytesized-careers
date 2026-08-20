@@ -86,6 +86,7 @@ export function PortfolioPoster({
           src={item.thumbnailUrl ?? ""}
           alt=""
           loading="lazy"
+          decoding="async"
           onError={() => setBroken(true)}
           className="absolute inset-0 h-full w-full object-cover"
         />

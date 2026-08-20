@@ -90,6 +90,8 @@ export default function PortfolioPreviewRail({
                   <img
                     src={item.thumbnail_url}
                     alt={item.title}
+                    loading="lazy"
+                    decoding="async"
                     className="h-full w-full object-cover transition-[filter,transform] duration-500 group-hover:scale-[1.015] group-hover:brightness-110"
                   />
                 ) : (

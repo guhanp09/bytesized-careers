@@ -158,6 +158,8 @@ export function JobCard({ job, matchReasons }: { job: Job; matchReasons?: string
               <img
                 src={job.channel.logoUrl}
                 alt=""
+                loading="lazy"
+                decoding="async"
                 className="vt-avatar h-11 w-11 shrink-0 rounded-full border border-[var(--vt-avatar-line,rgba(255,255,255,0.15))] bg-white/10 object-cover"
               />
             ) : (

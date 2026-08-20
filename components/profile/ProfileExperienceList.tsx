@@ -34,6 +34,8 @@ function ExperienceIdentityMark({
           src={cleanLogoUrl}
           alt=""
           aria-hidden="true"
+          loading="lazy"
+          decoding="async"
           onError={() => setFailedUrl(cleanLogoUrl)}
           className="h-full w-full object-cover"
         />

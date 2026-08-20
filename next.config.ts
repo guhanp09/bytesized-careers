@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 
+import {
+  isStrictProductionEnvironment,
+  trustedMediaConfiguration,
+} from "./lib/trustedMedia.ts";
+
 const unsafeSecretValues = new Set([
   "",
   "change-me",
@@ -11,13 +16,7 @@ const unsafeSecretValues = new Set([
   "replace-me",
 ]);
 
-const explicitAppEnv = () => process.env.APP_ENV || process.env.NEXT_PUBLIC_APP_ENV;
-
-const isStrictProductionEnv = () => {
-  const appEnv = explicitAppEnv();
-  if (appEnv) return appEnv === "production";
-  return process.env.VERCEL_ENV === "production";
-};
+const isStrictProductionEnv = () => isStrictProductionEnvironment(process.env);
 
 const requireProductionEnv = () => {
   if (!isStrictProductionEnv()) return;
@@ -38,6 +37,7 @@ const requireProductionEnv = () => {
   requireSafeSecret("NEXTAUTH_SECRET");
   requireValue("NEXTAUTH_URL");
   requireValue("NEXT_PUBLIC_SITE_URL");
+  requireValue("MEDIA_PUBLIC_BASE_URL");
   requireValue("GOOGLE_CLIENT_ID");
   requireSafeSecret("GOOGLE_CLIENT_SECRET");
 
@@ -78,8 +78,21 @@ const requireProductionEnv = () => {
 
 requireProductionEnv();
 
+const trustedMedia = trustedMediaConfiguration(process.env);
+const MAX_OPTIMIZED_MEDIA_RESPONSE_BYTES = 10 * 1024 * 1024;
+
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["localhost", "127.0.0.1"],
+  images: {
+    // This is a server-side fetch boundary. Only the two object-key prefixes
+    // CreatorJobs itself writes are eligible; creator-linked portfolio/channel
+    // images remain ordinary browser requests and never enter /_next/image.
+    remotePatterns: trustedMedia?.remotePatterns ?? [],
+    maximumRedirects: 0,
+    maximumResponseBody: MAX_OPTIMIZED_MEDIA_RESPONSE_BYTES,
+    dangerouslyAllowLocalIP: false,
+    dangerouslyAllowSVG: false,
+  },
   async headers() {
     const productionHeaders = isStrictProductionEnv()
       ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }]

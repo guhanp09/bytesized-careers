@@ -132,7 +132,13 @@ export default function ReferenceVideos({ videos }: { videos: ReferenceVideo[] }
               <div className="aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] shadow-[0_18px_55px_-38px_rgba(0,0,0,1)]">
                 {activeItem.thumbnail_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={activeItem.thumbnail_url} alt="" className="h-full w-full object-cover" />
+                  <img
+                    src={activeItem.thumbnail_url}
+                    alt=""
+                    loading="eager"
+                    decoding="async"
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-subtle">
                     <Icon name="youtube" className="h-7 w-7" />

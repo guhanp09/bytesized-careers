@@ -28,6 +28,7 @@ import {
 
 const config = readFileSync(new URL("../next.config.ts", import.meta.url), "utf8");
 const proxySource = readFileSync(new URL("../proxy.ts", import.meta.url), "utf8");
+const trustedMediaSource = readFileSync(new URL("../lib/trustedMedia.ts", import.meta.url), "utf8");
 
 const headerValue = (key) => {
   const pattern = new RegExp(
@@ -99,7 +100,14 @@ test("HSTS ships only where TLS is actually terminated", () => {
     config,
     /isStrictProductionEnv\(\)\s*\n?\s*\?\s*\[\{\s*key:\s*"Strict-Transport-Security"/
   );
-  assert.match(config, /const isStrictProductionEnv = \(\) => \{/);
+  // The predicate is shared with runtime trusted-media classification. Keeping
+  // a second inline implementation here could make a build allow one origin
+  // while the profile page classifies another.
+  assert.match(
+    config,
+    /const isStrictProductionEnv = \(\) => isStrictProductionEnvironment\(process\.env\)/
+  );
+  assert.match(trustedMediaSource, /export function isStrictProductionEnvironment/);
   assert.doesNotMatch(
     config,
     /Strict-Transport-Security[\s\S]{0,200}NEXT_PUBLIC_/,

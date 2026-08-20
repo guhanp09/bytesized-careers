@@ -406,6 +406,8 @@ export function InteractionAvatar({
         <img
           src={src}
           alt=""
+          loading="lazy"
+          decoding="async"
           onError={() => setBroken(true)}
           className="absolute inset-0 h-full w-full object-cover"
         />

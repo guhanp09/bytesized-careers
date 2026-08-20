@@ -115,7 +115,13 @@ function PortfolioDetailPopup({
             <div className="aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] shadow-[0_18px_55px_-38px_rgba(0,0,0,1)]">
               {item.thumbnail_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={item.thumbnail_url} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={item.thumbnail_url}
+                  alt=""
+                  loading="eager"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-subtle">
                   <Icon name="image" className="h-8 w-8" />

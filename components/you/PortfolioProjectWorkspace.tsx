@@ -631,6 +631,8 @@ export function PortfolioProjectCard({
           <img
             src={item.thumbnail_url}
             alt={item.title}
+            loading="lazy"
+            decoding="async"
             className={[
               "h-full w-full object-cover transition-[filter,transform] duration-500",
               isProjectClickable ? "group-hover:scale-[1.015] group-hover:brightness-110" : "",
@@ -1584,6 +1586,8 @@ export default function PortfolioProjectWorkspace({
           <img
             src={draft.thumbnailUrl}
             alt="Project preview"
+            loading="eager"
+            decoding="async"
             className="h-full w-full object-cover"
           />
         ) : (
@@ -1591,6 +1595,8 @@ export default function PortfolioProjectWorkspace({
           <img
             src={placeholderCoverUrl(draft.title)}
             alt="Generated project preview"
+            loading="eager"
+            decoding="async"
             className="h-full w-full object-cover opacity-75"
           />
         )}
@@ -1735,7 +1741,13 @@ export default function PortfolioProjectWorkspace({
               <div className="mt-2 aspect-video overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035]">
                 {draft.thumbnailUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={draft.thumbnailUrl} alt="Thumbnail preview" className="h-full w-full object-cover" />
+                  <img
+                    src={draft.thumbnailUrl}
+                    alt="Thumbnail preview"
+                    loading="eager"
+                    decoding="async"
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm font-semibold text-subtle">
                     No thumbnail found

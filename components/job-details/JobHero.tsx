@@ -145,6 +145,8 @@ export default function JobHero({
           <img
             src={job.channel.logoUrl}
             alt={`${identityName} avatar`}
+            loading="eager"
+            decoding="async"
             className="h-11 w-11 flex-shrink-0 rounded-full border border-white/15 bg-white/10 object-cover sm:h-12 sm:w-12"
           />
         ) : (

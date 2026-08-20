@@ -151,6 +151,14 @@ Both should return `{"status":"ok"}`.
 
 Default cheapest investor mode uses seeded external/demo image URLs.
 
+Production must set `MEDIA_PUBLIC_BASE_URL` on both the backend and the frontend
+build/runtime to the same canonical HTTPS origin, with the same
+`MEDIA_BASE_PATH` (default `/media`). The frontend uses this server-only value
+to allow optimization only for the exact `avatars/` and `banners/` object-key
+prefixes. Do not make it a `NEXT_PUBLIC_*` value and do not substitute a
+wildcard image host. Arbitrary portfolio/channel images remain direct browser
+requests by design.
+
 Without persistent storage, user-uploaded avatars and banners may not survive Render redeploys or instance replacement. This is acceptable for the cheapest investor prototype if uploads are not the core demo.
 
 Optional upgrade if persistent uploads matter:
@@ -190,6 +198,8 @@ NEXTAUTH_URL=https://your-vercel-url
 NEXT_PUBLIC_SITE_URL=https://your-vercel-url
 NEXT_PUBLIC_BACKEND_URL=https://your-render-api/api/v1
 BACKEND_URL=https://your-render-api/api/v1
+MEDIA_PUBLIC_BASE_URL=https://your-media-origin
+MEDIA_BASE_PATH=/media
 NEXTAUTH_SECRET=replace-with-strong-random-value
 GOOGLE_CLIENT_ID=replace-me
 GOOGLE_CLIENT_SECRET=replace-me

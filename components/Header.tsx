@@ -453,6 +453,8 @@ export default function Header() {
                     <img
                       src={avatarUrl}
                       alt={showName}
+                      loading="eager"
+                      decoding="async"
                       className="h-8 w-8 rounded-full object-cover border border-white/20"
                     />
                   ) : (
@@ -475,7 +477,13 @@ export default function Header() {
                         <div className="flex items-center gap-3 px-2 py-2">
                           <div className="h-10 w-10 rounded-full border border-white/15 bg-white/10 overflow-hidden flex items-center justify-center">
                             {avatarUrl ? (
-                              <img src={avatarUrl} alt={showName} className="h-full w-full object-cover" />
+                              <img
+                                src={avatarUrl}
+                                alt={showName}
+                                loading="eager"
+                                decoding="async"
+                                className="h-full w-full object-cover"
+                              />
                             ) : (
                               <Icon name="user" className="w-5 h-5 text-white/70" />
                             )}

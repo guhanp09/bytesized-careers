@@ -312,7 +312,14 @@ function HiringIdentityAvatar({
       className={`${className} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/12 bg-white/[0.055] text-sm font-semibold text-white/72`}
     >
       {imageUrl ? (
-        <img src={imageUrl} alt="" aria-hidden="true" className="h-full w-full object-cover" />
+        <img
+          src={imageUrl}
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          decoding="async"
+          className="h-full w-full object-cover"
+        />
       ) : initials ? (
         <span>{initials}</span>
       ) : (

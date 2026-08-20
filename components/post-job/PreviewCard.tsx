@@ -120,7 +120,13 @@ export default function PreviewCard({
           <div className="flex items-center gap-3 min-w-0">
             <div className="h-12 w-12 rounded-full border border-white/15 bg-white/10 flex-shrink-0 inline-flex items-center justify-center">
               {profileImageUrl ? (
-                <img src={profileImageUrl} alt="Brand" className="h-full w-full rounded-full object-cover" />
+                <img
+                  src={profileImageUrl}
+                  alt="Brand"
+                  loading="eager"
+                  decoding="async"
+                  className="h-full w-full rounded-full object-cover"
+                />
               ) : (
                 <Icon name={getPlatformIcon(platform)} className="w-6 h-6 text-white/70" />
               )}

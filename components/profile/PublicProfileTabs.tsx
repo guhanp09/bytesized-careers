@@ -376,7 +376,14 @@ function HiringForRail({ items }: { items: BackendRepresentedChannel[] }) {
             >
               <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/12 bg-white/[0.045] text-sm font-semibold text-white/66 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                 {item.avatar_url ? (
-                  <img src={item.avatar_url} alt="" aria-hidden="true" className="h-full w-full object-cover" />
+                  <img
+                    src={item.avatar_url}
+                    alt=""
+                    aria-hidden="true"
+                    loading="lazy"
+                    decoding="async"
+                    className="h-full w-full object-cover"
+                  />
                 ) : initials ? (
                   <span>{initials}</span>
                 ) : (
@@ -763,6 +770,8 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
                           <img
                             src={item.thumbnail_url}
                             alt={item.title}
+                            loading="lazy"
+                            decoding="async"
                             className="h-full w-full object-cover transition-[filter,transform] duration-500 group-hover:scale-[1.015] group-hover:brightness-110"
                           />
                         ) : (

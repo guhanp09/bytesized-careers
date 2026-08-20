@@ -1002,7 +1002,13 @@ function OwnerHiringExperienceList({ items }: { items: Job[] }) {
           <div key={`owner-hiring-experience-${job.id}`} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 py-4 first:pt-0 last:pb-0">
             <div className="flex h-11 w-11 shrink-0 self-start items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] text-xs font-semibold text-white/62">
               {job.channel.logoUrl ? (
-                <img src={job.channel.logoUrl} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={job.channel.logoUrl}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                />
               ) : (
                 initials || "CJ"
               )}
@@ -4446,7 +4452,13 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     className="group/avatar relative h-20 w-20 overflow-hidden rounded-2xl border border-white/15 bg-white/[0.06] shadow-[0_18px_48px_-32px_rgba(0,0,0,1)] transition-colors hover:border-white/25 hover:bg-white/[0.08] focus:outline-none focus:ring-2 focus:ring-white/15 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
                   >
                     {avatarPreviewUrl ? (
-                      <img src={avatarPreviewUrl} alt={primaryDisplayName} className="h-full w-full object-cover" />
+                      <img
+                        src={avatarPreviewUrl}
+                        alt={primaryDisplayName}
+                        loading="eager"
+                        decoding="async"
+                        className="h-full w-full object-cover"
+                      />
                     ) : (
                       <GenericAvatar />
                     )}
@@ -4925,6 +4937,8 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
             <img
               src={bannerPreviewUrl}
               alt=""
+              loading="eager"
+              decoding="async"
               className="absolute inset-0 h-full w-full object-cover"
             />
           ) : (
@@ -4986,6 +5000,8 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     <img
                       src={avatarPreviewUrl}
                       alt={profile.display_name || profile.username || "Profile avatar"}
+                      loading="eager"
+                      decoding="async"
                       className="h-full w-full object-cover transition duration-200 group-hover/avatar:brightness-[0.72] group-focus-visible/avatar:brightness-[0.72]"
                     />
                   ) : (
@@ -5047,6 +5063,8 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                                 <img
                                   src={channel.thumbnail_url}
                                   alt={channel.title}
+                                  loading="lazy"
+                                  decoding="async"
                                   className="h-6 w-6 rounded-full object-cover"
                                 />
                               ) : (
@@ -5796,6 +5814,8 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                               <img
                                 src={portfolioYouTubePreview.thumbnail_url}
                                 alt={portfolioYouTubePreview.title}
+                                loading="eager"
+                                decoding="async"
                                 className="h-full w-full object-cover"
                               />
                             ) : (
@@ -6036,7 +6056,13 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                               <div className="grid gap-0 sm:grid-cols-[220px_minmax(0,1fr)]">
                                 <div className="aspect-video bg-white/[0.04] sm:aspect-auto">
                                   {item.thumbnail_url ? (
-                                    <img src={item.thumbnail_url} alt={item.title} className="h-full w-full object-cover" />
+                                    <img
+                                      src={item.thumbnail_url}
+                                      alt={item.title}
+                                      loading="lazy"
+                                      decoding="async"
+                                      className="h-full w-full object-cover"
+                                    />
                                   ) : (
                                     <div className="h-full min-h-[150px] w-full inline-flex items-center justify-center text-subtle">
                                       <Icon name={item.source_type === "youtube" ? "youtube" : "briefcase"} className="h-9 w-9" />

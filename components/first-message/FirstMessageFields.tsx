@@ -171,7 +171,13 @@ function PortfolioPicker({
                 <span className="relative h-11 w-16 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-white/[0.05]">
                   {opt.thumbnailUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={opt.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                    <img
+                      src={opt.thumbnailUrl}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="h-full w-full object-cover"
+                    />
                   ) : (
                     <span className="flex h-full w-full items-center justify-center text-subtle">
                       <Icon name="image" className="h-4 w-4" />
