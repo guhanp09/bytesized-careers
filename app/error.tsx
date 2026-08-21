@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 
 import { PageHeader, StateCard } from "../components/ui";
+import { reportClientError } from "../lib/clientErrorReporter";
 
 const primaryButton =
   "inline-flex h-10 cursor-pointer items-center justify-center rounded-xl bg-white px-4 text-sm font-semibold text-black transition hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30";
@@ -18,8 +19,7 @@ export default function RouteError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Surface for local debugging; wire to an error tracker (e.g. Sentry) later.
-    console.error("Route error:", error);
+    reportClientError(error, "route");
   }, [error]);
 
   return (

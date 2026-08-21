@@ -595,6 +595,11 @@ class TestEligibilityIsDecidedInOnePlace:
             "status": None,
             "attempted_identity_id": None,
             "attempted_at": None,
+            # This class defines every recent/stale boundary relative to NOW.
+            # Pass that same clock into the production decision seam; otherwise
+            # a full suite that takes longer than the three-minute liveness
+            # window silently turns the "recent" fixtures stale while it runs.
+            "now": self.NOW,
         }
         base.update(overrides)
         return should_enrich_brand_about(**base)

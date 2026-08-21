@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 
+import { reportClientError } from "../lib/clientErrorReporter";
+
 // global-error replaces the root layout when the layout itself throws, so the
 // global stylesheet is not applied here. Keep everything inline-styled so the
 // fallback still looks intentional and on-brand.
@@ -13,7 +15,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Global error:", error);
+    reportClientError(error, "global");
   }, [error]);
 
   return (

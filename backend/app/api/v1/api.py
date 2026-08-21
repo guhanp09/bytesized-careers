@@ -23,6 +23,7 @@ from app.api.v1.routers.reviews import router as reviews_router
 from app.api.v1.routers.roles import router as roles_router
 from app.api.v1.routers.search import router as search_router
 from app.api.v1.routers.support import router as support_router
+from app.api.v1.routers.telemetry import router as telemetry_router
 from app.api.v1.routers.tools import router as tools_router
 from app.api.v1.routers.unsubscribe import router as unsubscribe_router
 from app.api.v1.routers.user_profile import router as user_profile_router
@@ -45,6 +46,7 @@ api_router.include_router(profile_completion_router)
 api_router.include_router(roles_router)
 api_router.include_router(search_router)
 api_router.include_router(support_router)
+api_router.include_router(telemetry_router)
 api_router.include_router(reviews_router)
 api_router.include_router(realtime_router)
 api_router.include_router(tools_router)

@@ -55,7 +55,10 @@ green on a real runner, not when it is written.
 ## Artifacts
 
 Uploaded: backend and PostgreSQL `junit-*.xml`, Playwright reports and traces,
-SBOMs.
+SBOMs, and release-keyed private source maps. The source-map artifact is kept
+for 30 days and contains application source, so it follows repository artifact
+access; `build:release` removes every client map and map hint from `.next/static`
+before the runtime can ship.
 
 The junit files are uploaded on success as well as failure, deliberately. A suite
 that silently loses tests still passes, so the collected count is evidence even

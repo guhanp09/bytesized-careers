@@ -216,3 +216,4 @@ STRONG_AUTH_FACTOR_CHANGE_LIMIT = RateLimitRule(
 MARKETPLACE_ACTION_LIMIT = RateLimitRule("marketplace_action", limit=120, window_seconds=300)
 REPORT_LIMIT = RateLimitRule("report", limit=30, window_seconds=600)
 CHECKOUT_LIMIT = RateLimitRule("checkout", limit=30, window_seconds=600)
+CLIENT_ERROR_LIMIT = RateLimitRule("client_error", limit=30, window_seconds=300)

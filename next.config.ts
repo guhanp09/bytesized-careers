@@ -80,8 +80,21 @@ requireProductionEnv();
 
 const trustedMedia = trustedMediaConfiguration(process.env);
 const MAX_OPTIMIZED_MEDIA_RESPONSE_BYTES = 10 * 1024 * 1024;
+const release = (
+  process.env.NEXT_PUBLIC_RELEASE_SHA ||
+  process.env.CREATORJOBS_RELEASE ||
+  process.env.VERCEL_GIT_COMMIT_SHA ||
+  ""
+).trim();
+const safeRelease = /^[A-Za-z0-9][A-Za-z0-9._-]{6,99}$/.test(release) ? release : undefined;
 
 const nextConfig: NextConfig = {
+  // Release builds generate browser maps only long enough for
+  // collect-private-source-maps.mjs to archive them and strip every public
+  // copy. `npm run build` never emits them; `npm run build:release` is the
+  // fail-closed production path.
+  productionBrowserSourceMaps: process.env.CREATORJOBS_PRIVATE_SOURCE_MAPS === "true",
+  env: safeRelease ? { NEXT_PUBLIC_RELEASE_SHA: safeRelease } : undefined,
   allowedDevOrigins: ["localhost", "127.0.0.1"],
   images: {
     // This is a server-side fetch boundary. Only the two object-key prefixes

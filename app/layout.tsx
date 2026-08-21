@@ -49,6 +49,7 @@ import { isQaPersonaUiAllowed } from "../lib/qaPersonas";
 import VisualThemeToggle from "../components/theme/VisualThemeToggle";
 import { VISUAL_THEME_BOOTSTRAP_SCRIPT } from "../lib/visualTheme";
 import AppContent from "../components/AppContent";
+import ClientErrorReporter from "../components/ClientErrorReporter";
 
 import { CSP_NONCE_HEADER } from "../lib/contentSecurityPolicy";
 
@@ -70,6 +71,7 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} bg-[var(--vt-canvas,#0b0b0f)] text-[var(--vt-ink,#ffffff)] antialiased`}
       >
+        <ClientErrorReporter />
         {/* Apply a stored "enhanced" theme choice before first paint (no flash).
             The visual theme is a reversible CSS-token preview; see lib/visualTheme.ts. */}
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: VISUAL_THEME_BOOTSTRAP_SCRIPT }} />

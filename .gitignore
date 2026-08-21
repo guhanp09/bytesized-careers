@@ -54,3 +54,7 @@ test_creatorjobs_backend.db
 
 # Scratch parity dumps — derived output, never committed.
 .parity-dumps/
+
+# Private, release-keyed browser source maps. CI stores these as a protected
+# artifact after removing every web-addressable copy from `.next/static`.
+.private-artifacts/

@@ -184,7 +184,7 @@ Use these exact settings:
 
 - **Root Directory:** repo root
 - **Install Command:** Vercel default
-- **Build Command:** `npm run build`
+- **Build Command:** `npm run build:release`
 - **Output:** Next.js default
 
 ### Vercel Environment Variables
@@ -209,6 +209,14 @@ NEXT_PUBLIC_ENABLE_EMAIL_AUTH=false
 ```
 
 For investor staging, do not set `NEXT_PUBLIC_USE_LOCAL_MOCKS=true`.
+
+`build:release` enables browser source maps for the build, archives them under a
+release identifier, and removes every web-addressable map before the runtime can
+ship. Vercel supplies `VERCEL_GIT_COMMIT_SHA` automatically. Other build systems
+must set `CREATORJOBS_RELEASE` to an immutable 7–100 character release ID and
+store `.private-artifacts/source-maps/<release>/` in access-controlled artifact
+storage. Never copy that directory into the web runtime. Plain local development
+continues to use `npm run build` and requires no release identifier.
 
 The internal `DEV · Backend / Mock` switch is hidden in staging unless you explicitly set:
 

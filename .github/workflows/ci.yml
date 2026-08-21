@@ -55,7 +55,20 @@ jobs:
       # Build last: it is the slowest step and the least specific failure. A type
       # error should be reported as a type error, not as a build that broke.
       - name: Production build
-        run: npm run build
+        env:
+          CREATORJOBS_RELEASE: ${{ github.sha }}
+        run: npm run build:release
+
+      # Contains application source. Access follows repository artifact access;
+      # it is never copied into the runtime and every public `.next/static/*.map`
+      # was removed by the release-build command above.
+      - name: Upload private browser source maps
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-source-maps-${{ github.sha }}
+          path: .private-artifacts/source-maps/${{ github.sha }}/
+          if-no-files-found: error
+          retention-days: 30
 
   frontend-audit:
     name: Frontend production dependency audit

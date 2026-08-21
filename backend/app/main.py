@@ -48,6 +48,10 @@ app = FastAPI(
         {"name": "content-style", "description": "Content style reference endpoints"},
         {"name": "users", "description": "Public profile endpoints"},
         {"name": "reviews", "description": "Verified engagement and two-sided review endpoints"},
+        {
+            "name": "telemetry",
+            "description": "Privacy-bounded browser failure ingestion",
+        },
         {"name": "qa", "description": "Allowlisted staging/test QA persona controls"},
         {"name": "dev", "description": "Development-only utility endpoints"},
     ],
