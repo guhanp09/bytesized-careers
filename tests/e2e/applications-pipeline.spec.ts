@@ -77,11 +77,22 @@ async function openWorkspace(page: Page, scenario: ScenarioName = BOARD) {
 }
 
 async function openRecruiterPipeline(page: Page, scenario: ScenarioName = BOARD) {
-  await openWorkspace(page, scenario);
+  // Enter the board through its canonical deep link. Opening Inbox first leaves
+  // the selected application visibly open for the auto-review dwell threshold,
+  // which correctly promotes it from New to Reviewing before these tests can
+  // assert the untouched scenario counts. Inbox -> Pipeline navigation remains
+  // covered separately; board tests need a board that still matches its manifest.
+  await page.goto(
+    `/applications?demo=1&seed=${scenario}&view=pipeline&mode=recruiter&direction=received`,
+    { waitUntil: "domcontentloaded" }
+  );
   const main = page.getByRole("main");
-  await switchPersona(page, "hiring");
-  await main.getByTestId("applications-view-pipeline").click();
+  await expect(main.getByTestId("applications-workspace")).toBeVisible({ timeout: 20_000 });
   await expect(main.getByTestId("pipeline-board")).toBeVisible();
+  // The shell and an empty board render before the selected scenario manifest
+  // arrives. Interact only after the seeded board has replaced that pending tree;
+  // otherwise its remount can legitimately clear a scope selection mid-test.
+  await expect(main.getByTestId("pipeline-row").first()).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe("applications pipeline view", () => {

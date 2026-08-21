@@ -757,3 +757,28 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
 
   return entries.sort((a, b) => b.sortKey - a.sortKey).map((entry) => entry.item);
 }
+
+/**
+ * Append one keyset page without duplicating a deep-link anchor.
+ *
+ * The backend guarantees page order, including a source/id tie-breaker. Modern
+ * JavaScript sorting is stable, so equal timestamps retain that server order
+ * across the existing page followed by the next page. Existing records win:
+ * an anchor deliberately appears once on page one and again at its ordinary
+ * chronological position later, and the later duplicate must not reset local
+ * unread/UI state.
+ */
+export function mergeOwnerInteractionPages(
+  current: OwnerInteraction[],
+  incoming: OwnerInteraction[]
+): OwnerInteraction[] {
+  const byId = new Map(current.map((item) => [item.id, item]));
+  for (const item of incoming) {
+    if (!byId.has(item.id)) byId.set(item.id, item);
+  }
+  const timestamp = (item: OwnerInteraction) => {
+    const value = Date.parse(item.updatedAt || item.createdAt);
+    return Number.isFinite(value) ? value : 0;
+  };
+  return [...byId.values()].sort((a, b) => timestamp(b) - timestamp(a));
+}

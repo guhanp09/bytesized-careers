@@ -4,11 +4,12 @@ import hashlib
 import json
 import logging
 from datetime import UTC, datetime
+from typing import Annotated
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import String, and_, delete, func, or_, select
+from sqlalchemy import String, and_, case, delete, func, literal, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,6 +73,7 @@ from app.schemas.marketplace import (
     TalentListingUpdate,
 )
 from app.services import (
+    activity_pagination,
     blocking_service,
     interaction_status,
     review_service,
@@ -2251,51 +2253,162 @@ async def set_interest_archive_state(
 
 @router.get("/me/activity/summary", response_model=ActivitySummaryResponse)
 async def activity_summary(
+    mode: Annotated[
+        activity_pagination.ActivityMode,
+        Query(description="Viewer workspace to page; all preserves the legacy combined feed."),
+    ] = "all",
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=activity_pagination.MAX_ACTIVITY_PAGE_LIMIT,
+            description="Maximum interaction rows, excluding one optional deep-link anchor.",
+        ),
+    ] = activity_pagination.DEFAULT_ACTIVITY_PAGE_LIMIT,
+    cursor: Annotated[str | None, Query(max_length=1024)] = None,
+    include: Annotated[
+        UUID | None,
+        Query(description="Owned deep-linked interaction to include on the first page."),
+    ] = None,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> ActivitySummaryResponse:
+    try:
+        page = await activity_pagination.load_activity_page(
+            session,
+            user_id=current_user.id,
+            mode=mode,
+            limit=limit,
+            cursor=cursor,
+            include_id=include,
+        )
+    except activity_pagination.InvalidActivityCursor as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "invalid_activity_cursor",
+                "message": "The activity cursor is invalid for this workspace.",
+            },
+        ) from exc
+
+    application_ids = {
+        key.record_id
+        for key in page.keys
+        if key.source in {"sent_application", "received_application"}
+    }
+    interest_ids = {
+        key.record_id
+        for key in page.keys
+        if key.source in {"sent_interest", "received_interest"}
+    }
+    application_rows = (
+        list(
+            (
+                await session.execute(
+                    select(JobApplication).where(JobApplication.id.in_(application_ids))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if application_ids
+        else []
+    )
+    interest_rows = (
+        list(
+            (
+                await session.execute(
+                    select(TalentInterest).where(TalentInterest.id.in_(interest_ids))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if interest_ids
+        else []
+    )
+    applications_by_id = {row.id: row for row in application_rows}
+    interests_by_id = {row.id: row for row in interest_rows}
+    sent_applications = [
+        applications_by_id[key.record_id]
+        for key in page.keys
+        if key.source == "sent_application" and key.record_id in applications_by_id
+    ]
+    received_applications = [
+        applications_by_id[key.record_id]
+        for key in page.keys
+        if key.source == "received_application" and key.record_id in applications_by_id
+    ]
+    sent_interests = [
+        interests_by_id[key.record_id]
+        for key in page.keys
+        if key.source == "sent_interest" and key.record_id in interests_by_id
+    ]
+    received_interests = [
+        interests_by_id[key.record_id]
+        for key in page.keys
+        if key.source == "received_interest" and key.record_id in interests_by_id
+    ]
+
+    # The historical combined response also carried a user's own jobs/listings
+    # when no interaction existed yet (draft resume depends on it). Preserve a
+    # bounded recent slice for that default contract. Mode-scoped workspace
+    # pages carry only contexts they actually reference. In both cases every
+    # page reference is prioritized, so an older interaction remains renderable.
+    owned_job_ids = {row.job_id for row in received_applications}
+    owned_listing_ids = {
+        row.talent_listing_id for row in received_interests
+    }
+    recent_context_limit = (
+        activity_pagination.ACTIVITY_CONTEXT_LIMIT if mode == "all" else 0
+    )
+    job_priority = (
+        case((Job.id.in_(owned_job_ids), 0), else_=1)
+        if owned_job_ids
+        else literal(1)
+    )
+    listing_priority = (
+        case((TalentListing.id.in_(owned_listing_ids), 0), else_=1)
+        if owned_listing_ids
+        else literal(1)
+    )
+    my_job_limit = recent_context_limit + len(owned_job_ids)
+    my_listing_limit = recent_context_limit + len(owned_listing_ids)
     my_jobs = (
-        await session.execute(
-            select(Job)
-            .where(Job.posted_by_user_id == current_user.id, Job.deleted_at.is_(None))
-            .order_by(Job.created_at.desc())
+        (
+            await session.execute(
+                select(Job)
+                .where(Job.posted_by_user_id == current_user.id, Job.deleted_at.is_(None))
+                .order_by(job_priority.asc(), Job.created_at.desc(), Job.id.desc())
+                .limit(my_job_limit)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+        if my_job_limit
+        else []
+    )
     my_talent_listings = (
-        await session.execute(
-            select(TalentListing)
-            .where(TalentListing.owner_user_id == current_user.id, TalentListing.deleted_at.is_(None))
-            .order_by(TalentListing.created_at.desc())
+        (
+            await session.execute(
+                select(TalentListing)
+                .where(
+                    TalentListing.owner_user_id == current_user.id,
+                    TalentListing.deleted_at.is_(None),
+                )
+                .order_by(
+                    listing_priority.asc(),
+                    TalentListing.created_at.desc(),
+                    TalentListing.id.desc(),
+                )
+                .limit(my_listing_limit)
+            )
         )
-    ).scalars().all()
-    sent_applications = (
-        await session.execute(
-            select(JobApplication)
-            .where(JobApplication.applicant_user_id == current_user.id)
-            .order_by(JobApplication.created_at.desc())
-        )
-    ).scalars().all()
-    received_applications = (
-        await session.execute(
-            select(JobApplication)
-            .where(JobApplication.job_owner_user_id == current_user.id)
-            .order_by(JobApplication.created_at.desc())
-        )
-    ).scalars().all()
-    received_interests = (
-        await session.execute(
-            select(TalentInterest)
-            .where(TalentInterest.owner_user_id == current_user.id)
-            .order_by(TalentInterest.created_at.desc())
-        )
-    ).scalars().all()
-    sent_interests = (
-        await session.execute(
-            select(TalentInterest)
-            .where(TalentInterest.recruiter_user_id == current_user.id)
-            .order_by(TalentInterest.created_at.desc())
-        )
-    ).scalars().all()
+        .scalars()
+        .all()
+        if my_listing_limit
+        else []
+    )
 
     related_job_ids = {
         row.job_id
@@ -2605,6 +2718,21 @@ async def activity_summary(
             _talent_read(row, users_by_id.get(row.owner_user_id))
             for row in related_listing_rows
         ],
+        page={
+            "mode": mode,
+            "limit": page.limit,
+            "returned": len(page.keys),
+            "total": page.total,
+            "has_more": page.has_more,
+            "next_cursor": page.next_cursor,
+            "snapshot_at": page.snapshot_at,
+            "counts": {
+                "sent_applications": page.counts["sent_application"],
+                "received_applications": page.counts["received_application"],
+                "sent_interests": page.counts["sent_interest"],
+                "received_interests": page.counts["received_interest"],
+            },
+        },
     )
     await session.commit()
     return response

@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -43,7 +44,21 @@ class SavedJob(Base):
 
 class JobApplication(Base):
     __tablename__ = "job_applications"
-    __table_args__ = (UniqueConstraint("job_id", "applicant_user_id", name="uq_job_applications_job_applicant"),)
+    __table_args__ = (
+        UniqueConstraint("job_id", "applicant_user_id", name="uq_job_applications_job_applicant"),
+        Index(
+            "ix_job_applications_applicant_activity",
+            "applicant_user_id",
+            "updated_at",
+            "id",
+        ),
+        Index(
+            "ix_job_applications_owner_activity",
+            "job_owner_user_id",
+            "updated_at",
+            "id",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     job_id: Mapped[uuid.UUID] = mapped_column(
@@ -176,6 +191,18 @@ class TalentInterest(Base):
     __tablename__ = "talent_interests"
     __table_args__ = (
         UniqueConstraint("talent_listing_id", "recruiter_user_id", name="uq_talent_interest_listing_recruiter"),
+        Index(
+            "ix_talent_interests_owner_activity",
+            "owner_user_id",
+            "updated_at",
+            "id",
+        ),
+        Index(
+            "ix_talent_interests_recruiter_activity",
+            "recruiter_user_id",
+            "updated_at",
+            "id",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)

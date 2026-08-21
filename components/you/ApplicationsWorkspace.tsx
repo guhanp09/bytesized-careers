@@ -89,6 +89,7 @@ import {
   type BackendPortfolioItem,
   type BackendReviewOpportunity,
   type BackendTalentInterest,
+  type ActivitySummaryPage,
 } from "../../lib/backendClient";
 import ConfirmDialog from "../ui/ConfirmDialog";
 import {
@@ -97,6 +98,7 @@ import {
   interactionStatusLabel,
   isArchivedInteraction,
   mapActivityToOwnerInteractions,
+  mergeOwnerInteractionPages,
   type InteractionKind,
   type InteractionStatus,
   type InteractionJobSnapshot,
@@ -187,6 +189,52 @@ type LiveThread = {
 
 const UNREAD_POLL_INTERVAL_MS = 5_000;
 const CONVERSATION_POLL_INTERVAL_MS = 3_000;
+const ACTIVITY_PAGE_SIZE = 100;
+
+function OlderActivityControl({
+  loaded,
+  total,
+  busy,
+  error,
+  onLoad,
+}: {
+  loaded: number;
+  total: number;
+  busy: boolean;
+  error: string | null;
+  onLoad: () => void;
+}) {
+  const remaining = Math.max(0, total - loaded);
+  return (
+    <div
+      data-testid="activity-page-control"
+      className="flex flex-col items-center gap-1.5 rounded-xl border border-line bg-raised px-4 py-3 text-center"
+    >
+      <p className="text-[11px] text-subtle">
+        {`${loaded.toLocaleString()} of ${total.toLocaleString()} recent activities loaded`}
+      </p>
+      <button
+        type="button"
+        data-testid="activity-load-older"
+        disabled={busy}
+        onClick={onLoad}
+        className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-line-mid bg-elevated px-3 text-[11.5px] font-semibold text-white/85 transition-colors hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-wait disabled:opacity-60"
+      >
+        {busy
+          ? "Loading older activity…"
+          : `Load ${Math.min(ACTIVITY_PAGE_SIZE, remaining).toLocaleString()} older`}
+      </button>
+      <p className="max-w-sm text-[10.5px] leading-relaxed text-disabled">
+        Counts include all activity. Queues, stage filters, and search cover loaded activity.
+      </p>
+      {error ? (
+        <p role="alert" className="text-[11px] text-amber-100">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 type ApplicationsWorkspaceProps = {
   mode: WorkspaceMode;
@@ -2216,6 +2264,10 @@ export default function ApplicationsWorkspace({
     liveMode ? [] : interactions ?? []
   );
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error" | "auth">(liveMode ? "loading" : "ready");
+  const [activityPage, setActivityPage] = useState<ActivitySummaryPage | null>(null);
+  const [activityPageBusy, setActivityPageBusy] = useState(false);
+  const [activityPageError, setActivityPageError] = useState<string | null>(null);
+  const activityGenerationRef = useRef(0);
   const [reloadNonce, setReloadNonce] = useState(0);
   // Real message threads loaded per interaction in live mode (keyed by record id ==
   // OwnerInteraction id). Demo mode keeps using the in-memory `replies` on the item.
@@ -2520,23 +2572,32 @@ export default function ApplicationsWorkspace({
   useEffect(() => {
     if (!liveMode || !backendAccessToken) return;
     let cancelled = false;
-    getActivitySummary(backendAccessToken)
+    const generation = ++activityGenerationRef.current;
+    setActivityPageBusy(false);
+    setActivityPageError(null);
+    getActivitySummary(backendAccessToken, {
+      mode,
+      limit: ACTIVITY_PAGE_SIZE,
+      include: initialSelectedId,
+    })
       .then((summary) => {
-        if (cancelled) return;
+        if (cancelled || activityGenerationRef.current !== generation) return;
         setItems(mapActivityToOwnerInteractions(summary));
+        setActivityPage(summary.page);
         setLoadState("ready");
       })
       .catch((error) => {
-        if (cancelled) return;
+        if (cancelled || activityGenerationRef.current !== generation) return;
         // Private application data must never silently turn into sample rows.
         // Sample data is an explicit mode (`?demo=1`) so actions cannot appear
         // live while writes are actually failing against the backend.
+        setActivityPage(null);
         setLoadState(isBackendAuthError(error) ? "auth" : "error");
       });
     return () => {
       cancelled = true;
     };
-  }, [liveMode, backendAccessToken, reloadNonce, realtimeRefreshNonce]);
+  }, [liveMode, backendAccessToken, initialSelectedId, mode, reloadNonce, realtimeRefreshNonce]);
 
   // Keep unread badges current while another participant is messaging. This is
   // intentionally lightweight polling: it works on the current REST backend and
@@ -2595,7 +2656,52 @@ export default function ApplicationsWorkspace({
   const [inboxLimit, setInboxLimit] = useState(INBOX_PAGE_SIZE);
   const [pagingAnnouncement, setPagingAnnouncement] = useState("");
 
+  const loadOlderActivity = useCallback(async () => {
+    if (
+      !liveMode ||
+      !backendAccessToken ||
+      !activityPage?.hasMore ||
+      !activityPage.nextCursor ||
+      activityPageBusy
+    ) {
+      return;
+    }
+    setActivityPageBusy(true);
+    setActivityPageError(null);
+    const generation = activityGenerationRef.current;
+    try {
+      const summary = await getActivitySummary(backendAccessToken, {
+        mode,
+        limit: ACTIVITY_PAGE_SIZE,
+        cursor: activityPage.nextCursor,
+      });
+      if (activityGenerationRef.current !== generation) return;
+      const incoming = mapActivityToOwnerInteractions(summary);
+      // Reconcile against the latest committed UI state. A stage move, star, or
+      // realtime refresh can finish while this page request is in flight; using
+      // the render-time `items` snapshot here would silently roll that work back.
+      setItems((current) => mergeOwnerInteractionPages(current, incoming));
+      setActivityPage(summary.page);
+      setPagingAnnouncement(
+        `${summary.page.returned.toLocaleString()} older activity ` +
+          `${summary.page.returned === 1 ? "record" : "records"} received.`
+      );
+    } catch {
+      if (activityGenerationRef.current === generation) {
+        setActivityPageError("Older activity could not be loaded. Try again.");
+      }
+    } finally {
+      if (activityGenerationRef.current === generation) setActivityPageBusy(false);
+    }
+  }, [activityPage, activityPageBusy, backendAccessToken, liveMode, mode]);
+
   const modeItems = useMemo(() => items.filter((item) => item.mode === mode), [items, mode]);
+  const activityHasMore = Boolean(liveMode && activityPage?.hasMore);
+  const activityModeTotal = activityPage
+    ? mode === "talent"
+      ? activityPage.counts.sentApplications + activityPage.counts.receivedInterests
+      : activityPage.counts.receivedApplications + activityPage.counts.sentInterests
+    : modeItems.length;
 
   const visibleItems = useMemo(() => {
     if (filter === "sent") return modeItems.filter((item) => item.direction === "sent");
@@ -2806,13 +2912,28 @@ export default function ApplicationsWorkspace({
   }, [selectedItemId, latestPersistedMessageId]);
 
   const filterCounts = useMemo(
-    () => ({
-      all: modeItems.length,
-      sent: modeItems.filter((item) => item.direction === "sent").length,
-      received: modeItems.filter((item) => item.direction === "received").length,
-      archived: modeItems.filter(isArchivedInteraction).length,
-    }),
-    [modeItems]
+    () => {
+      const sent = activityPage
+        ? mode === "talent"
+          ? activityPage.counts.sentApplications
+          : activityPage.counts.sentInterests
+        : modeItems.filter((item) => item.direction === "sent").length;
+      const received = activityPage
+        ? mode === "talent"
+          ? activityPage.counts.receivedInterests
+          : activityPage.counts.receivedApplications
+        : modeItems.filter((item) => item.direction === "received").length;
+      return {
+        all: activityModeTotal,
+        sent,
+        received,
+        // Archive is a lifecycle property rather than a feed source, so the
+        // exact server total is not derivable from the four cheap counts. The
+        // page control explicitly labels queue/filter values as loaded-only.
+        archived: modeItems.filter(isArchivedInteraction).length,
+      };
+    },
+    [activityModeTotal, activityPage, mode, modeItems]
   );
 
   const resetComposition = () => {
@@ -4062,8 +4183,10 @@ export default function ApplicationsWorkspace({
 
   /** Nothing outstanding anywhere — the honest "all caught up" signal. */
   const allCaughtUp = useMemo(
-    () => WORK_QUEUE_ORDER.every((queue) => (queueCounts.get(queue.key) ?? 0) === 0),
-    [queueCounts]
+    () =>
+      !activityHasMore &&
+      WORK_QUEUE_ORDER.every((queue) => (queueCounts.get(queue.key) ?? 0) === 0),
+    [activityHasMore, queueCounts]
   );
 
   const DAY_MS = 24 * 60 * 60 * 1000;
@@ -4096,10 +4219,10 @@ export default function ApplicationsWorkspace({
    */
   const reminder = useMemo(
     () =>
-      liveMode && flags.workState
+      liveMode && flags.workState && !activityHasMore
         ? consolidatedReminder(modeItems, reminderSignalsFor, queuePreferences, isStarred)
         : null,
-    [liveMode, flags.workState, modeItems, reminderSignalsFor, queuePreferences, isStarred]
+    [activityHasMore, liveMode, flags.workState, modeItems, reminderSignalsFor, queuePreferences, isStarred]
   );
 
   /** Per-job workload, for someone hiring for more than one role at a time. */
@@ -4509,6 +4632,11 @@ export default function ApplicationsWorkspace({
   const otherMode: WorkspaceMode = mode === "talent" ? "hiring" : "talent";
   const otherModeOption = modeOptions.find((option) => option.key === otherMode);
   const otherModeItems = items.filter((item) => item.mode === otherMode);
+  const otherModeCount = activityPage
+    ? otherMode === "talent"
+      ? activityPage.counts.sentApplications + activityPage.counts.receivedInterests
+      : activityPage.counts.receivedApplications + activityPage.counts.sentInterests
+    : otherModeItems.length;
   const otherModeUnread =
     otherModeItems.reduce((count, item) => count + (unreadByThread[item.id] ?? 0), 0) ||
     otherModeItems.filter((item) => item.unread).length;
@@ -4909,7 +5037,7 @@ export default function ApplicationsWorkspace({
     listItems.length === 0
       ? emptyStateFor({
           mode,
-          totalInMode: modeItems.length,
+          totalInMode: activityModeTotal,
           filteredCount: visibleItems.length,
           visibleCount: listItems.length,
           filter,
@@ -4927,7 +5055,7 @@ export default function ApplicationsWorkspace({
   const caughtUp = caughtUpLine({
     mode,
     allCaughtUp,
-    totalInMode: modeItems.length,
+    totalInMode: activityModeTotal,
     waitingOnOthers: waitingOnOthersCount,
   });
 
@@ -5131,6 +5259,18 @@ export default function ApplicationsWorkspace({
               kind={pipelineKind}
               direction={pipelineDirection}
               scopeLeading={pipelineScopeLeading}
+              hasUnloadedItems={activityHasMore}
+              paginationFooter={
+                activityHasMore ? (
+                  <OlderActivityControl
+                    loaded={modeItems.length}
+                    total={activityModeTotal}
+                    busy={activityPageBusy}
+                    error={activityPageError}
+                    onLoad={() => void loadOlderActivity()}
+                  />
+                ) : undefined
+              }
               unreadByThread={unreadByThread}
               initialStage={pipelineStage}
               onStageFocusChange={onPipelineStageChange}
@@ -5648,7 +5788,7 @@ export default function ApplicationsWorkspace({
                       {showingLabel(inboxPage, "conversation")}
                     </p>
                   </div>
-                ) : listItems.length > INBOX_PAGE_SIZE ? (
+                ) : listItems.length > INBOX_PAGE_SIZE && !activityHasMore ? (
                   /* Reaching the end is a state worth stating outright. */
                   <p
                     data-testid="inbox-list-end"
@@ -5659,6 +5799,17 @@ export default function ApplicationsWorkspace({
                 ) : null}
               </div>
             )}
+            {activityHasMore && !inboxPage.hasMore ? (
+              <div className="mx-3 mb-3 mt-3">
+                <OlderActivityControl
+                  loaded={modeItems.length}
+                  total={activityModeTotal}
+                  busy={activityPageBusy}
+                  error={activityPageError}
+                  onLoad={() => void loadOlderActivity()}
+                />
+              </div>
+            ) : null}
           </div>
           {/*
             Polite, and outside the list so growing the list never moves focus.
@@ -6388,11 +6539,11 @@ export default function ApplicationsWorkspace({
                   </div>
               </aside>
             </div>
-          ) : modeItems.length === 0 ? (
+          ) : activityModeTotal === 0 ? (
             <EmptyModeState
               mode={mode}
               otherModeLabel={otherModeOption?.label}
-              otherModeCount={otherModeItems.length}
+              otherModeCount={otherModeCount}
               otherModeUnread={otherModeUnread}
               onSwitchMode={onModeChange ? () => onModeChange(otherMode) : undefined}
             />

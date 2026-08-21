@@ -146,6 +146,10 @@ type PipelineBoardProps = {
    * which is one navigation layer spent on adjacency.
    */
   scopeLeading?: ReactNode;
+  /** Explicit server-page control; separate from each stage's DOM window. */
+  paginationFooter?: ReactNode;
+  /** Qualifies local search/filter/stage counts when older server rows remain. */
+  hasUnloadedItems?: boolean;
   /** Open the compact chat dock on this thread (also the card's primary click). */
   onMessage: (item: OwnerInteraction) => void;
   /** Move one or many items to a backend stage. Resolves when committed. */
@@ -535,6 +539,8 @@ export default function PipelineBoard({
   initialStage = null,
   onStageFocusChange,
   scopeLeading,
+  paginationFooter,
+  hasUnloadedItems = false,
   onMessage,
   onMoveStage,
   workStateFor,
@@ -1029,7 +1035,9 @@ export default function PipelineBoard({
               onChange={(event) => setStageFilter(event.target.value || null)}
               className="h-8 max-w-[148px] cursor-pointer rounded-lg border border-line bg-wash px-2 text-xs font-semibold text-default transition-colors focus:border-line-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:max-w-[200px]"
             >
-              <option value="">All stages ({items.length})</option>
+              <option value="">
+                {hasUnloadedItems ? `Loaded activity (${items.length})` : `All stages (${items.length})`}
+              </option>
               {stages.map((stage) => (
                 <option key={stage.key} value={stage.key}>
                   {stage.label} ({grouped.get(stage.key)?.length ?? 0})
@@ -1109,9 +1117,11 @@ export default function PipelineBoard({
             <div className="flex min-h-[200px] flex-col items-center justify-center rounded-2xl border border-dashed border-line bg-white/[0.012] px-6 py-10 text-center">
               <p className="text-sm font-medium text-white/55">Nothing matches here.</p>
               <p className="mx-auto mt-1 max-w-xs text-xs text-subtle">
-                {search || contextFilter !== "all"
-                  ? "Try clearing the search or filter."
-                  : "New activity will land in this pipeline."}
+                {hasUnloadedItems
+                  ? "No loaded activity matches. Older activity may still match."
+                  : search || contextFilter !== "all"
+                    ? "Try clearing the search or filter."
+                    : "New activity will land in this pipeline."}
               </p>
             </div>
           ) : (
@@ -1809,6 +1819,7 @@ export default function PipelineBoard({
               );
             })
           )}
+          {paginationFooter}
         </div>
 
         {/* Bulk action bar — floats over the board while a selection is active */}

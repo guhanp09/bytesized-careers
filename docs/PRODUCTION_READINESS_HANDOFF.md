@@ -5,19 +5,19 @@
 ```text
 LAST COMPLETED PHASE: Phase 10 — CI/CD and production platform (locally complete; remote CI, image build/scan and platform configuration remain external/environment gates)
 CURRENT PHASE: Phase 11 — metadata, SEO, performance and accessibility
-LAST COMPLETED ATOMIC SLICE: Phase 11J — a loopback-only exercise proves 100 concurrent encrypted sessions remain isolated through both the session API and an authenticated dynamic workspace render. The implementation commit is named `perf(sessions): verify 100 concurrent identities`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
-NEXT ATOMIC SLICE: Phase 11 PERF-002/CORRECT-007 — add activity-summary payload pagination without breaking the current workspace. Survey response schema, all serializers and the sole frontend consumer; prefer an additive cursor/page contract and preserve deterministic ordering/security.
-PHASE 11 STATUS: SEO-001/003/004 and PERF-001 VALIDATED; SEO-002 IMPLEMENTED pending real-backend pagination; PERF-002 and CORRECT-007 IN_PROGRESS; A11Y-001 NOT_STARTED; A11Y-002 BLOCKED_EXTERNAL for the genuinely manual review.
-CURRENT ALEMBIC HEAD: 0069_support_tickets (single head; 0060-0064 earlier, then 0065_legal_acceptances, 0066_notification_preferences, 0067_account_deletion_requests, 0068_account_deletion_hidden_at, 0069)
-CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
-IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
+LAST COMPLETED ATOMIC SLICE: Phase 11K — the authenticated activity payload is now bounded end to end. The implementation commit is named `perf(activity): paginate the workspace timeline`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
+NEXT ATOMIC SLICE: Phase 11 A11Y-001 — inventory existing accessibility dependencies/configuration, then add a bounded automated axe route/state/viewport matrix plus Firefox and WebKit coverage. Do not claim the manual keyboard/screen-reader/zoom/touch review; that remains A11Y-002/BLOCKED_EXTERNAL until it is genuinely performed.
+PHASE 11 STATUS: SEO-001/003/004, PERF-001, PERF-002 and CORRECT-007 VALIDATED; SEO-002 IMPLEMENTED pending a real-backend sitemap pagination check; A11Y-001 NOT_STARTED; A11Y-002 BLOCKED_EXTERNAL for the genuinely manual review.
+CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
+CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; the disposable PostgreSQL harness upgraded, downgraded to 0059, and re-upgraded through 0070 successfully
+IMPORTANT NEW ARCHITECTURE (11K): `app.services.activity_pagination` builds one key-only UNION ALL over four viewer-relative activity sources, applies an authenticated-owner scope in every branch, and keyset-pages by `updated_at DESC`, source rank and UUID. The opaque v1 cursor is strict base64url JSON bound to mode and snapshot; it is navigation state, never authorization. The first page may add one owned deep-link record without moving the ordinary cursor; a foreign include is ignored. Exact four-source counts are computed in one round trip. Only page IDs are widened into relationships, users, conversations, histories, engagements and review summaries. Default/all mode keeps a bounded recent owned-context compatibility slice; talent/hiring modes load only referenced context. Frontend rollout is expand/contract: deploy the compatible frontend first (it accepts a legacy response without `page`), then backend/migration; deploying the backend first would truncate an old client at 100 and is not the supported order. UI counts remain exact while queues/search/stage/archive views are explicitly described as loaded-only until older pages are fetched. Page reconciliation is functional, so an in-flight page cannot overwrite a newer local/realtime mutation. IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
 NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRET; GOOGLE_OAUTH_EXCHANGE_SECRET shared only between NextAuth and FastAPI; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID; INVITE_ONLY_BETA (default false — leaving it unset preserves open registration exactly); MAX_REQUEST_BODY_BYTES and MAX_MEDIA_REQUEST_BODY_BYTES from RATE-004; EMAIL_WORKER_IN_PROCESS (default false) and EMAIL_WORKER_INTERVAL_SECONDS (default 5) from EMAIL-002; EMAIL_WEBHOOK_SECRET from EMAIL-004 (unset means the delivery webhook refuses everything, which is the intended fail-closed posture, not a bug); frontend server-only MEDIA_PUBLIC_BASE_URL plus MEDIA_BASE_PATH, which must match the backend canonical media configuration. Backend settings are documented in backend/app/core/config.py; the frontend media settings are also documented in `.env.example` and `DEPLOYMENT.md`.
-NEW DEPENDENCIES: backend now declares its already-locked runtime `httpx==0.28.1` and `httpcore==1.0.9` usage directly; no package version changed
-NEW SERVICES: app.services.safe_outbound_fetch shared public-URL boundary; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md complete caller inventory; plus all previously documented OAuth/session/strong-auth services
+NEW DEPENDENCIES: none in Phase 11K; backend still declares its already-locked runtime `httpx==0.28.1` and `httpcore==1.0.9` usage directly
+NEW SERVICES: app.services.activity_pagination deterministic activity-feed boundary; app.services.safe_outbound_fetch shared public-URL boundary; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md complete caller inventory; plus all previously documented OAuth/session/strong-auth services
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
-KNOWN TEST FAILURES: no task-caused failure is open. Phase 11J focused concurrent-session tests are 4/4, lint exits 0 and the production artifact passes 100/100 session responses plus 100/100 workspace renders. LAST_FULL_SUITE_OBSERVED frontend is Phase 11H's 1,257/1,257; EXPECTED_CURRENT_COLLECTION is 1,265 (+4 bundle-report and +4 concurrent-session tests). Phase 11I focused bundle tests are 4/4 and its production-like build/report pass. Phase 11G's query-bound test is 1 passed. Do not use this contended host for timing claims. The last backend broad count remains 7,499 passed / 65 skipped.
-COMMANDS TO RESUME: `git status --short`; inspect the complete `/me/activity/summary` response/consumer contract, design an additive bounded page, add backend and frontend contract tests, and preserve all six role-based collections. Never run two pytest processes against the shared test database, and never run Next build concurrently with Playwright against `.next`.
-FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase 11G/11J in this handoff; backend/app/api/v1/routers/marketplace.py; backend/app/schemas/marketplace.py; backend/tests/test_activity_summary_query_bound.py; lib/backendClient.ts; components/you/ApplicationsWorkspace.tsx; lib/workspacePaging.ts
+KNOWN TEST FAILURES: no task-caused failure is open. Phase 11K: frontend node 1,268/1,268; TypeScript green; full lint exits 0 with 32 existing warnings; backend focused/broad 65/65; disposable PostgreSQL 29/29 after a full migration cycle; workspace-paging browser 11/11; complete Applications Pipeline browser 31/31; production build green. One first PostgreSQL pass had a 10-second timeout in the unrelated concurrent-password-reset test; its isolated rerun and a complete harness rerun passed. The first combined browser run exposed a pre-existing test-contract race: the helper left Inbox open past the intentional 800 ms auto-review threshold, then compared the mutated Pipeline against the untouched manifest. The helper now enters the canonical Pipeline URL and waits for seeded rows; assertions were not weakened. Do not use this contended host for timing claims. The last full backend repository count remains 7,499 passed / 65 skipped.
+COMMANDS TO RESUME: `git status --short`; `git branch --show-current`; `git rev-parse HEAD`; `.venv/bin/python -m alembic heads` from backend; then inventory `package.json`, `playwright.config.ts`, current browser projects and every existing a11y/keyboard/contrast test before designing A11Y-001. Never run two pytest processes against the shared test database, and never run Next build concurrently with Playwright against `.next`.
+FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase 11K/11E in this handoff; package.json; playwright.config.ts; tests/e2e/classification-a11y.spec.ts; tests/colorContrast.test.mjs; app and component route inventory. For pagination context: backend/app/services/activity_pagination.py; backend/app/api/v1/routers/marketplace.py; components/you/ApplicationsWorkspace.tsx
 RELEASE ASSESSMENT: NO-GO
 ```
 
@@ -1321,6 +1321,128 @@ NEXT READY: the acceptance API surface (present outstanding documents, record ac
 PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST — the admin
 panel already has an append-only audit rule and suspension enforcement.
 ```
+
+## Phase 11K checkpoint (PERF-002/CORRECT-007 — page the activity, not merely its DOM)
+
+```text
+Phase: 11K — activity-summary payload pagination
+Status: COMPLETE
+Initial HEAD: 837329fad9ea39652bcd84ed6cad1691660bab00
+Final HEAD: resolve `git rev-parse HEAD`; this handoff is committed with the implementation
+Commit(s): `perf(activity): paginate the workspace timeline`
+Files materially changed:
+  backend/app/services/activity_pagination.py
+  backend/app/api/v1/routers/marketplace.py
+  backend/app/schemas/marketplace.py
+  backend/app/models/marketplace.py
+  backend/alembic/versions/0070_activity_page_indexes.py
+  backend/tests/test_activity_summary_query_bound.py
+  lib/backendClient.ts
+  lib/ownerInteractions.ts
+  components/you/ApplicationsWorkspace.tsx
+  components/you/PipelineBoard.tsx
+  tests/activityPagination.test.mjs
+  tests/e2e/applications-pipeline.spec.ts (test setup only; assertions unchanged)
+  docs/PRODUCTION_READINESS_EXECUTION.md
+  docs/PRODUCTION_READINESS_HANDOFF.md
+Migrations: 0070_activity_page_indexes, parent 0069_support_tickets, single head. Four
+  composites match the four viewer filters followed by updated_at/id. Fresh upgrade,
+  downgrade to 0059 and re-upgrade all passed against disposable PostgreSQL.
+Behavior changed: authenticated Applications requests only the active talent/hiring feed,
+  100 interactions initially (server maximum 200), then exposes an explicit Load older
+  control. Exact mode/direction totals come from the server. Search, queues, archive and
+  stage filters say they cover loaded activity while more exists; false all-caught-up and
+  reminder claims are suppressed. An owned deep-linked interaction may be added to page one.
+Security assumptions: the cursor is deliberately opaque but unsigned. It is strict/versioned,
+  mode-bound and timestamp/UUID validated; modifying it can move only within the caller's own
+  feed because every UNION branch and the anchor query repeat the authenticated ownership scope.
+  A foreign include is ignored. No cursor field is accepted as an authorization decision.
+Tests run: listed below.
+Exact results: frontend 1,268/1,268; backend risk-focused 65/65; PostgreSQL 29/29 after
+  migration cycle; TypeScript 0 errors; lint 0 errors/32 existing warnings; activity client
+  3/3; workspace paging browser 11/11; complete Pipeline browser 31/31; build green.
+Known external failures: none introduced. No managed datastore or production capacity claim was
+  made. One first local PostgreSQL harness pass hit its existing hard 10-second concurrency-test
+  timeout on a contended host; isolated and complete reruns passed.
+Remaining risks: production Postgres query plans/latency and multi-instance capacity still need
+  staging evidence. The cursor's timestamp ceiling excludes a relationship that is modified
+  after traversal begins; that newer activity appears on the next refresh. This is an activity
+  feed traversal, not a historical MVCC snapshot. Frontend-first is the supported rollout order.
+Next phase: Phase 11 A11Y-001 automated accessibility matrix.
+Important commands:
+  git status --short
+  cd backend && .venv/bin/python -m alembic heads && .venv/bin/python -m alembic current
+  node --test tests/*.test.mjs
+  npx playwright test tests/e2e/workspace-paging.spec.ts tests/e2e/applications-pipeline.spec.ts
+```
+
+THE BOUNDARY: pagination happens before the wide relationships are loaded. Four key-only source
+queries are unioned:
+
+```text
+talent = sent applications + received hiring requests
+hiring = received applications + sent hiring requests
+all    = all four (legacy/default compatibility contract)
+
+ORDER BY updated_at DESC, source_rank ASC, id DESC
+```
+
+The cursor carries version, mode, first-page timestamp ceiling, last timestamp, source and UUID.
+Timestamp alone is not enough: this slice's fixture puts twelve records at the exact same instant
+and reaches all twelve across 5/5/2 pages with no duplicate or omission. Source rank deliberately
+matches the legacy frontend array order, so equal timestamps do not reshuffle during rollout.
+
+COUNTS AND CONTEXT: one SQL round trip returns all four exact viewer counts as of the traversal
+ceiling. A mode-specific page fetches only owned jobs/listings referenced by its rows; the default
+`all` response retains at most 100 recent owned jobs and 100 recent owned listings for the older
+combined-response contract, plus every context referenced by the page. Related counterparty
+contexts, users, conversations, engagements, reviews and status histories remain batched. The
+existing query-count invariant remains below 18 SELECTs as row count grows.
+
+DEEP LINKS: `include=<uuid>` is first-page-only and additive. If that UUID belongs to the current
+viewer in the requested mode and lies beyond page one, it is returned as an anchor without moving
+the chronological cursor. When ordinary paging reaches it again, the client deduplicates it and
+keeps the existing item, preserving local unread/star/stage state. Another account's UUID returns
+no anchor and no existence signal.
+
+CLIENT RACES CLOSED:
+
+  - every first-page/full refresh increments a generation; an older-page response from the prior
+    generation cannot append into a new mode or realtime refresh;
+  - an accepted older page reconciles through a functional state update, so a stage move, star or
+    realtime mutation completed during the request cannot be rolled back by a render-time snapshot;
+  - false exhaustive states are hidden until `has_more` is false;
+  - a backend predating pagination is treated as one complete legacy page. DEPLOY FRONTEND FIRST,
+    THEN MIGRATION/BACKEND. Backend-first would bound an old client without giving it Load older.
+
+THE BROWSER FAILURE WAS A TEST-CONTRACT BUG, NOT A COUNT PATCH. The first combined run had all
+11 workspace-paging cases pass and five old Pipeline count checks differ by exactly one: the helper
+opened Inbox long enough for intentional Auto-Reviewing (800 ms) to move the selected New record,
+then compared the live board to the untouched manifest. Serial reproduced it. The helper now enters
+the canonical Pipeline deep link and waits for a seeded row rather than the empty loading shell.
+Inbox -> Pipeline navigation remains covered by its dedicated test. No expected count, timeout or
+product assertion was weakened. Focused rerun passed, then the complete file passed 31/31.
+
+VALIDATION DETAIL:
+
+  - `APP_ENV=test pytest -q tests/test_activity_summary_query_bound.py
+     tests/test_applicant_management.py tests/test_messaging.py tests/test_marketplace_core.py
+     tests/test_creator_scenario_parity_dump.py --maxfail=1`: 65 passed; existing framework warnings.
+  - cursor/static-tie/ownership/deep-link/context tests: passed; malformed and wrong-mode cursors 422.
+  - `./scripts/test_interaction_status_postgres.sh`: first run had one unrelated hard-timeout;
+    exact isolated auth-concurrency rerun passed; complete rerun passed all 29 and the migration cycle.
+  - `node --test tests/*.test.mjs`: 1,268 passed, 0 failed.
+  - `npx tsc --noEmit`: passed.
+  - `npm run lint`: exit 0, 0 errors, 32 pre-existing warnings.
+  - `node --test tests/activityPagination.test.mjs`: 3 passed.
+  - Playwright workspace paging: 11 passed; Applications Pipeline final: 31 passed.
+  - production builds started by Playwright web servers: passed.
+  - Docker Desktop was started only for the disposable harness, which removed its container/volume;
+    Docker Desktop was then stopped again. No hosted Neon, Vercel or Render resource was touched.
+
+NOT DONE HERE: no timing percentile or capacity number is inferred from this workstation; no
+production query plan was sampled; A11Y-001/002 remain. PERF-002 and CORRECT-007 are VALIDATED for
+their local engineering contract, while live platform validation remains an external release gate.
 
 ## Phase 11J checkpoint (PERF-002/CORRECT-007 — 100 identities, never one shared context)
 

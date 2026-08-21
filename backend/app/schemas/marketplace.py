@@ -376,6 +376,24 @@ class NotificationListResponse(BaseModel):
     unread_count: int
 
 
+class ActivitySummaryCounts(BaseModel):
+    sent_applications: int = Field(ge=0)
+    received_applications: int = Field(ge=0)
+    sent_interests: int = Field(ge=0)
+    received_interests: int = Field(ge=0)
+
+
+class ActivitySummaryPage(BaseModel):
+    mode: Literal["all", "talent", "hiring"]
+    limit: int = Field(ge=1, le=200)
+    returned: int = Field(ge=0)
+    total: int = Field(ge=0)
+    has_more: bool
+    next_cursor: str | None = None
+    snapshot_at: datetime
+    counts: ActivitySummaryCounts
+
+
 class ActivitySummaryResponse(BaseModel):
     my_jobs: list[JobRead] = Field(default_factory=list)
     my_talent_listings: list[TalentListingRead] = Field(default_factory=list)
@@ -385,6 +403,7 @@ class ActivitySummaryResponse(BaseModel):
     sent_interests: list[TalentInterestRead] = Field(default_factory=list)
     related_jobs: list[JobRead] = Field(default_factory=list)
     related_talent_listings: list[TalentListingRead] = Field(default_factory=list)
+    page: ActivitySummaryPage
 
 
 class ReportCreate(BaseModel):

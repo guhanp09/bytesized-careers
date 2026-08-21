@@ -1318,6 +1318,21 @@ export type BackendActivitySummaryResponse = {
   sent_interests: BackendTalentInterest[];
   related_jobs: BackendJob[];
   related_talent_listings: BackendTalentListing[];
+  page?: {
+    mode: "all" | "talent" | "hiring";
+    limit: number;
+    returned: number;
+    total: number;
+    has_more: boolean;
+    next_cursor?: string | null;
+    snapshot_at: string;
+    counts: {
+      sent_applications: number;
+      received_applications: number;
+      sent_interests: number;
+      received_interests: number;
+    };
+  };
 };
 
 export type SavedSummary = {
@@ -1334,6 +1349,30 @@ export type ActivitySummary = {
   sentInterests: BackendTalentInterest[];
   relatedJobs: Job[];
   relatedTalentListings: BackendTalentListing[];
+  page: ActivitySummaryPage;
+};
+
+export type ActivitySummaryPage = {
+  mode: "all" | "talent" | "hiring";
+  limit: number;
+  returned: number;
+  total: number;
+  hasMore: boolean;
+  nextCursor: string | null;
+  snapshotAt: string;
+  counts: {
+    sentApplications: number;
+    receivedApplications: number;
+    sentInterests: number;
+    receivedInterests: number;
+  };
+};
+
+export type ActivitySummaryOptions = {
+  mode?: ActivitySummaryPage["mode"];
+  limit?: number;
+  cursor?: string | null;
+  include?: string | null;
 };
 
 export type BackendNotification = {
@@ -3072,8 +3111,43 @@ export async function listMySentTalentInterests(accessToken: string): Promise<Ba
   return requestJson<BackendTalentInterest[]>("/me/talent-interests/sent", { accessToken });
 }
 
-export async function getActivitySummary(accessToken: string): Promise<ActivitySummary> {
-  const response = await requestJson<BackendActivitySummaryResponse>("/me/activity/summary", { accessToken });
+export async function getActivitySummary(
+  accessToken: string,
+  options: ActivitySummaryOptions = {}
+): Promise<ActivitySummary> {
+  const params = new URLSearchParams();
+  if (options.mode) params.set("mode", options.mode);
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.cursor) params.set("cursor", options.cursor);
+  if (options.include) params.set("include", options.include);
+  const query = params.toString();
+  const response = await requestJson<BackendActivitySummaryResponse>(
+    `/me/activity/summary${query ? `?${query}` : ""}`,
+    { accessToken }
+  );
+  // Expand-contract rollout: an older backend returned one exhaustive payload
+  // with no page object. Treat that response as one complete page so deploying
+  // the client cannot strand authenticated users between backend releases.
+  const legacyReturned =
+    response.sent_applications.length +
+    response.received_applications.length +
+    response.sent_interests.length +
+    response.received_interests.length;
+  const responsePage = response.page ?? {
+    mode: options.mode ?? "all",
+    limit: Math.max(1, legacyReturned),
+    returned: legacyReturned,
+    total: legacyReturned,
+    has_more: false,
+    next_cursor: null,
+    snapshot_at: "",
+    counts: {
+      sent_applications: response.sent_applications.length,
+      received_applications: response.received_applications.length,
+      sent_interests: response.sent_interests.length,
+      received_interests: response.received_interests.length,
+    },
+  };
   return {
     myJobs: response.my_jobs.map(toFrontendJob),
     myTalentListings: response.my_talent_listings,
@@ -3083,6 +3157,21 @@ export async function getActivitySummary(accessToken: string): Promise<ActivityS
     sentInterests: response.sent_interests,
     relatedJobs: response.related_jobs.map(toFrontendJob),
     relatedTalentListings: response.related_talent_listings,
+    page: {
+      mode: responsePage.mode,
+      limit: responsePage.limit,
+      returned: responsePage.returned,
+      total: responsePage.total,
+      hasMore: responsePage.has_more,
+      nextCursor: responsePage.next_cursor ?? null,
+      snapshotAt: responsePage.snapshot_at,
+      counts: {
+        sentApplications: responsePage.counts.sent_applications,
+        receivedApplications: responsePage.counts.received_applications,
+        sentInterests: responsePage.counts.sent_interests,
+        receivedInterests: responsePage.counts.received_interests,
+      },
+    },
   };
 }
 
