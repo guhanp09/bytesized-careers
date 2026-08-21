@@ -147,6 +147,7 @@ class JobApplicationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    conversation_id: uuid.UUID | None = None
     job_id: uuid.UUID
     applicant_user_id: uuid.UUID
     job_owner_user_id: uuid.UUID | None = None
@@ -319,6 +320,7 @@ class TalentInterestRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    conversation_id: uuid.UUID | None = None
     talent_listing_id: uuid.UUID
     recruiter_user_id: uuid.UUID
     recruiter_display_name: str | None = None

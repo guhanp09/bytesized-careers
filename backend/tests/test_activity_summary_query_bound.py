@@ -268,6 +268,8 @@ async def test_activity_summary_select_count_is_bounded_by_query_shape(
         one_each, one_each_selects = await _count_summary_selects(db_session, owner)
         assert len(one_each.received_applications) == 1
         assert len(one_each.received_interests) == 1
+        assert one_each.received_applications[0].conversation_id is not None
+        assert one_each.received_interests[0].conversation_id is not None
 
         more_app_rows, more_app_users, more_application_ids = _application_rows(
             prefix=prefix,
@@ -299,6 +301,14 @@ async def test_activity_summary_select_count_is_bounded_by_query_shape(
         assert len(twenty_four_each.received_interests) == 24
         assert all(item.engagement is not None for item in twenty_four_each.received_applications)
         assert all(item.engagement is not None for item in twenty_four_each.received_interests)
+        assert all(
+            item.conversation_id is not None
+            for item in twenty_four_each.received_applications
+        )
+        assert all(
+            item.conversation_id is not None
+            for item in twenty_four_each.received_interests
+        )
 
         # Record count may change parameter count and response work; it must not
         # change the number of database round trips. One query of tolerance keeps

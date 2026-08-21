@@ -444,7 +444,7 @@ export default function AuthPage() {
 
         <p className="mt-4 text-xs text-muted">
           By continuing, you agree to use CreatorJobs responsibly.
-          <Link href="/" className="ml-1 text-white/70 hover:text-white">
+          <Link href="/" className="ml-1 text-white/70 underline underline-offset-2 hover:text-white">
             Back to jobs
           </Link>
         </p>

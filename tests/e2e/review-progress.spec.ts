@@ -67,14 +67,15 @@ test("a deliberate open moves a record from Not opened yet to Reviewing", async 
   // both, because they are two readings of the same fact.
   expect(before.new, "no unopened record to open").toBeGreaterThan(0);
 
-  // Find one the menu counts as unopened, and open it properly.
-  const target = await main(page).evaluate(() => {
-    const rows = Array.from(document.querySelectorAll('[data-testid="interaction-row"]'));
-    const match = rows.find((entry) =>
-      (entry.querySelector('[data-testid="row-preview"]')?.textContent ?? "").length >= 0
-    );
-    return match?.getAttribute("data-record-id") ?? null;
-  });
+  // Ask the same classification control that produced the count to show only
+  // unopened records. The previous test used `preview.length >= 0`, which is
+  // true for every string and could simply re-click the row selected on load.
+  await main(page).getByTestId("queue-selector-trigger").click();
+  await page.getByTestId("queue-chip-not_opened").click();
+  const target = await main(page)
+    .locator('[data-testid="interaction-row"][aria-pressed="false"]')
+    .first()
+    .getAttribute("data-record-id");
   expect(target).toBeTruthy();
 
   await row(page, target as string).click();

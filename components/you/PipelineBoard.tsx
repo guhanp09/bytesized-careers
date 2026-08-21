@@ -1422,7 +1422,7 @@ export default function PipelineBoard({
                                       onToggleStar(item);
                                     }}
                                     className={[
-                                      "inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded transition-colors",
+                                      "inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded transition-colors",
                                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
                                       isStarred?.(item)
                                         ? "text-state-interview hover:bg-wash-strong"
@@ -1444,7 +1444,7 @@ export default function PipelineBoard({
                                     checked={checked}
                                     onClick={(event) => event.stopPropagation()}
                                     onChange={() => toggleRow(item.id)}
-                                    className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-white"
+                                    className="h-6 w-6 shrink-0 cursor-pointer accent-white"
                                   />
                                 ) : null}
                               </span>

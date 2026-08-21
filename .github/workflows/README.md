@@ -29,9 +29,10 @@ to exactly that. So:
 
 - `backend` and `backend-postgres` are separate jobs on separate runners, each
   with its own disposable database. Parallel is safe because nothing is shared.
-- Inside `browser`, the standard and QA Playwright suites run **sequentially**.
-  They build from the same `.next` directory and the QA suite binds fixed ports.
-  Running them together would be faster and the evidence would be worthless.
+- Inside `browser`, the standard, QA, and cross-browser accessibility Playwright
+  suites run **sequentially**. They build from the same `.next` directory and
+  the QA suite binds fixed ports. Running them together would be faster and the
+  evidence would be worthless.
 
 Speed is never worth invalid evidence.
 

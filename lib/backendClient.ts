@@ -1051,6 +1051,7 @@ export type BackendSavedJob = {
 
 export type BackendJobApplication = {
   id: string;
+  conversation_id?: string | null;
   job_id: string;
   applicant_user_id: string;
   job_owner_user_id?: string | null;
@@ -1195,6 +1196,7 @@ export type BackendSavedSummaryResponse = {
 
 export type BackendTalentInterest = {
   id: string;
+  conversation_id?: string | null;
   talent_listing_id: string;
   recruiter_user_id: string;
   recruiter_display_name?: string | null;

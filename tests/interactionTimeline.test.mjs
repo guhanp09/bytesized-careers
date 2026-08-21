@@ -39,6 +39,13 @@ function activityWith(overrides = {}) {
   };
 }
 
+test("the activity page carries its authorized conversation into workspace actions", () => {
+  const [item] = mapActivityToOwnerInteractions(
+    activityWith({ conversation_id: "conversation-1" })
+  );
+
+  assert.equal(item.conversationId, "conversation-1");
+});
 
 test("persisted interaction history survives mapping into the Inbox timeline", () => {
   const items = mapActivityToOwnerInteractions({

@@ -12,7 +12,7 @@ type NavItem = {
   auth?: boolean;
 };
 
-export default function Sidebar() {
+export default function Sidebar({ open = true }: { open?: boolean }) {
   const pathname = usePathname();
   const { status } = useSession();
   const isAuthed = status === "authenticated";
@@ -42,10 +42,12 @@ export default function Sidebar() {
   };
 
   return (
-    <aside
+    <nav
+      id="main-navigation"
+      aria-label="Main navigation"
       className={[
         "fixed left-0 top-0 z-50 h-screen w-20 flex-col items-center gap-6 bg-[var(--vt-canvas,#0b0b0f)] border-r border-r-[var(--vt-bar-line,transparent)] pt-16",
-        focusedJobCreation ? "hidden sm:flex" : "flex",
+        open ? (focusedJobCreation ? "hidden sm:flex" : "flex") : "hidden",
       ].join(" ")}
     >
       {items
@@ -69,6 +71,6 @@ export default function Sidebar() {
         })}
 
       <div className="flex-1" />
-    </aside>
+    </nav>
   );
 }

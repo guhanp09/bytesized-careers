@@ -25,6 +25,7 @@ test("dev marketplace data source switch toggles and persists", async ({ page })
     "aria-pressed",
     "true"
   );
-  await expect(page.getByText("Video editor for YouTube", { exact: false }).first()).toBeVisible();
+  await expect(
+    page.getByText("Long-form YouTube editor for evidence-led finance stories", { exact: false }).first()
+  ).toBeVisible();
 });
-

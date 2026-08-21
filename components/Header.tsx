@@ -58,6 +58,7 @@ export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session, status } = useSession();
+  const [navigationOpen, setNavigationOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
   const [identityAvatar, setIdentityAvatar] = useState<string | null>(null);
@@ -187,7 +188,7 @@ export default function Header() {
   return (
     <>
       <Suspense fallback={null}>
-        <Sidebar />
+        <Sidebar open={navigationOpen} />
       </Suspense>
 
       {/* Top header — full width; hamburger sits in the same rail column */}
@@ -197,6 +198,9 @@ export default function Header() {
           <div className="flex w-14 shrink-0 items-center justify-center sm:w-20">
             <button
               type="button"
+              aria-controls="main-navigation"
+              aria-expanded={navigationOpen}
+              onClick={() => setNavigationOpen((open) => !open)}
               className="cursor-pointer p-1 rounded-md text-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
               aria-label="Menu"
             >

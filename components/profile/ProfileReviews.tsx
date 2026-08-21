@@ -89,7 +89,8 @@ export function ProfileReviewsPreviewRail({
     <div className="overflow-hidden">
       <div
         aria-label="Reviews preview"
-        className="flex snap-x snap-proximity gap-4 overflow-x-auto pb-1 [-ms-overflow-style:none] [mask-image:linear-gradient(to_right,transparent,black_18px,black_calc(100%-18px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        tabIndex={0}
+        className="flex snap-x snap-proximity gap-4 overflow-x-auto rounded-sm pb-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus [-ms-overflow-style:none] [mask-image:linear-gradient(to_right,transparent,black_18px,black_calc(100%-18px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {items.slice(0, 4).map((item) => {
           const meta = [item.relationship_label, formatDateShort(item.created_at)].filter(Boolean).join(" · ");

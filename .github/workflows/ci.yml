@@ -217,7 +217,7 @@ jobs:
           if-no-files-found: error
 
   browser:
-    name: Browser (Playwright, then QA)
+    name: Browser (Playwright, QA, accessibility)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -249,6 +249,12 @@ jobs:
 
       - name: Playwright (QA)
         run: npm run test:e2e:qa
+
+      # Whole-document WCAG 2.0/2.1/2.2 A/AA coverage across Chromium,
+      # Firefox, and WebKit. Keep this after QA: all three suites build and serve
+      # through the same `.next` directory.
+      - name: Playwright (cross-browser accessibility)
+        run: npm run test:e2e:a11y
 
       - name: Upload Playwright report
         if: always()

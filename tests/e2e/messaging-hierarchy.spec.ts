@@ -214,12 +214,12 @@ test("the row and the card never disagree about what a record needs", async ({ p
   });
   expect(Object.keys(inbox).length).toBeGreaterThan(5);
 
-  await openWorkspace(page, {
-    scenario: "busy",
-    mode: "recruiter",
-    view: "pipeline",
-    extraParams: { direction: "received" },
-  });
+  // Switch the existing workspace instead of reloading the demo fixture. The
+  // selected Inbox record may legitimately become Reviewing during the dwell;
+  // re-seeding the Pipeline would compare that progressed row with a fresh New
+  // copy rather than comparing the two product surfaces.
+  await main(page).getByRole("button", { name: "Pipeline", exact: true }).click();
+  await expect(main(page).getByTestId("pipeline-row").first()).toBeVisible();
   const board = await page.evaluate(() => {
     const out: Record<string, string> = {};
     for (const entry of Array.from(document.querySelectorAll('[data-testid="pipeline-row"]'))) {

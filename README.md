@@ -56,6 +56,8 @@ non-production only).
 | `npm run build` | Production build of the frontend |
 | `npm run lint` | ESLint |
 | `npm run test:e2e` | Playwright end-to-end suite |
+| `npm run test:e2e:qa` | Real-backend Playwright QA suite |
+| `npm run test:e2e:a11y` | Whole-document WCAG A/AA matrix in Chromium, Firefox, and WebKit |
 
 ## Testing
 
@@ -65,6 +67,9 @@ npx tsc --noEmit
 
 # Frontend e2e (Playwright)
 npm run test:e2e
+
+# Cross-browser accessibility release gate
+npm run test:e2e:a11y
 
 # Frontend unit tests (Node's built-in runner; imports lib/*.ts directly)
 # Scope to *.test.mjs so the runner doesn't try to execute the Playwright e2e specs.

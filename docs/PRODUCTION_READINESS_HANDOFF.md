@@ -3,21 +3,21 @@
 ## Resume summary
 
 ```text
-LAST COMPLETED PHASE: Phase 10 — CI/CD and production platform (locally complete; remote CI, image build/scan and platform configuration remain external/environment gates)
-CURRENT PHASE: Phase 11 — metadata, SEO, performance and accessibility
-LAST COMPLETED ATOMIC SLICE: Phase 11K — the authenticated activity payload is now bounded end to end. The implementation commit is named `perf(activity): paginate the workspace timeline`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
-NEXT ATOMIC SLICE: Phase 11 A11Y-001 — inventory existing accessibility dependencies/configuration, then add a bounded automated axe route/state/viewport matrix plus Firefox and WebKit coverage. Do not claim the manual keyboard/screen-reader/zoom/touch review; that remains A11Y-002/BLOCKED_EXTERNAL until it is genuinely performed.
-PHASE 11 STATUS: SEO-001/003/004, PERF-001, PERF-002 and CORRECT-007 VALIDATED; SEO-002 IMPLEMENTED pending a real-backend sitemap pagination check; A11Y-001 NOT_STARTED; A11Y-002 BLOCKED_EXTERNAL for the genuinely manual review.
+LAST COMPLETED PHASE: Phase 11 — metadata, SEO, performance and automated accessibility (locally complete; real-backend sitemap behavior and manual assistive-technology review remain explicit gates)
+CURRENT PHASE: Phase 12 — recovery, observability and operational readiness
+LAST COMPLETED ATOMIC SLICE: Phase 11L — the customer-facing accessibility matrix is fail-closed across Chromium, Firefox and WebKit. The implementation commit is named `fix(a11y): gate customer surfaces across browsers`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
+NEXT ATOMIC SLICE: Phase 12A — survey existing error/logging/telemetry seams, then implement the smallest privacy-scrubbed OPS-003 error-reporting boundary with focused tests. Preserve liveness/readiness separation and do not introduce a vendor requirement for local boot.
+PHASE 11 STATUS: SEO-001/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED; SEO-002 IMPLEMENTED pending a real-backend sitemap pagination check; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; the disposable PostgreSQL harness upgraded, downgraded to 0059, and re-upgraded through 0070 successfully
-IMPORTANT NEW ARCHITECTURE (11K): `app.services.activity_pagination` builds one key-only UNION ALL over four viewer-relative activity sources, applies an authenticated-owner scope in every branch, and keyset-pages by `updated_at DESC`, source rank and UUID. The opaque v1 cursor is strict base64url JSON bound to mode and snapshot; it is navigation state, never authorization. The first page may add one owned deep-link record without moving the ordinary cursor; a foreign include is ignored. Exact four-source counts are computed in one round trip. Only page IDs are widened into relationships, users, conversations, histories, engagements and review summaries. Default/all mode keeps a bounded recent owned-context compatibility slice; talent/hiring modes load only referenced context. Frontend rollout is expand/contract: deploy the compatible frontend first (it accepts a legacy response without `page`), then backend/migration; deploying the backend first would truncate an old client at 100 and is not the supported order. UI counts remain exact while queues/search/stage/archive views are explicitly described as loaded-only until older pages are fetched. Page reconciliation is functional, so an in-flight page cannot overwrite a newer local/realtime mutation. IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
+IMPORTANT NEW ARCHITECTURE (11L): `playwright.a11y.config.ts` owns a sequential three-engine gate, while `tests/e2e/axeAudit.ts` injects the pinned direct axe runtime and fails on every selected whole-document WCAG A/AA violation. The matrix covers public routes, modals, Applications workspace states, 320 px reflow, 200%-equivalent zoom and reduced motion; the existing real-backend QA accessibility file uses the same helper. Standard, QA and accessibility Playwright jobs run sequentially because all share `.next`. Activity summaries now carry an already-authorized optional conversation ID; a scheduling action explicitly resolves and caches a legacy missing conversation before mutating, instead of racing a cancelable background detail read. IMPORTANT NEW ARCHITECTURE (11K): `app.services.activity_pagination` builds one key-only UNION ALL over four viewer-relative activity sources, applies an authenticated-owner scope in every branch, and keyset-pages by `updated_at DESC`, source rank and UUID. The opaque v1 cursor is strict base64url JSON bound to mode and snapshot; it is navigation state, never authorization. The first page may add one owned deep-link record without moving the ordinary cursor; a foreign include is ignored. Exact four-source counts are computed in one round trip. Only page IDs are widened into relationships, users, conversations, histories, engagements and review summaries. Default/all mode keeps a bounded recent owned-context compatibility slice; talent/hiring modes load only referenced context. Frontend rollout is expand/contract: deploy the compatible frontend first (it accepts a legacy response without `page`), then backend/migration; deploying the backend first would truncate an old client at 100 and is not the supported order. UI counts remain exact while queues/search/stage/archive views are explicitly described as loaded-only until older pages are fetched. Page reconciliation is functional, so an in-flight page cannot overwrite a newer local/realtime mutation. IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
 NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRET; GOOGLE_OAUTH_EXCHANGE_SECRET shared only between NextAuth and FastAPI; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID; INVITE_ONLY_BETA (default false — leaving it unset preserves open registration exactly); MAX_REQUEST_BODY_BYTES and MAX_MEDIA_REQUEST_BODY_BYTES from RATE-004; EMAIL_WORKER_IN_PROCESS (default false) and EMAIL_WORKER_INTERVAL_SECONDS (default 5) from EMAIL-002; EMAIL_WEBHOOK_SECRET from EMAIL-004 (unset means the delivery webhook refuses everything, which is the intended fail-closed posture, not a bug); frontend server-only MEDIA_PUBLIC_BASE_URL plus MEDIA_BASE_PATH, which must match the backend canonical media configuration. Backend settings are documented in backend/app/core/config.py; the frontend media settings are also documented in `.env.example` and `DEPLOYMENT.md`.
-NEW DEPENDENCIES: none in Phase 11K; backend still declares its already-locked runtime `httpx==0.28.1` and `httpcore==1.0.9` usage directly
+NEW DEPENDENCIES: direct exact frontend `axe-core==4.13.0` for the Phase 11L release gate; backend still declares its already-locked runtime `httpx==0.28.1` and `httpcore==1.0.9` usage directly
 NEW SERVICES: app.services.activity_pagination deterministic activity-feed boundary; app.services.safe_outbound_fetch shared public-URL boundary; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md complete caller inventory; plus all previously documented OAuth/session/strong-auth services
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
-KNOWN TEST FAILURES: no task-caused failure is open. Phase 11K: frontend node 1,268/1,268; TypeScript green; full lint exits 0 with 32 existing warnings; backend focused/broad 65/65; disposable PostgreSQL 29/29 after a full migration cycle; workspace-paging browser 11/11; complete Applications Pipeline browser 31/31; production build green. One first PostgreSQL pass had a 10-second timeout in the unrelated concurrent-password-reset test; its isolated rerun and a complete harness rerun passed. The first combined browser run exposed a pre-existing test-contract race: the helper left Inbox open past the intentional 800 ms auto-review threshold, then compared the mutated Pipeline against the untouched manifest. The helper now enters the canonical Pipeline URL and waits for seeded rows; assertions were not weakened. Do not use this contended host for timing claims. The last full backend repository count remains 7,499 passed / 65 skipped.
-COMMANDS TO RESUME: `git status --short`; `git branch --show-current`; `git rev-parse HEAD`; `.venv/bin/python -m alembic heads` from backend; then inventory `package.json`, `playwright.config.ts`, current browser projects and every existing a11y/keyboard/contrast test before designing A11Y-001. Never run two pytest processes against the shared test database, and never run Next build concurrently with Playwright against `.next`.
-FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase 11K/11E in this handoff; package.json; playwright.config.ts; tests/e2e/classification-a11y.spec.ts; tests/colorContrast.test.mjs; app and component route inventory. For pagination context: backend/app/services/activity_pagination.py; backend/app/api/v1/routers/marketplace.py; components/you/ApplicationsWorkspace.tsx
+KNOWN TEST FAILURES: no task-caused failure is open. Phase 11L: frontend node 1,270/1,270; TypeScript green; full lint exits 0 with 32 existing warnings; production build green; production dependency audit reports 0 high/critical; backend activity-summary focus 2/2 and changed-file Ruff green; real-backend accessibility QA 8/8; exact real-backend interview workflow 1/1. The canonical accessibility aggregate was 85/87: Firefox timed out while opening Pipeline and the 320 px workspace under unrelated host load 50–95; each exact case passed in isolation, Chromium and WebKit were 29/29, and an earlier unsplit matrix was 78/78. The standard browser aggregate before final corrections was 497/504; three host-sensitive failures passed isolated, four deterministic failures were corrected, a surrounding 41-test rerun passed 39/41 and exposed two more stale auto-review comparisons, those passed 2/2 after correction, and the final exact regression set passed 6/6. No aggregate 504/504 claim is made; Phase 13 owes the canonical rerun. The last full backend repository count remains 7,499 passed / 65 skipped.
+COMMANDS TO RESUME: `git status --short`; `git branch --show-current`; `git rev-parse HEAD`; `.venv/bin/python -m alembic heads` from backend; then inspect the current logging/error/health/metrics seams for OPS-003 before choosing a bounded vendor-neutral contract. Never run two pytest processes against the shared test database, and never run Next build concurrently with Playwright against `.next`.
+FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase 11L and Phase 10 health/config checkpoints in this handoff; backend/app/main.py; backend/app/core/logging.py if present; backend/app/api/v1/routers/health.py; backend/app/notifications/runner.py; current frontend error boundaries and instrumentation files; deployment/runbook docs
 RELEASE ASSESSMENT: NO-GO
 ```
 
@@ -1321,6 +1321,97 @@ NEXT READY: the acceptance API surface (present outstanding documents, record ac
 PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST — the admin
 panel already has an append-only audit rule and suspension enforcement.
 ```
+
+## Phase 11L checkpoint (A11Y-001 — fail closed on the surfaces customers use)
+
+```text
+Phase: 11L — automated accessibility and cross-browser gate
+Status: COMPLETE
+Initial HEAD: 5180f6b707fe34fc094f61126092e8e5e15bebc0
+Final HEAD: resolve `git rev-parse HEAD`; this handoff is committed with the implementation
+Commit(s): `fix(a11y): gate customer surfaces across browsers`
+Files materially changed:
+  package.json; package-lock.json
+  playwright.a11y.config.ts
+  tests/e2e/axeAudit.ts; tests/e2e/accessibility-matrix.spec.ts
+  tests/e2e/qa/workspace-accessibility.spec.ts
+  .github/workflows/ci.yml; .github/workflows/README.md
+  tests/ciWorkflowContract.test.mjs
+  components/AuthPage.tsx; components/Header.tsx; components/Sidebar.tsx
+  components/JobCard.tsx; components/TalentCard.tsx; components/PostJobPage.tsx
+  components/jobs/ChannelAttribution.tsx
+  components/profile/ProfileExperienceList.tsx; components/profile/ProfileReviews.tsx
+  components/you/ApplicationsWorkspace.tsx; components/you/PipelineBoard.tsx
+  components/you/WorkspaceNavigation.tsx
+  backend/app/api/v1/routers/marketplace.py; backend/app/schemas/marketplace.py
+  backend/tests/test_activity_summary_query_bound.py
+  lib/backendClient.ts; lib/ownerInteractions.ts
+  tests/interactionTimeline.test.mjs
+  tests/e2e/dev-data-source.spec.ts; tests/e2e/messaging-hierarchy.spec.ts
+  tests/e2e/review-progress.spec.ts; tests/e2e/you-applications.spec.ts
+  README.md; docs/PRODUCTION_READINESS_EXECUTION.md
+  docs/PRODUCTION_READINESS_HANDOFF.md
+Migrations: none. Alembic remains 0070_activity_page_indexes, one head.
+Behavior changed: customer-facing cards and inline controls have real minimum hit areas;
+  review rails are keyboard-focusable; profile experience links have explicit names; the
+  mobile navigation button now controls the labelled main navigation; Post Job exposes its
+  hiring-state graphic semantically; status/count contrast and row-state layout are stable.
+  Interview scheduling now explicitly resolves a legacy missing conversation before the
+  mutation, so a cancelled background detail read cannot turn Save into a silent no-op.
+Security assumptions: axe runs against the whole document with WCAG 2.0/2.1/2.2 A/AA tags
+  and fails on every selected violation. `resultTypes: ["violations"]` only bounds result
+  serialization; it does not filter severity. The route matrix uses bounded local fixtures
+  and no live provider. The already-authorized activity query may return a conversation id;
+  it does not broaden ownership, and the fallback conversation endpoint repeats authorization.
+Tests run: listed below.
+Exact results:
+  npx tsc --noEmit                                      exit 0
+  npm run lint                                          exit 0, 0 errors / 32 existing warnings
+  node --test tests/*.test.mjs                          1,270/1,270, 0 failed/skipped
+  npm run build                                         exit 0, production build complete
+  npm run audit:production                              0 analyzed/unanalysed high/critical
+  focused backend activity-summary pytest              2/2
+  changed backend Ruff                                  exit 0
+  focused CI/mapping node                               19/19
+  real-backend interview scheduling workflow           1/1
+  complete real-backend accessibility QA               8/8
+  accessibility Chromium                               29/29
+  accessibility WebKit                                 29/29
+  accessibility Firefox aggregate                      27/29; two host timeouts
+  exact timed-out Firefox cases                        1/1 Pipeline; 1/1 mobile
+  earlier unsplit cross-browser matrix                 78/78
+  standard browser aggregate before corrections       497/504
+  three host-sensitive standard failures isolated      3/3
+  surrounding corrected standard files                 39/41, then remaining 2/2
+  final exact standard regression set                  6/6
+Known external failures: A11Y-002 remains BLOCKED_EXTERNAL. Automation cannot certify a
+  real screen-reader session, human focus-order/keyboard review, browser-native 200% zoom,
+  physical touch behavior, or production assistive-technology combinations. The host ran at
+  load 50–95 from unrelated editor processes; two Firefox navigation timeouts are retained as
+  evidence and were not erased by rerunning. No canonical 504/504 standard aggregate is claimed.
+Remaining risks: Phase 13 must rerun the complete standard browser suite and cross-browser
+  gate on a quieter host. SEO-002 still needs the separately recorded real-backend sitemap
+  pagination/error-behavior check. Manual accessibility review remains a release gate.
+Next phase: Phase 12A, OPS-003 error reporting, after a bounded existing-seam survey.
+Important commands:
+  git status --short
+  cd backend && .venv/bin/python -m alembic heads && .venv/bin/python -m alembic current
+  npm run test:e2e:a11y
+  npm run test:e2e:qa
+  node --test tests/*.test.mjs
+```
+
+WHY THE MATRIX IS SEPARATE: standard, real-backend QA and the three-browser accessibility
+gate all write/read `.next`. CI therefore runs them serially. Parallelizing them would test
+artifact corruption and server races, not accessibility.
+
+WHY THE STANDARD TEST CONTRACTS CHANGED: the mock job title was retitled in the canonical fixture,
+and deliberate-open auto-review intentionally advances New to Reviewing after 800 ms. Tests
+that expected the retired title or raced `Move to Reviewing` contradicted current product
+truth. The row/card test now switches the same mounted workspace instead of re-seeding a fresh
+copy after the Inbox record progresses. The deliberate-review test previously selected every
+row with the always-true predicate `preview.length >= 0`; it now uses the product's own
+Not-opened queue. No sleep was increased and no accessibility violation was filtered out.
 
 ## Phase 11K checkpoint (PERF-002/CORRECT-007 — page the activity, not merely its DOM)
 

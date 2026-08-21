@@ -630,7 +630,7 @@ export function WorkQueueSelector({
                     wants — because flags overlap and cannot sum to anything.
                   */}
                   {section.denominator ? (
-                    <span className="text-[10px] tabular-nums text-disabled">
+                    <span className="text-[10px] tabular-nums text-subtle">
                       {section.kind === "partition"
                         ? `of ${section.denominatorCount} ${section.denominator}`
                         : `${section.denominatorCount} ${section.denominator}`}

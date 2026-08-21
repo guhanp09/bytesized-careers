@@ -23,6 +23,10 @@ const ci = readFileSync(join(root, ".github", "workflows", "ci.yml"), "utf8");
 const security = readFileSync(join(root, ".github", "workflows", "security.yml"), "utf8");
 const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 
+function code(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
 test("every npm script the workflows call exists", () => {
   const called = new Set();
   for (const source of [ci, security]) {
@@ -110,17 +114,49 @@ test("CI migrates the way a deployment migrates", () => {
   assert.ok(runs.length >= 2, `expected the release step to run more than once, saw ${runs.length}`);
 });
 
-test("the two Playwright suites are not run concurrently", () => {
+test("the Playwright suites are not run concurrently", () => {
   // They build from the same .next directory and the QA suite binds fixed
   // ports. Running them together is faster and the evidence is worthless.
   const browserJob = ci.slice(ci.indexOf("  browser:"));
   const standardAt = browserJob.indexOf("npm run test:e2e\n");
   const qaAt = browserJob.indexOf("npm run test:e2e:qa");
+  const a11yAt = browserJob.indexOf("npm run test:e2e:a11y");
 
-  assert.ok(standardAt > 0 && qaAt > 0, "expected both suites in the browser job");
+  assert.ok(
+    standardAt > 0 && qaAt > 0 && a11yAt > 0,
+    "expected standard, QA, and accessibility suites in the browser job",
+  );
   // Separate steps in one job run in order; a matrix or separate jobs would not.
   assert.ok(standardAt < qaAt, "the standard suite must precede the QA suite");
+  assert.ok(qaAt < a11yAt, "the QA suite must precede the accessibility suite");
   assert.ok(!browserJob.includes("strategy:"), "the browser job must not fan out");
+});
+
+test("the accessibility gate is direct, cross-browser, and fail-closed", () => {
+  const config = code(readFileSync(join(root, "playwright.a11y.config.ts"), "utf8"));
+  const audit = code(readFileSync(join(root, "tests", "e2e", "axeAudit.ts"), "utf8"));
+
+  assert.equal(
+    packageJson.devDependencies["axe-core"],
+    "4.13.0",
+    "axe-core must be an exact direct dependency, not an accidental transitive tool",
+  );
+  for (const browser of ["Desktop Chrome", "Desktop Firefox", "Desktop Safari"]) {
+    assert.match(config, new RegExp(`devices\\[\\"${browser}\\"\\]`));
+  }
+  for (const tag of ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"]) {
+    assert.match(audit, new RegExp(`\\"${tag}\\"`));
+  }
+  assert.match(
+    audit,
+    /if\s*\(violations\.length\s*>\s*0\)\s*throw new Error/,
+    "every selected WCAG violation must fail the gate regardless of impact label",
+  );
+  assert.match(
+    audit,
+    /resultTypes:\s*\["violations"\]/,
+    "axe may omit unused result detail, but never violation detail",
+  );
 });
 
 test("backend and postgres suites run as separate jobs", () => {

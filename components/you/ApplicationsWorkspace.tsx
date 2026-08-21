@@ -3703,11 +3703,47 @@ export default function ApplicationsWorkspace({
     };
   }, [liveMode, backendAccessToken, reloadNonce]);
 
-  /** Conversation id for an interaction, once its thread is known. */
+  /** Conversation id from the activity page, with live reads as rollout fallbacks. */
   const conversationIdOf = useCallback(
     (item: OwnerInteraction): string | null =>
-      liveThreads[item.id]?.conversationId ?? conversationIdByThread[item.id] ?? null,
+      item.conversationId ??
+      liveThreads[item.id]?.conversationId ??
+      conversationIdByThread[item.id] ??
+      null,
     [liveThreads, conversationIdByThread]
+  );
+
+  /**
+   * Resolve a legacy interaction whose conversation has not been created yet.
+   *
+   * The selected-thread poll normally creates and caches that conversation,
+   * but workspace refreshes are allowed to cancel a poll. A deliberate shared
+   * mutation must own its prerequisite instead of racing that background read.
+   */
+  const resolveConversationId = useCallback(
+    async (item: OwnerInteraction): Promise<string | null> => {
+      const known = conversationIdOf(item);
+      if (known || !backendAccessToken) return known;
+      const detail = await (item.kind === "hiring_request"
+        ? getInterestConversation(backendAccessToken, item.id)
+        : getApplicationConversation(backendAccessToken, item.id));
+      setLiveThreads((current) => ({
+        ...current,
+        [item.id]: {
+          conversationId: detail.conversation.id,
+          messages: detail.messages,
+          conversation: detail.conversation,
+          engagement: detail.engagement,
+          interview: detail.interview ?? null,
+        },
+      }));
+      setConversationIdByThread((current) => ({
+        ...current,
+        [item.id]: detail.conversation.id,
+      }));
+      return detail.conversation.id;
+    },
+    [backendAccessToken, conversationIdOf]
   );
 
   /*
@@ -3907,32 +3943,48 @@ export default function ApplicationsWorkspace({
       mutate: (accessToken: string, conversationId: string) => Promise<BackendInterview>,
       successMessage: string
     ) => {
-      const conversationId = conversationIdOf(item);
-      if (!conversationId || !backendAccessToken) return;
+      if (!backendAccessToken) {
+        setInterviewError("Your session is unavailable. Sign in again and try once more.");
+        return;
+      }
       setInterviewBusy(true);
       setInterviewError(null);
       try {
-        const saved = await mutate(backendAccessToken, conversationId);
-        rememberInterview(saved);
-        setSchedulingFor(null);
-        flashActionFeedback(successMessage);
-        // The stage may have moved with it, so re-read the authoritative record
-        // rather than inferring what the transition did.
-        setReloadNonce((value) => value + 1);
-      } catch (error) {
-        const conflict =
-          error instanceof BackendRequestError && (error.status === 409 || error.status === 422);
-        setInterviewError(
-          conflict
-            ? "This interview changed somewhere else. Reopen it to see the current time."
-            : "Couldn\u2019t save that. Try again."
-        );
-        if (conflict) setReloadNonce((value) => value + 1);
+        let conversationId: string | null;
+        try {
+          conversationId = await resolveConversationId(item);
+        } catch {
+          setInterviewError("Couldn\u2019t load this conversation. Try again.");
+          return;
+        }
+        if (!conversationId) {
+          setInterviewError("Couldn\u2019t load this conversation. Try again.");
+          return;
+        }
+        try {
+          const saved = await mutate(backendAccessToken, conversationId);
+          rememberInterview(saved);
+          setSchedulingFor(null);
+          flashActionFeedback(successMessage);
+          // The stage may have moved with it, so re-read the authoritative record
+          // rather than inferring what the transition did.
+          setReloadNonce((value) => value + 1);
+        } catch (error) {
+          const conflict =
+            error instanceof BackendRequestError &&
+            (error.status === 409 || error.status === 422);
+          setInterviewError(
+            conflict
+              ? "This interview changed somewhere else. Reopen it to see the current time."
+              : "Couldn\u2019t save that. Try again."
+          );
+          if (conflict) setReloadNonce((value) => value + 1);
+        }
       } finally {
         setInterviewBusy(false);
       }
     },
-    [conversationIdOf, backendAccessToken, rememberInterview, flashActionFeedback]
+    [backendAccessToken, resolveConversationId, rememberInterview, flashActionFeedback]
   );
 
   const submitInterview = useCallback(
@@ -5620,7 +5672,7 @@ export default function ApplicationsWorkspace({
                             and the Pipeline card always say the same thing
                             about the same record.
                           */}
-                          <span className="flex shrink-0 items-center pr-5">
+                          <span className="flex h-5 shrink-0 items-center pr-5">
                             {rowWorkState ? (
                               <WorkStateChip state={rowWorkState} />
                             ) : (

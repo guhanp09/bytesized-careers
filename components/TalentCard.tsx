@@ -147,7 +147,7 @@ function ListingCta({
       type="button"
       onClick={onClick}
       onKeyDown={(event) => event.stopPropagation()}
-      className="group/cta inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-sm px-0.5 py-0.5 text-[12px] font-extrabold tracking-[0.04em] text-white/90 underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+      className="group/cta inline-flex min-h-6 shrink-0 cursor-pointer items-center gap-1.5 rounded-sm px-0.5 py-0.5 text-[12px] font-extrabold tracking-[0.04em] text-white/90 underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
     >
       <span>{label}</span>
       <span
@@ -259,7 +259,7 @@ export default function TalentCard({
                     event.stopPropagation();
                   }}
                   onKeyDown={(event) => event.stopPropagation()}
-                  className="block max-w-full cursor-pointer truncate rounded-sm text-left text-sm font-semibold text-white/88 underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                  className="flex min-h-6 max-w-full cursor-pointer items-center truncate rounded-sm text-left text-sm font-semibold text-white/88 underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                 >
                   {name}
                 </Link>

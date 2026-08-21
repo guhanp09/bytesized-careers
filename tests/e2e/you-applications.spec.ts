@@ -288,7 +288,9 @@ test.describe("/you Applications workspace", () => {
     await expect(detail.getByRole("heading", { name: application.counterpartyName })).toBeVisible();
     await expect(detail.getByRole("heading", { name: application.jobTitle! })).toBeVisible();
     await openOverflow(page);
-    await expect(page.getByRole("menuitem", { name: "Move to Reviewing" })).toBeVisible();
+    // The deliberate open can complete the private Reviewing transition while
+    // the detail assertions run; Interviewing is the stable next real stage.
+    await expect(page.getByRole("menuitem", { name: "Move to Interviewing" })).toBeVisible();
   });
 
   test("reply composer sends a local reply with quick actions", async ({ page }) => {
@@ -360,8 +362,10 @@ test.describe("/you Applications workspace", () => {
 
     await openOverflow(page);
     await expect(page.getByRole("menuitem", { name: /Shortlist/ })).toHaveCount(0);
-    // The stages that remain are real positions in the funnel.
-    await expect(page.getByRole("menuitem", { name: "Move to Reviewing" })).toBeVisible();
+    // The stages that remain are real positions in the funnel. A deliberate
+    // open may already have advanced this record to Reviewing, so assert the
+    // next stable position rather than racing the automatic review timer.
+    await expect(page.getByRole("menuitem", { name: "Move to Interviewing" })).toBeVisible();
   });
 
   test("a communicated legacy Shortlisted reads as Under consideration, never the raw stage", async ({ page }) => {

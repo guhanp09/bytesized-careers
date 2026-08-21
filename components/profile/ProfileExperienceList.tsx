@@ -51,10 +51,12 @@ function ExperienceIdentityMark({
 function ExperienceIdentityAction({
   links,
   onOpenChoices,
+  ariaLabel,
   children,
 }: {
   links: ReturnType<typeof experienceLinksForItem>;
   onOpenChoices: () => void;
+  ariaLabel?: string;
   children: ReactNode;
 }) {
   if (!links.length) {
@@ -69,6 +71,7 @@ function ExperienceIdentityAction({
         href={cleanHref}
         target="_blank"
         rel="noopener noreferrer"
+        aria-label={ariaLabel}
         className="inline-flex shrink-0 self-start cursor-pointer transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
       >
         {children}
@@ -80,6 +83,7 @@ function ExperienceIdentityAction({
     <button
       type="button"
       onClick={onOpenChoices}
+      aria-label={ariaLabel}
       className="inline-flex shrink-0 self-start cursor-pointer text-left transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
     >
       {children}
@@ -203,7 +207,11 @@ export default function ProfileExperienceList({
             key={itemKey}
             className="group flex items-start gap-3 border-b border-white/[0.08] py-4 first:pt-0 last:border-b-0 last:pb-0"
           >
-            <ExperienceIdentityAction links={organizationLinks} onOpenChoices={() => setActiveLinkItemId(itemKey)}>
+            <ExperienceIdentityAction
+              links={organizationLinks}
+              onOpenChoices={() => setActiveLinkItemId(itemKey)}
+              ariaLabel={`Open links for ${organization}`}
+            >
               <ExperienceIdentityMark
                 name={organization}
                 logoUrl={cleanExperienceText(item.organization_logo_url) || inferredLogoUrl}

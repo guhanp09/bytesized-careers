@@ -146,6 +146,8 @@ export type InteractionRecruiterSnapshot = {
 
 export type OwnerInteraction = {
   id: string;
+  /** Authorized conversation carried by the activity page; avoids a second-read race. */
+  conversationId?: string | null;
   mode: InteractionMode;
   direction: InteractionDirection;
   kind: InteractionKind;
@@ -563,6 +565,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
       sortKey: sortKeyOf(application.updated_at || application.created_at),
       item: {
         id: application.id,
+        conversationId: application.conversation_id ?? null,
         mode: "talent",
         direction: "sent",
         kind: "application",
@@ -607,6 +610,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
       sortKey: sortKeyOf(application.updated_at || application.created_at),
       item: {
         id: application.id,
+        conversationId: application.conversation_id ?? null,
         mode: "hiring",
         direction: "received",
         kind: "application",
@@ -666,6 +670,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
       sortKey: sortKeyOf(interest.updated_at || interest.created_at),
       item: {
         id: interest.id,
+        conversationId: interest.conversation_id ?? null,
         mode: "hiring",
         direction: "sent",
         kind: "hiring_request",
@@ -710,6 +715,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
       sortKey: sortKeyOf(interest.updated_at || interest.created_at),
       item: {
         id: interest.id,
+        conversationId: interest.conversation_id ?? null,
         mode: "talent",
         direction: "received",
         kind: "hiring_request",

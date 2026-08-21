@@ -85,7 +85,7 @@ function ListingCta({ onClick }: { onClick: (event: React.MouseEvent<HTMLButtonE
       aria-label="Apply Now"
       onClick={onClick}
       onKeyDown={(event) => event.stopPropagation()}
-      className="vt-cta group/cta hidden shrink-0 cursor-pointer items-center gap-1.5 rounded-sm px-0.5 py-0.5 text-[12px] font-extrabold tracking-[0.04em] text-[var(--vt-cta-text,rgba(255,255,255,0.9))] underline-offset-4 transition-colors hover:text-[var(--vt-cta-text-hover,#ffffff)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-cta-focus-ring,rgba(255,255,255,0.2))] sm:inline-flex"
+      className="vt-cta group/cta hidden min-h-6 shrink-0 cursor-pointer items-center gap-1.5 rounded-sm px-0.5 py-0.5 text-[12px] font-extrabold tracking-[0.04em] text-[var(--vt-cta-text,rgba(255,255,255,0.9))] underline-offset-4 transition-colors hover:text-[var(--vt-cta-text-hover,#ffffff)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-cta-focus-ring,rgba(255,255,255,0.2))] sm:inline-flex"
     >
       <span>Apply Now</span>
       <span aria-hidden="true" className="transition-transform group-hover/cta:translate-x-0.5 motion-reduce:transition-none">
@@ -173,7 +173,7 @@ export function JobCard({ job, matchReasons }: { job: Job; matchReasons?: string
                   channelName={employerName}
                   channelProfileSlug={job.channelProfileSlug}
                   channelExternalUrl={job.channelExternalUrl}
-                  className="min-w-0 max-w-full truncate text-sm font-semibold text-white underline-offset-4"
+                  className="min-w-6 max-w-full truncate text-sm font-semibold text-white underline-offset-4"
                 />
                 {verified ? (
                   <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold text-emerald-100/78" aria-label="Verified hiring identity">

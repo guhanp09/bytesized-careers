@@ -1,7 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
-
 import { expect, test, type Page } from "@playwright/test";
+import { auditDocument, type AxeViolation } from "../axeAudit";
 
 /**
  * Accessibility coverage for the Inbox, Pipeline, and the Phase C surfaces.
@@ -19,74 +17,9 @@ import { expect, test, type Page } from "@playwright/test";
 const CONTROLLER_EMAIL = "qa-controller@example.com";
 const CONTROLLER_PASSWORD = "LocalQaController123!";
 
-const AXE_SOURCE = fs.readFileSync(
-  path.join(process.cwd(), "node_modules", "axe-core", "axe.min.js"),
-  "utf8"
-);
-
-type AxeViolation = {
-  id: string;
-  impact: string | null;
-  help: string;
-  nodes: Array<{ target: string[]; failureSummary?: string }>;
-};
-
-/**
- * Wait for entry animations to finish before measuring.
- *
- * Surfaces here enter with `.ui-crossfade`, which animates opacity on a
- * *container*. Sampled mid-fade, every descendant reads dimmer than it renders,
- * and axe reports contrast failures for colours that are actually fine — which
- * is exactly the kind of false positive that gets an accessibility suite
- * ignored. This measures the settled page, which is the one people see.
- */
-async function settle(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    const finite = document.getAnimations().filter((animation) => {
-      // Looping decoration (a spinner, a pulse) never finishes, so waiting on
-      // it would hang forever. Only entry transitions are worth settling.
-      const timing = animation.effect?.getTiming();
-      return timing?.iterations !== Infinity;
-    });
-    await Promise.race([
-      Promise.all(finite.map((animation) => animation.finished.catch(() => undefined))),
-      new Promise((resolve) => setTimeout(resolve, 1_500)),
-    ]);
-  });
-}
-
-/**
- * axe runs against the **whole document**, not a curated subset.
- *
- * It was previously scoped to the surfaces this workstream owned, because the
- * product's inherited muted-text scale failed AA across components far outside
- * it. That scale has since been replaced with verified semantic tokens, so the
- * exemption no longer has a justification — and a scoped accessibility
- * assertion is one that stops finding things.
- */
-async function runAxe(page: Page): Promise<AxeViolation[]> {
-  await settle(page);
-  await page.addScriptTag({ content: AXE_SOURCE });
-  return page.evaluate(async () => {
-    // @ts-expect-error injected at runtime
-    const results = await window.axe.run(document, {
-      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] },
-    });
-    return results.violations.map((violation: AxeViolation) => ({
-      id: violation.id,
-      impact: violation.impact,
-      help: violation.help,
-      nodes: violation.nodes.map((node) => ({
-        target: node.target,
-        failureSummary: node.failureSummary,
-      })),
-    }));
-  });
-}
-
 /** Serious and critical violations anywhere on the page. */
 async function analyse(page: Page, label: string): Promise<AxeViolation[]> {
-  const violations = await runAxe(page);
+  const violations = await auditDocument(page);
   const blocking = violations.filter(
     (violation) => violation.impact === "serious" || violation.impact === "critical"
   );
@@ -124,6 +57,15 @@ async function openRecruiterInbox(page: Page) {
   await expect(page.getByTestId("applications-workspace").first()).toBeVisible({ timeout: 20_000 });
 }
 
+/** The restored, decision-eligible application used throughout this suite. */
+function interviewCandidate(page: Page) {
+  return page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Priya Nair" })
+    .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
+    .first();
+}
+
 /**
  * Bring the decision surface up.
  *
@@ -144,7 +86,7 @@ async function openDecisionSurface(page: Page) {
 }
 
 async function arrangeInterview(page: Page) {
-  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  await interviewCandidate(page).click();
   await openDecisionSurface(page);
   await page.getByTestId("decision-strip-option-interviewing").click();
   const when = new Date(Date.now() + 3 * 86_400_000);
@@ -166,7 +108,7 @@ test("the Inbox, Pipeline, and scheduling surfaces carry no serious barriers", a
   await openRecruiterInbox(page);
   expect(await analyse(page, "recruiter inbox list")).toEqual([]);
 
-  await page.getByTestId("interaction-row").first().click();
+  await interviewCandidate(page).click();
   expect(await analyse(page, "conversation open")).toEqual([]);
 
   // The decision surface, in the state where it actually appears.
@@ -224,7 +166,7 @@ test("nothing overflows horizontally at 200% zoom or on a narrow phone", async (
 
 test("the whole interview flow is reachable and operable by keyboard", async ({ page }) => {
   await openRecruiterInbox(page);
-  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  await interviewCandidate(page).click();
 
   // Reach the surface by keyboard, not by clicking. Where the ladder is
   // confident the header carries a button; where it is not, the surface itself
@@ -265,7 +207,7 @@ test("the whole interview flow is reachable and operable by keyboard", async ({ 
 
 test("the scheduling form is fully operable without a pointer", async ({ page }) => {
   await openRecruiterInbox(page);
-  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  await interviewCandidate(page).click();
   await openDecisionSurface(page);
   await page.getByTestId("decision-strip-option-interviewing").click();
 
@@ -379,7 +321,7 @@ test("touch targets on the arrangement meet the 44px guidance on mobile", async 
 test("reduced motion removes animation rather than merely shortening it", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openRecruiterInbox(page);
-  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  await interviewCandidate(page).click();
   await openDecisionSurface(page);
 
   const durations = await page.evaluate(() =>

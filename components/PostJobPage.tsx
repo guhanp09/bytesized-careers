@@ -3645,6 +3645,7 @@ export default function PostJobPage() {
             <p className="mt-0.5 flex min-w-0 items-center gap-2 text-sm font-semibold text-white/86">
               <span className="truncate">{activeHiringDisplayName}</span>
               <span
+                role="img"
                 className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${activeHiringStatusMeta.className}`}
                 title={activeHiringStatusMeta.tooltip}
                 aria-label={activeHiringStatusMeta.label}

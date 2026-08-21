@@ -2629,6 +2629,7 @@ async def activity_summary(
         read.applicant_avatar_url = applicant.avatar_url if applicant is not None else None
         conversation = conversations_by_application.get(application.id)
         if conversation is not None:
+            read.conversation_id = conversation.id
             read.archived_at = (
                 conversation.participant_a_archived_at
                 if current_user.id == conversation.participant_a_user_id
@@ -2670,6 +2671,7 @@ async def activity_summary(
             read.recruiter_avatar_url = recruiter.avatar_url
         conversation = conversations_by_interest.get(interest.id)
         if conversation is not None:
+            read.conversation_id = conversation.id
             read.archived_at = (
                 conversation.participant_a_archived_at
                 if current_user.id == conversation.participant_a_user_id
