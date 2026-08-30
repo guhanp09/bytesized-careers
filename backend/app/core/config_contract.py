@@ -174,10 +174,10 @@ CONFIG_CONTRACT: dict[str, ConfigContract] = {
     "email_delivery_enabled": ConfigContract(
         Requirement.FEATURE_CONDITIONAL,
         Enforcement.FEATURE_GATE,
-        "The master switch for non-auth notification mail. Off queues to the "
-        "outbox and sends nothing, which is a complete state: no notification "
-        "is lost, none is delivered. Authentication mail is deliberately not "
-        "governed by it — see EMAIL_MODE.",
+        "The master switch for real delivery from the shared email outbox. Off "
+        "keeps both authentication and notification intent durable while the "
+        "worker uses its mock provider. The provider is selected when the "
+        "worker starts, so a change takes effect only after worker restart.",
     ),
     "debug": ConfigContract(
         Requirement.CORE_REQUIRED,

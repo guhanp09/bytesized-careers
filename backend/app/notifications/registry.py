@@ -7,11 +7,11 @@ from the flow that triggers it.
 
 Channels:
     in_app  -> a row in the `notifications` table (the bell + /notifications page)
-    email   -> a row in the `email_outbox` table (mocked until delivery is enabled)
+    email   -> a durable row in `email_outbox` (the worker chooses mock or SMTP)
 
-`default_channels` decides what is enabled out of the box. `wired=False` marks an
-event that is defined but has no real trigger yet (e.g. messaging, which has no
-backend) — declared so the contract is clear, but never dispatched.
+`default_channels` decides what is enabled out of the box. `wired=False` is
+available for a contract declared before its producer exists; every current
+registry entry has a real producer.
 """
 
 from __future__ import annotations

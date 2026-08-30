@@ -47,7 +47,7 @@ class EmailPayload:
 
 
 def real_delivery_enabled() -> bool:
-    """Real notification email is only attempted when explicitly switched on."""
+    """Real outbox delivery is attempted only when explicitly switched on."""
     return bool(settings.email_delivery_enabled) and settings.email_mode == "smtp"
 
 

@@ -20,9 +20,10 @@ class Settings(BaseSettings):
     smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
     smtp_from_email: str | None = Field(default=None, alias="SMTP_FROM_EMAIL")
     smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
-    # Master switch for delivering *notification* (non-auth) emails. Default off:
-    # notification emails are queued to the outbox and mocked, never sent, until a
-    # production domain + provider are ready. Auth emails keep using EMAIL_MODE.
+    # Master switch for real delivery from the shared outbox. Default off: both
+    # authentication and notification intents remain durable, but the worker uses
+    # its mock provider until a production domain + provider are ready. The worker
+    # selects its provider at startup, so changing this setting requires restart.
     email_delivery_enabled: bool = Field(default=False, alias="EMAIL_DELIVERY_ENABLED")
     debug: bool = Field(default=False, alias="DEBUG")
     # Normalised and checked at parse time, because `configure_logging` resolves

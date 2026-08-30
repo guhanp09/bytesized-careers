@@ -4,7 +4,7 @@
   1. looks the event up in the registry,
   2. writes an in-app `Notification` row (the bell + /notifications page),
   3. queues an email payload to the outbox when the event has email enabled by
-     default (mocked until delivery is switched on),
+     default (the worker, not the request, chooses mock or SMTP delivery),
 validating the event's required payload before queueing email.
 
 It never raises on a notification problem — a notification must not break the user
@@ -44,7 +44,7 @@ async def dispatch_notification(
     dedupe_key: str | None = None,
     strict_outbox: bool = False,
 ) -> Notification | None:
-    """Create an in-app notification (+ optional mocked email) for an event.
+    """Create an in-app notification and optional durable email intent.
 
     Returns the created `Notification`, or `None` when there is no recipient.
     """
