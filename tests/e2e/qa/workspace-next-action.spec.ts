@@ -180,7 +180,7 @@ test("the decision surface commits a real stage change when a choice is taken", 
   await expect(page.getByTestId("applications-detail-header")).toContainText("Viewed");
 });
 
-test("messaging stays immediately available and does not change lifecycle state", async ({ page }) => {
+test("messaging stays immediately available and does not change lifecycle state @synthetic:message", async ({ page }) => {
   await openRecruiterInbox(page);
   await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
 

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 
-test("deep Jobs search explains authoritative matches and preserves the query", async ({ page }) => {
+test("deep Jobs search explains authoritative matches and preserves the query @synthetic:browse", async ({ page }) => {
   await page.goto("/jobs?q=video%20editor%20remote", { waitUntil: "domcontentloaded" });
 
   const summary = page.getByRole("region", { name: "Search interpretation" });

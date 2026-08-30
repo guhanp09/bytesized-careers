@@ -49,7 +49,7 @@ test("signed-out and ordinary sessions do not receive QA controls", async ({ pag
   expect(response.status()).toBe(404);
 });
 
-test("controller switches to a real talent persona and returns without re-login", async ({ page }) => {
+test("controller switches to a real talent persona and returns without re-login @synthetic:auth", async ({ page }) => {
   await loginController(page);
   await switchPersona(page, "talent-complete", "Priya Nair");
 
@@ -923,7 +923,7 @@ test("engagement confirmation and blind feedback complete across both participan
   await expect(talentCompletionRow).toContainText("Feedback published");
 });
 
-test("moderator requires confirmation and receives admin access", async ({ page }) => {
+test("moderator requires confirmation and receives admin access @synthetic:admin", async ({ page }) => {
   await loginController(page);
   await openDrawer(page);
   await page.getByTestId("qa-switch-admin").click();

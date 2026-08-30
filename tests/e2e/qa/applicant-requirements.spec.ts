@@ -174,7 +174,7 @@ async function satisfy(page: Page, key: string) {
   throw new Error(`${key} rendered no control a candidate could fill`);
 }
 
-test("a candidate submits every answer and the recruiter receives them", async ({ page }) => {
+test("a candidate submits every answer and the recruiter receives them @synthetic:apply", async ({ page }) => {
   await login(page, "qa-controller@example.com", "LocalQaController123!");
 
   // Applying needs a candidate, not the listing's owner.

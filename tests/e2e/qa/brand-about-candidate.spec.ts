@@ -75,7 +75,7 @@ async function publish(page: Page, jobId: string) {
   expect(response.ok(), `publish: ${await response.text()}`).toBeTruthy();
 }
 
-test("automatic brand copy remains editable and reaches candidates at every viewport", async ({
+test("automatic brand copy remains editable and reaches candidates at every viewport @synthetic:publish", async ({
   page,
 }) => {
   await login(page);
