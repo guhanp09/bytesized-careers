@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import PurePath
 from types import TracebackType
 
+from app.core.operational_metrics import safe_metric_event
 from app.middleware.request_id import get_request_id
 
 _EMAIL = re.compile(r"(?<![A-Za-z0-9.!#$%&'*+/=?^_`{|}~-])[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -175,6 +176,9 @@ class JsonFormatter(logging.Formatter):
         error_event = safe_error_event(getattr(record, "error_event", None))
         if error_event is not None:
             payload["error_event"] = error_event
+        metric_event = safe_metric_event(getattr(record, "metric_event", None))
+        if metric_event is not None:
+            payload["metric_event"] = metric_event
         if record.exc_info:
             payload["exception"] = safe_exception(record.exc_info)
         return json.dumps(payload, ensure_ascii=True)

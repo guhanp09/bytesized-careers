@@ -1,26 +1,19 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any
 
 from starlette.requests import Request
 
 from app.core.logging import safe_traceback_frames
+from app.core.operational_metrics import canonical_route_template
 
 logger = logging.getLogger(__name__)
-
-_SAFE_ROUTE = re.compile(r"^/[A-Za-z0-9_./{}:-]{0,239}$")
-
 
 def _route_template(request: Request) -> str:
     """Return the matched template, never the customer-controlled URL."""
 
-    route = request.scope.get("route")
-    candidate = getattr(route, "path", None)
-    if isinstance(candidate, str) and _SAFE_ROUTE.fullmatch(candidate):
-        return candidate
-    return "unmatched"
+    return canonical_route_template(request.scope)
 
 
 def backend_error_event(request: Request, exc: Exception) -> dict[str, object]:

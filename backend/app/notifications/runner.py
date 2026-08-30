@@ -23,12 +23,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 import uuid
 from collections.abc import Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.operational_metrics import record_email_worker_pass
 from app.notifications.email import real_delivery_enabled
 from app.notifications.provider import EmailProvider, MockEmailProvider, SmtpEmailProvider
 
@@ -82,6 +84,7 @@ async def run_worker_forever(
     logger.info("email_worker_started", extra={"worker": identity, "interval": interval_seconds})
 
     while not signal.is_set():
+        pass_started = time.perf_counter()
         try:
             async with session_factory() as session:
                 await process_outbox_once(
@@ -89,6 +92,11 @@ async def run_worker_forever(
                 )
                 await session.commit()
         except Exception:  # noqa: BLE001 - one bad pass must not end the worker
+            record_email_worker_pass(
+                succeeded=False,
+                claimed=0,
+                elapsed_seconds=time.perf_counter() - pass_started,
+            )
             logger.exception("email_worker_pass_failed", extra={"worker": identity})
 
         with contextlib.suppress(TimeoutError):

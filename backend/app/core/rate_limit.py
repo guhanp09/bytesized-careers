@@ -11,6 +11,7 @@ from typing import Protocol
 from fastapi import Depends, HTTPException, Request, status
 
 from app.core.config import settings
+from app.core.operational_metrics import record_redis_rate_limit
 
 
 @dataclass(frozen=True)
@@ -67,23 +68,45 @@ class RedisRateLimitBackend:
         self._client = redis_asyncio.from_url(redis_url, decode_responses=True)
 
     async def hit(self, *, key: str, rule: RateLimitRule) -> tuple[bool, int]:
-        now_ms = int(time.time() * 1000)
-        window_ms = rule.window_seconds * 1000
-        cutoff_ms = now_ms - window_ms
-        bucket_key = f"rate_limit:{rule.name}:{key}"
-        pipe = self._client.pipeline()
-        pipe.zremrangebyscore(bucket_key, 0, cutoff_ms)
-        pipe.zcard(bucket_key)
-        _, count = await pipe.execute()
-        if int(count) >= rule.limit:
-            oldest = await self._client.zrange(bucket_key, 0, 0, withscores=True)
-            if oldest:
-                retry_after = max(1, int((int(oldest[0][1]) + window_ms - now_ms) / 1000))
-            else:
-                retry_after = rule.window_seconds
-            return False, retry_after
-        await self._client.zadd(bucket_key, {f"{now_ms}:{uuid.uuid4().hex}": now_ms})
-        await self._client.expire(bucket_key, rule.window_seconds)
+        started = time.perf_counter()
+        try:
+            now_ms = int(time.time() * 1000)
+            window_ms = rule.window_seconds * 1000
+            cutoff_ms = now_ms - window_ms
+            bucket_key = f"rate_limit:{rule.name}:{key}"
+            pipe = self._client.pipeline()
+            pipe.zremrangebyscore(bucket_key, 0, cutoff_ms)
+            pipe.zcard(bucket_key)
+            _, count = await pipe.execute()
+            if int(count) >= rule.limit:
+                oldest = await self._client.zrange(bucket_key, 0, 0, withscores=True)
+                if oldest:
+                    retry_after = max(
+                        1,
+                        int((int(oldest[0][1]) + window_ms - now_ms) / 1000),
+                    )
+                else:
+                    retry_after = rule.window_seconds
+                record_redis_rate_limit(
+                    allowed=False,
+                    elapsed_seconds=time.perf_counter() - started,
+                )
+                return False, retry_after
+            await self._client.zadd(
+                bucket_key,
+                {f"{now_ms}:{uuid.uuid4().hex}": now_ms},
+            )
+            await self._client.expire(bucket_key, rule.window_seconds)
+        except Exception:
+            record_redis_rate_limit(
+                allowed=None,
+                elapsed_seconds=time.perf_counter() - started,
+            )
+            raise
+        record_redis_rate_limit(
+            allowed=True,
+            elapsed_seconds=time.perf_counter() - started,
+        )
         return True, 0
 
 

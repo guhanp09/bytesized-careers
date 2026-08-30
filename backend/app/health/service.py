@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.operational_metrics import record_database_probe
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +22,21 @@ SessionFactory = Callable[[], AsyncSession]
 
 
 async def check_db(session: AsyncSession) -> bool:
-    result = await session.execute(text("SELECT 1"))
-    return result.scalar_one() == 1
+    started = time.perf_counter()
+    try:
+        result = await session.execute(text("SELECT 1"))
+        healthy = result.scalar_one() == 1
+    except Exception:
+        record_database_probe(
+            healthy=False,
+            elapsed_seconds=time.perf_counter() - started,
+        )
+        raise
+    record_database_probe(
+        healthy=healthy,
+        elapsed_seconds=time.perf_counter() - started,
+    )
+    return healthy
 
 
 @dataclass(frozen=True)

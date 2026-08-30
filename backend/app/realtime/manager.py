@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -17,6 +18,7 @@ from uuid import UUID, uuid4
 
 from fastapi import WebSocket
 
+from app.core.operational_metrics import record_realtime_publish
 from app.realtime.bus import (
     DeliveryDeduplicator,
     InProcessRealtimeBus,
@@ -162,11 +164,21 @@ class ConversationRealtimeManager:
             conversation_id=conversation_id,
         )
         try:
+            started = time.perf_counter()
             await self._bus.publish(event)
         except Exception:  # noqa: BLE001 - a hint is never worth failing a write
+            record_realtime_publish(
+                succeeded=False,
+                elapsed_seconds=time.perf_counter() - started,
+            )
             logger.warning(
                 "realtime_publish_failed",
                 extra={"event_type": payload.get("type"), "user_id": str(user_id)},
+            )
+        else:
+            record_realtime_publish(
+                succeeded=True,
+                elapsed_seconds=time.perf_counter() - started,
             )
 
     @staticmethod

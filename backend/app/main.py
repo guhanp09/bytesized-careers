@@ -16,6 +16,7 @@ from app.core.logging import configure_logging
 from app.db.dev_sqlite_schema import sync_dev_sqlite_schema
 from app.db.seed import seed_roles_if_missing
 from app.db.session import SessionLocal, engine
+from app.middleware.operational_metrics import OperationalMetricsMiddleware
 from app.middleware.qa_audit import QaPersonaAuditMiddleware
 from app.middleware.request_body_limit import RequestBodyLimitMiddleware
 from app.middleware.request_id import RequestIDMiddleware
@@ -62,6 +63,7 @@ app = FastAPI(
 # still passes back out through the request-id and CORS layers, which a browser
 # needs in order to read the response at all.
 app.add_middleware(RequestBodyLimitMiddleware)
+app.add_middleware(OperationalMetricsMiddleware)
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(QaPersonaAuditMiddleware)
 app.add_middleware(

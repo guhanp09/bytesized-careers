@@ -15,6 +15,7 @@ what makes the whole thing testable without a scheduler.
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -22,6 +23,10 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.notification_consent import may_send as consent_allows
+from app.core.operational_metrics import (
+    record_email_deliveries,
+    record_email_worker_pass,
+)
 from app.notifications.provider import EmailProvider, ProviderOutcome
 from app.repositories.email_outbox_delivery import (
     mark_retryable_failure,
@@ -75,6 +80,7 @@ async def process_outbox_once(
 
     identity = worker_id or f"worker-{uuid.uuid4().hex[:12]}"
     run = DeliveryRun()
+    started = time.perf_counter()
 
     claimed = await claim_due_emails(session, worker_id=identity, limit=limit, now=now)
     run.claimed = len(claimed)
@@ -141,5 +147,20 @@ async def process_outbox_once(
                 "failed": run.failed,
                 "suppressed": run.suppressed,
             },
+        )
+        # Do not emit an idle heartbeat every five seconds. It is costly vanity
+        # instrumentation and still cannot prove that a queue is empty. Starts,
+        # stops and failed passes are logged by the runner; successful metrics
+        # describe actual claimed work.
+        record_email_worker_pass(
+            succeeded=True,
+            claimed=run.claimed,
+            elapsed_seconds=time.perf_counter() - started,
+        )
+        record_email_deliveries(
+            sent=run.sent,
+            retrying=run.retrying,
+            failed=run.failed,
+            suppressed=run.suppressed,
         )
     return run

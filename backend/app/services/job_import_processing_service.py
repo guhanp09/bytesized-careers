@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -9,6 +10,7 @@ from uuid import UUID, uuid4
 from app.core.config import settings
 from app.core.job_import_availability import refuse_if_disabled
 from app.core.job_import_execution import attempts_remain
+from app.core.operational_metrics import MetricOutcome, record_ai_provider_call
 from app.models import JobImportDraft
 from app.repositories.job_import_execution_repository import (
     claim_draft_for_processing,
@@ -196,9 +198,14 @@ class JobImportProcessingService:
                 return raced_outcome
             raise
 
+        provider_started = time.perf_counter()
         try:
             provider_result = await self.provider.extract(request)
         except asyncio.CancelledError:
+            record_ai_provider_call(
+                outcome=MetricOutcome.CANCELLED,
+                elapsed_seconds=time.perf_counter() - provider_started,
+            )
             # The request went away mid-extraction — the client abandoned it, or
             # the server is shutting down. `CancelledError` is a BaseException,
             # so neither clause below sees it, and before this the draft simply
@@ -219,6 +226,10 @@ class JobImportProcessingService:
             )
             raise
         except JobImportProviderError as error:
+            record_ai_provider_call(
+                outcome=MetricOutcome.FAILED,
+                elapsed_seconds=time.perf_counter() - provider_started,
+            )
             return await self._fail_or_fall_back(
                 draft_id,
                 owner_user_id=owner_user_id,
@@ -229,6 +240,10 @@ class JobImportProcessingService:
                 status_code=error.status_code,
             )
         except Exception as error:
+            record_ai_provider_call(
+                outcome=MetricOutcome.FAILED,
+                elapsed_seconds=time.perf_counter() - provider_started,
+            )
             return await self._fail_or_fall_back(
                 draft_id,
                 owner_user_id=owner_user_id,
@@ -238,6 +253,11 @@ class JobImportProcessingService:
                 metadata=None,
                 status_code=502,
                 cause=error,
+            )
+        else:
+            record_ai_provider_call(
+                outcome=MetricOutcome.SUCCESS,
+                elapsed_seconds=time.perf_counter() - provider_started,
             )
 
         try:
