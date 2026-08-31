@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from conftest import create_valid_published_job, valid_published_job_payload
 from httpx import AsyncClient
 
 from app.services import auth_service
-from conftest import create_valid_published_job, valid_published_job_payload
 
 PERSONAS_URL = "/api/v1/dev/personas"
 SEED_URL = "/api/v1/dev/seed"
@@ -475,7 +475,6 @@ async def test_identity_review_approve_revoke_and_job_badge_derivation(client: A
         },
     )
     assert job.status_code == 201, job.text
-    job_id = job.json()["id"]
     assert job.json()["is_verified"] is False
 
     queue = await client.get("/api/v1/admin/hiring-identities?status=all", headers=_auth(admin))
@@ -498,7 +497,7 @@ async def test_identity_review_approve_revoke_and_job_badge_derivation(client: A
     assert approved.status_code == 200
     assert approved.json()["verification_status"] == "VERIFIED"
     assert approved.json()["verification_method"] == "MANUAL_ADMIN_REVIEW"
-    job_after = (await client.get(f"/api/v1/admin/jobs?q=Editor under identity", headers=_auth(admin))).json()
+    job_after = (await client.get("/api/v1/admin/jobs?q=Editor under identity", headers=_auth(admin))).json()
     assert job_after["items"][0]["is_verified"] is True
 
     revoked = await client.patch(
@@ -508,7 +507,7 @@ async def test_identity_review_approve_revoke_and_job_badge_derivation(client: A
     )
     assert revoked.status_code == 200
     assert revoked.json()["verification_status"] == "REJECTED"
-    job_final = (await client.get(f"/api/v1/admin/jobs?q=Editor under identity", headers=_auth(admin))).json()
+    job_final = (await client.get("/api/v1/admin/jobs?q=Editor under identity", headers=_auth(admin))).json()
     assert job_final["items"][0]["is_verified"] is False
 
     audit = await client.get("/api/v1/admin/audit-log?target_type=hiring_identity", headers=_auth(admin))

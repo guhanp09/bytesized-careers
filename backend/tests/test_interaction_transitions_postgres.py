@@ -25,7 +25,6 @@ from app.models import (
 )
 from app.services import interaction_transition_service as transitions
 
-
 DATABASE_URL = os.getenv("POSTGRES_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL,

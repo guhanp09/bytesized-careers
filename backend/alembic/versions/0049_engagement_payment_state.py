@@ -18,6 +18,7 @@ Revises: 0048_interaction_interviews
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0049_engagement_payment_state"

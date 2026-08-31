@@ -51,8 +51,8 @@ from app.schemas.marketplace import (
     TalentInterestCreate,
     TalentInterestStatusUpdate,
 )
-from app.services import messaging_service as ms
 from app.services import interaction_status
+from app.services import messaging_service as ms
 
 router = APIRouter(prefix="/dev/workflows", tags=["dev"])
 
@@ -324,11 +324,17 @@ async def workflow_send_hiring_request(
         ).scalars().all()
     )
     if payload.listingId is not None:
-        listing = next((l for l in listings if l.id == payload.listingId), None)
+        listing = next(
+            (candidate for candidate in listings if candidate.id == payload.listingId),
+            None,
+        )
         if listing is None:
             raise HTTPException(status_code=404, detail="Listing not found among target's published listings.")
     else:
-        listing = next((l for l in listings if l.id not in sent_listing_ids), listings[0])
+        listing = next(
+            (candidate for candidate in listings if candidate.id not in sent_listing_ids),
+            listings[0],
+        )
 
     already = listing.id in sent_listing_ids
 

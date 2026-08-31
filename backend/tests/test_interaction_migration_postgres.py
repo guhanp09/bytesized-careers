@@ -16,13 +16,12 @@ from app.models import (
 )
 from tests.interaction_migration_fixtures import (
     HISTORICAL_INTERVIEWING,
-    LEGACY_UNKNOWN_ARCHIVED,
     LEGACY_ACCEPTED,
+    LEGACY_UNKNOWN_ARCHIVED,
     MISMATCHED_ENGAGEMENT,
     MISSING_ENGAGEMENT,
     VALID_HIRED,
 )
-
 
 DATABASE_URL = os.getenv("POSTGRES_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not DATABASE_URL, reason="Disposable PostgreSQL gate only")

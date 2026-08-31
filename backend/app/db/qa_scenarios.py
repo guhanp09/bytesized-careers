@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 from uuid import UUID
 
 from sqlalchemy import delete, or_, select
@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db import seed
 from app.db import seed_data_personas as personas
+from app.db.creator_scenarios.restore import restore_manifest as _restore_manifest
+from app.db.creator_scenarios.schema import SCENARIO_NAMES as _CREATOR_SCENARIO_NAMES
 from app.models import (
     Conversation,
     EmailOutbox,
@@ -31,10 +33,6 @@ from app.models import (
     User,
     UserBlock,
 )
-
-
-from app.db.creator_scenarios.restore import restore_manifest as _restore_manifest
-from app.db.creator_scenarios.schema import SCENARIO_NAMES as _CREATOR_SCENARIO_NAMES
 
 SCENARIOS: tuple[dict[str, object], ...] = (
     {

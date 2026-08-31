@@ -14,13 +14,12 @@ from app.api.deps import get_current_user, get_db
 from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
 from app.models import Conversation, JobApplication, Message, TalentInterest, User, UserBlock
 from app.realtime import events as realtime_events
-from app.services import blocking_service
-from app.services import messaging_service as ms
+from app.schemas.reviews import EngagementSummary
+from app.services import blocking_service, review_service
 from app.services import interaction_preference_service as prefs
 from app.services import interaction_transition_service as transitions
 from app.services import interview_service as interviews
-from app.services import review_service
-from app.schemas.reviews import EngagementSummary
+from app.services import messaging_service as ms
 
 router = APIRouter(prefix="/me", tags=["messaging"])
 

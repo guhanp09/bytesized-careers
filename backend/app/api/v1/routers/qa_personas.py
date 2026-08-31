@@ -22,7 +22,11 @@ from app.schemas.qa import (
     QaSessionSwitchRequest,
     QaStatusResponse,
 )
-from app.services.qa_persona_service import QaControllerContext, QaPersonaService, resolve_qa_controller
+from app.services.qa_persona_service import (
+    QaControllerContext,
+    QaPersonaService,
+    resolve_qa_controller,
+)
 
 router = APIRouter(prefix="/qa", tags=["qa"])
 

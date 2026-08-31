@@ -88,7 +88,7 @@ async def test_hiring_request_workflow_creates_real_recipient_state(client: Asyn
 
 
 async def test_reply_workflows_update_status_and_notify_counterparty(client: AsyncClient) -> None:
-    password = await _seed_and_password(client)
+    await _seed_and_password(client)
     # Seed baseline already gives the recruiter received applications, so reply works.
     reply = await client.post(f"{WF}/reply-to-application", json={"status": "interviewing"})
     assert reply.status_code == 200, reply.text

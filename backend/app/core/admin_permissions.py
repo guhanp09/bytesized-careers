@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Admin permission scaffold (docs/ADMIN_PANEL_PLAN.md §14).
 
 Today there is exactly one operator class: ``account_type == "ADMIN"`` holds
@@ -11,6 +9,8 @@ a resolution change here — not an information-architecture or router rewrite.
 a database column yet: building role storage before a second human operator
 exists would be speculative (see POST_BETA_ROADMAP.md's caution).
 """
+
+from __future__ import annotations
 
 from fastapi import Depends, HTTPException, status
 

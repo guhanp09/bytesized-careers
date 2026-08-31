@@ -301,11 +301,11 @@ class TestDeadlinesAreStatedOnceAndNeverInvented:
         result = JobImportService._safe_application_payload(
             {
                 "how_to_apply": "Include two recent samples.",
-                "deadline_at": datetime(2026, 8, 31, tzinfo=UTC),
+                "deadline_at": datetime(2099, 8, 31, tzinfo=UTC),
             }
         )
 
-        assert result["deadline_at"] == datetime(2026, 8, 31, tzinfo=UTC)
+        assert result["deadline_at"] == datetime(2099, 8, 31, tzinfo=UTC)
         assert result["how_to_apply"] == (
             "Please include two recent samples with your CreatorJobs application."
         )

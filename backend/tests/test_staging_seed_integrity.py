@@ -6,9 +6,9 @@ import pytest
 from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.security import verify_password
 from app.db import seed_data_personas as personas
 from app.db.base import Base
-from app.core.security import verify_password
 from app.db.seed import disable_staging_persona_passwords, seed_full_demo
 from app.db.seed_data_jobs import SEEDED_JOBS
 from app.db.seed_data_jobs import demo_users as demo_job_users

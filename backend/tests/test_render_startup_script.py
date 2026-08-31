@@ -4,7 +4,6 @@ import os
 import subprocess
 from pathlib import Path
 
-
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = BACKEND_ROOT / "scripts" / "start_render.sh"
 

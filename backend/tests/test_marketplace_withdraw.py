@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from httpx import AsyncClient
-
 from conftest import create_valid_published_job
+from httpx import AsyncClient
 
 
 async def _register_verified_login(

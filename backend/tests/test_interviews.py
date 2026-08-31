@@ -11,12 +11,12 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from conftest import create_valid_published_job
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import InteractionInterview, JobApplication, Notification
-from conftest import create_valid_published_job
 
 
 async def _login(client: AsyncClient) -> str:

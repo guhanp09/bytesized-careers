@@ -4,11 +4,11 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha1
 from uuid import UUID
 
+from conftest import TestSessionLocal, create_valid_published_job
 from httpx import AsyncClient
 from sqlalchemy import func, select
 
 from app.models import Engagement, EngagementReview
-from conftest import TestSessionLocal, create_valid_published_job
 
 
 def _auth(token: str) -> dict[str, str]:

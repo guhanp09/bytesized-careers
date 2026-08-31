@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Conversation, Message
 from app.realtime.manager import realtime_manager
-from app.services import blocking_service, messaging_service as ms
+from app.services import blocking_service
+from app.services import messaging_service as ms
 
 
 async def emit_message_created(

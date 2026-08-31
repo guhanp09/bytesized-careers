@@ -3,12 +3,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from conftest import create_valid_published_job
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import User
-from conftest import create_valid_published_job
 
 
 async def _register_verified_login(client: AsyncClient, *, email: str, username: str) -> str:

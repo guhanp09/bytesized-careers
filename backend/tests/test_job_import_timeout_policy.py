@@ -69,8 +69,8 @@ def test_an_unsafe_timeout_is_raised_to_the_floor_and_never_silently(
         for item in caplog.records
         if item.getMessage() == "job_import_extraction_timeout_too_low"
     )
-    assert getattr(record, "configured_seconds") == 30
-    assert getattr(record, "applied_seconds") == MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS
+    assert record.configured_seconds == 30
+    assert record.applied_seconds == MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS
 
 
 def test_retries_are_one_by_default_and_bounded() -> None:

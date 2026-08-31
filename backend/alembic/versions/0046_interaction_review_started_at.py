@@ -11,8 +11,8 @@ Revises: 0045_interaction_user_preferences
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 
 revision = "0046_interaction_review_started_at"
 down_revision = "0045_interaction_user_preferences"

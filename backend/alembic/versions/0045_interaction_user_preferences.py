@@ -11,8 +11,8 @@ Revises: 0044_job_import_mutation_claim
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 
 revision = "0045_interaction_user_preferences"
 down_revision = "0044_job_import_mutation_claim"

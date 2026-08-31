@@ -18,17 +18,16 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from uuid import UUID
 
 import pytest
+from conftest import TestSessionLocal
 from httpx import AsyncClient
 from sqlalchemy import select
-
-from uuid import UUID
 
 from app.core.security import create_access_token
 from app.db.creator_scenarios.restore import load_manifest, restore_manifest
 from app.models import User
-from conftest import TestSessionLocal
 
 pytestmark = pytest.mark.asyncio
 

@@ -4,11 +4,11 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from conftest import create_valid_published_job, valid_published_job_payload
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Job
-from conftest import create_valid_published_job, valid_published_job_payload
 
 
 async def _register_verified_login(

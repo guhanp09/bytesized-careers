@@ -116,7 +116,7 @@ class CompletionResponseRequest(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")
-    def validate_issue_note(self) -> "CompletionResponseRequest":
+    def validate_issue_note(self) -> CompletionResponseRequest:
         self.note = (self.note or "").strip() or None
         if self.decision == "needs_attention" and (not self.note or len(self.note) < 10):
             raise ValueError("Add a short note explaining what needs attention.")
@@ -129,7 +129,7 @@ class ReviewUpsertRequest(BaseModel):
     public_feedback: str | None = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")
-    def validate_feedback(self) -> "ReviewUpsertRequest":
+    def validate_feedback(self) -> ReviewUpsertRequest:
         self.public_feedback = (self.public_feedback or "").strip() or None
         if self.overall_rating <= 2 and len(self.public_feedback or "") < 20:
             raise ValueError("Add at least 20 characters of context for a low rating.")

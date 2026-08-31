@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models import AdminAuditLog
 
-
 QA_ALLOWED_ENVIRONMENTS = {"staging", "test"}
 
 

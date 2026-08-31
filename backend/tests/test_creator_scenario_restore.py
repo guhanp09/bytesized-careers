@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
+from conftest import TestSessionLocal
 from sqlalchemy import func, select
 
 from app.db.creator_scenarios.restore import (
@@ -21,8 +22,6 @@ from app.db.creator_scenarios.restore import (
 from app.db.creator_scenarios.validation import ManifestError
 from app.db.qa_scenarios import SCENARIO_BY_KEY, restore_scenario
 from app.models import (
-    Conversation,
-    Job,
     JobApplication,
     Message,
     PortfolioItem,
@@ -31,7 +30,6 @@ from app.models import (
     UserContentStyle,
 )
 from app.models.review import Engagement
-from conftest import TestSessionLocal
 
 pytestmark = pytest.mark.asyncio
 

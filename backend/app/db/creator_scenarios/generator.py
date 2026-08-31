@@ -22,8 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from . import pools
-from .heroes import DAY, HEROES, HOUR, MINUTE
-from .validation import check_timezone_coverage, validate
+from .heroes import DAY, HEROES, HOUR
 from .schema import (
     MANIFEST_VERSION,
     SCENARIO_NAMES,
@@ -39,6 +38,7 @@ from .schema import (
     Relationship,
     scenario_id,
 )
+from .validation import check_timezone_coverage, validate
 
 #: One seed per scenario. Fixed constants rather than a derived value so a
 #: scenario's content cannot shift because an unrelated one was added.
@@ -955,7 +955,7 @@ def _default(builder: Builder) -> None:
     job_index = 100
     for recruiter_slot in range(4):
         recruiter = builder.recruiter(recruiter_slot)
-        for offset in range(4):
+        for _offset in range(4):
             job = builder.job(recruiter, job_index)
             _bulk(
                 builder,
@@ -1592,7 +1592,7 @@ def _client_states(builder: Builder) -> None:
         ("send_failed", "This one failed to send.", "a message whose send failed"),
         ("broken_image", None, "an image chosen to fail loading"),
     )
-    for rel, (kind, body, note) in zip(targets, specs):
+    for rel, (kind, body, note) in zip(targets, specs, strict=False):
         builder.client_state.append(
             ClientState(
                 id=scenario_id("client_state", builder.scenario, kind),

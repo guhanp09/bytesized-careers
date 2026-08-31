@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-
 NAMESPACE = uuid.UUID("8ecac1e2-df33-4d55-a90c-8a178d94c3b7")
 
 

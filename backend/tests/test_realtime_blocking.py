@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
+from conftest import TestSessionLocal, create_valid_published_job
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
@@ -12,10 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.websockets import WebSocketDisconnect
 
 from app.api.v1.routers import realtime as realtime_router
+from app.models import Conversation, User
 from app.realtime import events as realtime_events
 from app.realtime.manager import ConversationRealtimeManager
-from app.models import Conversation, User
-from conftest import TestSessionLocal, create_valid_published_job
 
 
 async def _register_verified_login(client: AsyncClient, *, email: str, username: str) -> str:
@@ -189,7 +189,7 @@ async def test_block_is_directional_for_management_and_rejects_self_or_unknown_u
         second_id = await _user_id(session, "block-second@example.com")
 
     assert (await client.post(f"/api/v1/me/blocks/{first_id}", headers=first_h)).status_code == 422
-    assert (await client.post(f"/api/v1/me/blocks/00000000-0000-0000-0000-000000000001", headers=first_h)).status_code == 404
+    assert (await client.post("/api/v1/me/blocks/00000000-0000-0000-0000-000000000001", headers=first_h)).status_code == 404
     assert (await client.post(f"/api/v1/me/blocks/{second_id}", headers=first_h)).status_code == 200
 
     # The other participant cannot remove a block they do not own.

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Final
 
-
 P0_LISTING_SCHEMA_VERSION: Final = 2
 CREATOR_DOMAIN_LISTING_SCHEMA_VERSION: Final = 3
 CURRENT_LISTING_SCHEMA_VERSION: Final = CREATOR_DOMAIN_LISTING_SCHEMA_VERSION

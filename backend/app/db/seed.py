@@ -17,13 +17,15 @@ from app.db.seed_data_jobs import (
     DEMO_JOB_IDS,
     RETIRED_DEMO_JOB_IDS,
     SEEDED_JOBS,
-    _stable_uuid as stable_demo_job_id,
     demo_hiring_identities,
     demo_user_id,
     demo_users,
     identity_specs_by_key,
     job_specs,
     materialize_job_payload,
+)
+from app.db.seed_data_jobs import (
+    _stable_uuid as stable_demo_job_id,
 )
 from app.db.seed_data_roles import seeded_roles
 from app.db.seed_data_talent import SEEDED_TALENT_LISTINGS, SEEDED_TALENT_USERS

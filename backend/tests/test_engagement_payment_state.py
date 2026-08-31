@@ -16,12 +16,13 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
+from conftest import TestSessionLocal
 from httpx import AsyncClient
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
+from test_engagement_reviews import _active_engagement, _auth, _hired_application
 
 from app.models import Engagement
-from conftest import TestSessionLocal
-from test_engagement_reviews import _active_engagement, _auth, _hired_application
 
 pytestmark = pytest.mark.asyncio
 
@@ -154,7 +155,7 @@ async def test_participants_see_payment_state_and_strangers_get_no_engagement(
 async def test_the_column_refuses_a_state_outside_its_vocabulary(client: AsyncClient) -> None:
     _, _, _, _, _, engagement_id = await _active_engagement(client, "pay_vocab")
     async with TestSessionLocal() as session:
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError):
             await session.execute(text("UPDATE engagements SET payment_state = 'definitely_paid'"))
             await session.commit()
 

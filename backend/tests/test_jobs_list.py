@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from conftest import TestSessionLocal
 from httpx import AsyncClient
 
 from app.models import Job, Role, User
-from conftest import TestSessionLocal
 
 
 async def test_list_filters_and_pagination(client: AsyncClient) -> None:

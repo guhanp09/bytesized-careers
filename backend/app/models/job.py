@@ -21,9 +21,9 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base
 from app.core.job_taxonomy import CURRENT_LISTING_SCHEMA_VERSION
 from app.core.tool_catalog import tool_display_names
+from app.db.base import Base
 
 json_list_type = JSON().with_variant(JSONB, "postgresql")
 

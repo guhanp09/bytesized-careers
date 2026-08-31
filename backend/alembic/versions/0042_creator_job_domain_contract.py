@@ -7,9 +7,9 @@ Revises: 0041_job_contract_p0_backfill
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision = "0042_creator_job_domain_contract"
 down_revision = "0041_job_contract_p0_backfill"

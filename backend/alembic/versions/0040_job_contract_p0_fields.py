@@ -7,9 +7,9 @@ Revises: 0039_interaction_status_history
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision = "0040_job_contract_p0_fields"
 down_revision = "0039_interaction_status_history"

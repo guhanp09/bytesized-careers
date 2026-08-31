@@ -60,7 +60,7 @@ def check_version(version: int) -> None:
 NORMAL_SCENARIOS: frozenset[str] = frozenset({"default", "busy", "talent", "recruiter"})
 
 
-def _username_pattern() -> "re.Pattern[str]":
+def _username_pattern() -> re.Pattern[str]:
     """The product's own username rule, imported rather than restated.
 
     Restating it is how the corpus came to mint handles the product rejects.
@@ -465,9 +465,10 @@ def check_backend_enums() -> None:
     consumer validating a manifest should not need the ORM loaded.
     """
 
-    from app.services.interaction_status import APPLICATION_TRANSITIONS, INTEREST_TRANSITIONS
-    from app.schemas.reviews import EngagementStatus, PaymentState
     from typing import get_args
+
+    from app.schemas.reviews import EngagementStatus, PaymentState
+    from app.services.interaction_status import APPLICATION_TRANSITIONS, INTEREST_TRANSITIONS
 
     problems: list[str] = []
     backend_payment = set(get_args(PaymentState))

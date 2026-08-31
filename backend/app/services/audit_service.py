@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Admin audit trail writer (docs/ADMIN_PANEL_PLAN.md §15).
 
 One helper, used by every admin mutation (and by privacy-sensitive *reads*
@@ -7,6 +5,8 @@ like reported-conversation views). Entries are added to the caller's session
 so they commit atomically with the action they record. There is no update or
 delete path for audit rows anywhere in the application.
 """
+
+from __future__ import annotations
 
 import uuid
 

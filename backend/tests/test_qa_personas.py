@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from conftest import TestSessionLocal
 from sqlalchemy import func, select
 
 from app.core.config import settings
@@ -25,8 +26,6 @@ from app.models import (
     User,
     UserBlock,
 )
-from conftest import TestSessionLocal
-
 
 CONTROLLER_ID = uuid.uuid5(uuid.NAMESPACE_DNS, "qa-controller.tests.creatorjobs")
 CONTROLLER_EMAIL = "qa-controller@example.com"

@@ -10,8 +10,8 @@ import re
 import uuid
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 
 revision = "0041_job_contract_p0_backfill"
 down_revision = "0040_job_contract_p0_fields"

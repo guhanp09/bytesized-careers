@@ -307,11 +307,11 @@ class TestTheImportPipelineActuallyCallsThis:
         result = self._convert(
             {
                 "how_to_apply": "Include two recent samples.",
-                "deadline_at": datetime(2026, 8, 31, tzinfo=UTC),
+                "deadline_at": datetime(2099, 8, 31, tzinfo=UTC),
             }
         )
 
-        assert result["deadline_at"] == datetime(2026, 8, 31, tzinfo=UTC)
+        assert result["deadline_at"] == datetime(2099, 8, 31, tzinfo=UTC)
         assert "Applications close" not in str(result["how_to_apply"])
 
     def test_a_source_that_only_routes_leaves_no_note_behind(self) -> None:

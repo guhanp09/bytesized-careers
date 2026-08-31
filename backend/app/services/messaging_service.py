@@ -9,7 +9,7 @@ tester both call these functions so there is a single real code path.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy import case, func, select, update
@@ -160,7 +160,7 @@ def counterparty_last_read_for(conversation: Conversation, user_id: UUID) -> dat
 def _as_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 CLOSED_APPLICATION_STATUSES = frozenset({"rejected", "withdrawn"})
@@ -256,7 +256,7 @@ async def mark_read(session: AsyncSession, conversation: Conversation, user_id: 
     """
     if not is_participant(conversation, user_id):
         raise NotAParticipant()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     column = (
         Conversation.participant_a_last_read_at
         if user_id == conversation.participant_a_user_id
@@ -418,7 +418,7 @@ async def post_screening_answers(
     metadata: dict[str, object] = {
         "message_kind": "screening_answers",
         "snapshot_version": snapshot_version,
-        "answered_at": datetime.now(timezone.utc).isoformat(),
+        "answered_at": datetime.now(UTC).isoformat(),
         "answers": snapshot,
     }
     client_message_id = uuid5(
@@ -493,7 +493,7 @@ async def post_message(
     if kind:
         message_metadata["kind"] = kind
 
-    created_at = datetime.now(timezone.utc)
+    created_at = datetime.now(UTC)
     message = Message(
         conversation_id=conversation.id,
         sender_user_id=sender.id,
@@ -520,7 +520,7 @@ async def post_message(
         if existing is None:
             raise
         if existing.sender_user_id != sender.id or existing.body != clean:
-            raise IdempotencyConflict()
+            raise IdempotencyConflict() from None
         return existing
 
     conversation.last_message_at = message.created_at or created_at

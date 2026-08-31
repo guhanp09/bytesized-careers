@@ -7,8 +7,8 @@ Revises: 0043_job_import_readiness
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 
 revision = "0044_job_import_mutation_claim"
 down_revision = "0043_job_import_readiness"

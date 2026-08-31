@@ -4,11 +4,12 @@ Revision ID: 0039_interaction_status_history
 Revises: 0038_interaction_participant_status
 """
 
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 import uuid
 
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision = "0039_interaction_status_history"
 down_revision = "0038_interaction_participant_status"

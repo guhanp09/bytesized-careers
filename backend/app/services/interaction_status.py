@@ -7,7 +7,6 @@ real relationship outcomes are shared consistently.
 
 from __future__ import annotations
 
-
 APPLICATION_TRANSITIONS: dict[str, frozenset[str]] = {
     "new": frozenset({"reviewing", "interviewing", "hired", "rejected"}),
     "reviewing": frozenset({"interviewing", "hired", "rejected"}),

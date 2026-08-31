@@ -4,12 +4,12 @@ import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from conftest import create_valid_published_job
 from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import InteractionUserPreference
-from conftest import create_valid_published_job
 
 
 async def _login(client: AsyncClient) -> str:

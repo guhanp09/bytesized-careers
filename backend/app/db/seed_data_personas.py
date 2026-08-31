@@ -18,7 +18,7 @@ fabricated. Verification states appear only on the explicit verification persona
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 
 from app.core.security import hash_password
@@ -34,7 +34,7 @@ DEV_PERSONA_PASSWORD = "DevPersona123!"
 PERSONA_EMAIL_DOMAIN = "persona.creatorjobs.dev"
 
 # A fixed timestamp keeps seeded rows deterministic across runs.
-SEED_TIME = datetime(2026, 1, 6, 9, 0, tzinfo=timezone.utc)
+SEED_TIME = datetime(2026, 1, 6, 9, 0, tzinfo=UTC)
 
 
 def persona_uuid(key: str) -> uuid.UUID:
