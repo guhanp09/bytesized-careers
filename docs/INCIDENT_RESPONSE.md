@@ -9,6 +9,7 @@ Use this document together with:
 
 - `docs/OPERATIONS_ALERTS.md` for finite alert keys and first-response detail;
 - `docs/INCIDENT_TABLETOP.md` for the local decision-path review;
+- `docs/CREDENTIAL_ROTATION.md` for planned versus compromised-secret handling;
 - `docs/PRODUCTION_READINESS_EXECUTION.md` for unresolved release gates;
 - `backend/app/core/config_contract.py` and
   `python -m scripts.print_config_contract` for names and enforcement of
@@ -578,7 +579,7 @@ provider event/request IDs. Never copy access/refresh tokens or OAuth keyrings.
 ### Recover
 
 Correct consent/client configuration, rotate the affected client secret or
-credential-encryption key through the Phase 12E runbook, run a dry credential
+credential-encryption key through `docs/CREDENTIAL_ROTATION.md`, run a dry credential
 audit, then exercise verified login and explicit YouTube reconnection in
 staging. Retain previous decryption keys until every row is proven rewrapped.
 

@@ -283,6 +283,48 @@ class TestTheWebhookCannotBeForged:
         assert response.status_code == 401
         assert await _stored("wrongkey@example.test") is None
 
+    async def test_planned_rotation_accepts_old_then_retires_it(
+        self, client, db_session, monkeypatch
+    ) -> None:
+        new_secret = "the-new-provider-webhook-secret"
+        monkeypatch.setattr(config.settings, "email_webhook_secret", new_secret)
+        monkeypatch.setattr(config.settings, "email_webhook_previous_secret", SECRET)
+        body, headers = _signed(
+            {"event": "bounce", "email": "overlap@example.test"},
+            secret=SECRET,
+        )
+
+        overlap = await client.post(WEBHOOK_PATH, content=body, headers=headers)
+
+        assert overlap.status_code == 200
+        assert await _stored("overlap@example.test") is not None
+
+        current_body, current_headers = _signed(
+            {"event": "bounce", "email": "current@example.test"},
+            secret=new_secret,
+        )
+        current = await client.post(
+            WEBHOOK_PATH,
+            content=current_body,
+            headers=current_headers,
+        )
+        assert current.status_code == 200
+        assert await _stored("current@example.test") is not None
+
+        monkeypatch.setattr(config.settings, "email_webhook_previous_secret", None)
+        retired_body, retired_headers = _signed(
+            {"event": "bounce", "email": "retired@example.test"},
+            secret=SECRET,
+        )
+        retired = await client.post(
+            WEBHOOK_PATH,
+            content=retired_body,
+            headers=retired_headers,
+        )
+
+        assert retired.status_code == 401
+        assert await _stored("retired@example.test") is None
+
     async def test_a_tampered_body_is_refused(self, client, db_session, monkeypatch) -> None:
         """The signature covers the claim itself, not just the fact of a request."""
 

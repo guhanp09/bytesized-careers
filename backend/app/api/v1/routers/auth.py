@@ -611,16 +611,25 @@ async def oauth_google_exchange(
             if settings.google_oauth_exchange_secret is not None
             else None
         )
+        previous = (
+            settings.google_oauth_exchange_previous_secret.get_secret_value()
+            if settings.google_oauth_exchange_previous_secret is not None
+            else None
+        )
         if not configured:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Google authorization is temporarily unavailable",
             )
-        if (
-            internal_exchange_secret is None
-            or len(internal_exchange_secret) > 512
-            or not secrets.compare_digest(internal_exchange_secret, configured)
-        ):
+        valid_internal_secret = False
+        if internal_exchange_secret is not None and len(internal_exchange_secret) <= 512:
+            primary_match = secrets.compare_digest(internal_exchange_secret, configured)
+            previous_match = bool(
+                previous
+                and secrets.compare_digest(internal_exchange_secret, previous)
+            )
+            valid_internal_secret = primary_match or previous_match
+        if not valid_internal_secret:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Google authorization could not be verified",

@@ -11,6 +11,7 @@ from conftest import (
     google_oauth_exchange_headers,
 )
 from httpx import AsyncClient, Response
+from pydantic import SecretStr
 from sqlalchemy import func, select
 
 from app.core.config import settings
@@ -345,6 +346,45 @@ async def test_youtube_credential_exchange_requires_server_only_boundary_secret(
     )
     assert missing.status_code == 401
     assert wrong.status_code == 401
+    assert fetch_called is False
+
+    # Planned rotation is deployable without a credential-authority outage:
+    # backend accepts old+new, frontend moves to new, then old is removed.
+    old_secret = google_oauth_exchange_headers()["X-CreatorJobs-OAuth-Exchange"]
+    new_secret = "creatorjobs-new-google-oauth-exchange-secret"
+    monkeypatch.setattr(
+        settings,
+        "google_oauth_exchange_secret",
+        SecretStr(new_secret),
+    )
+    monkeypatch.setattr(
+        settings,
+        "google_oauth_exchange_previous_secret",
+        SecretStr(old_secret),
+    )
+    overlap = await client.post(
+        "/api/v1/auth/oauth/google",
+        headers={"X-CreatorJobs-OAuth-Exchange": old_secret},
+        json=payload,
+    )
+    assert overlap.status_code == 200
+    assert fetch_called is True
+
+    current = await client.post(
+        "/api/v1/auth/oauth/google",
+        headers={"X-CreatorJobs-OAuth-Exchange": new_secret},
+        json=payload,
+    )
+    assert current.status_code == 200
+
+    fetch_called = False
+    monkeypatch.setattr(settings, "google_oauth_exchange_previous_secret", None)
+    retired = await client.post(
+        "/api/v1/auth/oauth/google",
+        headers={"X-CreatorJobs-OAuth-Exchange": old_secret},
+        json=payload,
+    )
+    assert retired.status_code == 401
     assert fetch_called is False
 
     monkeypatch.setattr(settings, "google_oauth_exchange_secret", None)

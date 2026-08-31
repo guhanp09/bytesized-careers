@@ -24,6 +24,7 @@ const productionFrontendEnvironment = {
   NEXTAUTH_SECRET: "test-only-strong-nextauth-secret",
   GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com",
   GOOGLE_CLIENT_SECRET: "test-only-strong-google-secret",
+  GOOGLE_OAUTH_EXCHANGE_SECRET: "test-only-google-exchange-secret-rotation",
   NEXT_PUBLIC_USE_LOCAL_MOCKS: "false",
   MEDIA_PUBLIC_BASE_URL: "https://media.creatorjobs.example",
   MEDIA_BASE_PATH: "/media",

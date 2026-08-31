@@ -61,6 +61,7 @@ def expected_signature(*, secret: str, timestamp: str, body: bytes) -> str:
 def verify_signature(
     *,
     secret: str | None,
+    previous_secret: str | None = None,
     signature: str | None,
     timestamp: str | None,
     body: bytes,
@@ -88,9 +89,21 @@ def verify_signature(
     if abs(now - sent_at) > tolerance_seconds:
         return SignatureCheck(False, "Signature is outside the accepted time window.")
 
-    if not hmac.compare_digest(
+    primary_match = hmac.compare_digest(
         expected_signature(secret=secret, timestamp=timestamp, body=body), signature
-    ):
+    )
+    previous_match = bool(
+        previous_secret
+        and hmac.compare_digest(
+            expected_signature(
+                secret=previous_secret,
+                timestamp=timestamp,
+                body=body,
+            ),
+            signature,
+        )
+    )
+    if not (primary_match or previous_match):
         return SignatureCheck(False, "Signature does not match.")
 
     return SignatureCheck(True)

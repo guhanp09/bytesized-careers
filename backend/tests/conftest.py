@@ -254,3 +254,5 @@ def configure_test_google_oauth_exchange_secret(
         "google_oauth_exchange_secret",
         SecretStr(TEST_GOOGLE_OAUTH_EXCHANGE_SECRET),
     )
+    monkeypatch.setattr(settings, "google_oauth_exchange_previous_secret", None)
+    monkeypatch.setattr(settings, "email_webhook_previous_secret", None)

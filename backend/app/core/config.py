@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     # webhook refuses every request rather than accepting unsigned ones: an
     # unset secret must not become an open door onto the suppression list.
     email_webhook_secret: str | None = Field(default=None, alias="EMAIL_WEBHOOK_SECRET")
+    # Planned rotation overlap only. New signatures are never produced here;
+    # the provider receives EMAIL_WEBHOOK_SECRET while verification temporarily
+    # accepts the previous value. Do not set this during compromise containment.
+    email_webhook_previous_secret: str | None = Field(
+        default=None,
+        max_length=512,
+        alias="EMAIL_WEBHOOK_PREVIOUS_SECRET",
+    )
     # Signs the unsubscribe links that go in emails. Separate from every other
     # secret because its tokens deliberately never expire — they have to work
     # from a two-year-old message — so rotating it invalidates outstanding
@@ -204,6 +212,15 @@ class Settings(BaseSettings):
         min_length=32,
         max_length=512,
         alias="GOOGLE_OAUTH_EXCHANGE_SECRET",
+    )
+    # Lets the backend accept the old NextAuth credential-authority proof while
+    # the frontend switches to the new primary. It is overlap for a planned
+    # two-service deployment only, never an emergency-compromise fallback.
+    google_oauth_exchange_previous_secret: SecretStr | None = Field(
+        default=None,
+        min_length=32,
+        max_length=512,
+        alias="GOOGLE_OAUTH_EXCHANGE_PREVIOUS_SECRET",
     )
     # JSON keyring mapping stable key IDs to base64/base64url-encoded 32-byte
     # AES keys. SecretStr keeps the entire keyring out of settings repr/logs.
@@ -438,7 +455,10 @@ def validate_production_settings() -> None:
             "MEDIA_PUBLIC_BASE_URL must be set in production: without it, stored media URLs "
             "are built from the request Host and a poisoned Host is persisted."
         )
-    if settings.jwt_secret.strip().lower() in UNSAFE_SECRET_VALUES:
+    if (
+        len(settings.jwt_secret.strip()) < 32
+        or settings.jwt_secret.strip().lower() in UNSAFE_SECRET_VALUES
+    ):
         failures.append("JWT_SECRET must be set to a strong non-placeholder value.")
     if settings.jwt_access_token_expires_minutes > 60:
         failures.append(
@@ -517,6 +537,38 @@ def validate_production_settings() -> None:
             "SMTP_USE_TLS must be true in production: the mail password is sent "
             "on this connection immediately after it is opened."
         )
+    email_webhook_secret = (settings.email_webhook_secret or "").strip()
+    email_webhook_previous_secret = (
+        settings.email_webhook_previous_secret or ""
+    ).strip()
+    if email_webhook_secret and (
+        len(email_webhook_secret) < 32
+        or email_webhook_secret.lower() in UNSAFE_SECRET_VALUES
+    ):
+        failures.append(
+            "EMAIL_WEBHOOK_SECRET must be a strong non-placeholder value when configured."
+        )
+    if email_webhook_previous_secret:
+        if not email_webhook_secret:
+            failures.append(
+                "EMAIL_WEBHOOK_PREVIOUS_SECRET requires EMAIL_WEBHOOK_SECRET."
+            )
+        elif (
+            len(email_webhook_previous_secret) < 32
+            or email_webhook_previous_secret.lower() in UNSAFE_SECRET_VALUES
+            or email_webhook_previous_secret == email_webhook_secret
+        ):
+            failures.append(
+                "EMAIL_WEBHOOK_PREVIOUS_SECRET must be a distinct strong previous value."
+            )
+    unsubscribe_secret = (settings.unsubscribe_token_secret or "").strip()
+    if unsubscribe_secret and (
+        len(unsubscribe_secret) < 32
+        or unsubscribe_secret.lower() in UNSAFE_SECRET_VALUES
+    ):
+        failures.append(
+            "UNSUBSCRIBE_TOKEN_SECRET must be a strong non-placeholder value when configured."
+        )
     if settings.log_level.strip().upper() == "DEBUG":
         # Root-level DEBUG enables SQLAlchemy's engine logger, which logs
         # statements together with their bound parameters. That is email
@@ -555,6 +607,18 @@ def validate_production_settings() -> None:
     ):
         failures.append(
             "GOOGLE_OAUTH_EXCHANGE_SECRET is required for server-owned Google authorization."
+        )
+    google_exchange_previous_secret = (
+        settings.google_oauth_exchange_previous_secret.get_secret_value().strip()
+        if settings.google_oauth_exchange_previous_secret is not None
+        else ""
+    )
+    if google_exchange_previous_secret and (
+        google_exchange_previous_secret.lower() in UNSAFE_SECRET_VALUES
+        or google_exchange_previous_secret == google_exchange_secret
+    ):
+        failures.append(
+            "GOOGLE_OAUTH_EXCHANGE_PREVIOUS_SECRET must be a distinct strong previous value."
         )
     from app.core.oauth_credentials import (
         OAuthCredentialConfigurationError,

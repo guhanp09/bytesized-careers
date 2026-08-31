@@ -22,10 +22,11 @@ const requireProductionEnv = () => {
   if (!isStrictProductionEnv()) return;
 
   const failures: string[] = [];
-  const requireSafeSecret = (name: string) => {
+  const requireSafeSecret = (name: string, minimumLength = 1) => {
     const value = (process.env[name] || "").trim();
-    if (unsafeSecretValues.has(value.toLowerCase())) {
-      failures.push(`${name} must be set to a strong non-placeholder value.`);
+    if (unsafeSecretValues.has(value.toLowerCase()) || value.length < minimumLength) {
+      const lengthRequirement = minimumLength > 1 ? ` of at least ${minimumLength} characters` : "";
+      failures.push(`${name} must be set to a strong non-placeholder value${lengthRequirement}.`);
     }
   };
   const requireValue = (name: string) => {
@@ -34,12 +35,13 @@ const requireProductionEnv = () => {
     }
   };
 
-  requireSafeSecret("NEXTAUTH_SECRET");
+  requireSafeSecret("NEXTAUTH_SECRET", 32);
   requireValue("NEXTAUTH_URL");
   requireValue("NEXT_PUBLIC_SITE_URL");
   requireValue("MEDIA_PUBLIC_BASE_URL");
   requireValue("GOOGLE_CLIENT_ID");
   requireSafeSecret("GOOGLE_CLIENT_SECRET");
+  requireSafeSecret("GOOGLE_OAUTH_EXCHANGE_SECRET", 32);
 
   const nextAuthUrl = (process.env.NEXTAUTH_URL || "").trim();
   if (/localhost|127\.0\.0\.1/.test(nextAuthUrl)) {

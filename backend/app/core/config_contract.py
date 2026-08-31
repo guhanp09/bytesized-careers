@@ -246,7 +246,16 @@ CONFIG_CONTRACT: dict[str, ConfigContract] = {
         "Unset means the delivery webhook refuses every request rather than "
         "accepting unsigned ones. Failing closed matters here specifically: the "
         "webhook writes the suppression list, so an open door lets anyone "
-        "suppress anyone's mail.",
+        "suppress anyone's mail. Production also rejects short/placeholders "
+        "when the feature is configured.",
+    ),
+    "email_webhook_previous_secret": ConfigContract(
+        Requirement.FEATURE_CONDITIONAL,
+        Enforcement.FEATURE_GATE,
+        "A bounded planned-rotation overlap accepted only by webhook "
+        "verification. It is removed after the provider switches and one "
+        "freshness window passes; it must be strong and distinct from current, "
+        "and compromise rotation must not retain it.",
     ),
     "unsubscribe_token_secret": ConfigContract(
         Requirement.FEATURE_CONDITIONAL,
@@ -254,7 +263,8 @@ CONFIG_CONTRACT: dict[str, ConfigContract] = {
         "Unset, token issuing and reading both refuse — never 'no secret, so "
         "accept anything', which would unsubscribe whoever the URL named. Not "
         "required at boot today because no outbound template embeds a link "
-        "yet; it becomes CORE_REQUIRED the moment one does.",
+        "yet; production rejects a weak configured value, and it becomes "
+        "CORE_REQUIRED the moment one is emitted.",
     ),
     "email_worker_in_process": ConfigContract(
         Requirement.OPTIONAL_DEVELOPMENT,
@@ -454,6 +464,14 @@ CONFIG_CONTRACT: dict[str, ConfigContract] = {
         "one. It is what stops a browser asking the backend to treat it as the "
         "credential authority.",
         unsafe_production_value=None,
+    ),
+    "google_oauth_exchange_previous_secret": ConfigContract(
+        Requirement.FEATURE_CONDITIONAL,
+        Enforcement.FEATURE_GATE,
+        "Temporary planned-rotation overlap for independently deployed "
+        "NextAuth and backend services. Only the backend accepts it; the "
+        "frontend always sends the current secret. Production requires it to "
+        "be strong and distinct. Never retain a compromised value here.",
     ),
     "oauth_credential_keys": ConfigContract(
         Requirement.CORE_REQUIRED,

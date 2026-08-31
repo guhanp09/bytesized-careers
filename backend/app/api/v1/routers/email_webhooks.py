@@ -69,6 +69,7 @@ async def receive_delivery_report(
 
     check = verify_signature(
         secret=settings.email_webhook_secret,
+        previous_secret=settings.email_webhook_previous_secret,
         signature=request.headers.get("x-creatorjobs-signature"),
         timestamp=request.headers.get("x-creatorjobs-timestamp"),
         body=body,

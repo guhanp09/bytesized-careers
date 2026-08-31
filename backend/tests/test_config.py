@@ -208,6 +208,66 @@ def test_production_rejects_example_google_credentials(
     assert "GOOGLE_OAUTH_EXCHANGE_SECRET" in message
 
 
+def test_production_validates_planned_rotation_overlap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current = "current-google-exchange-secret-value-2026"
+    previous = "previous-google-exchange-secret-value-2026"
+    safe_overlap = _safe_production_settings(
+        GOOGLE_OAUTH_EXCHANGE_SECRET=current,
+        GOOGLE_OAUTH_EXCHANGE_PREVIOUS_SECRET=previous,
+        EMAIL_WEBHOOK_SECRET="current-email-webhook-secret-value-2026",
+        EMAIL_WEBHOOK_PREVIOUS_SECRET="previous-email-webhook-secret-value-2026",
+    )
+    monkeypatch.setattr(config, "settings", safe_overlap)
+    config.validate_production_settings()
+
+    for overrides, setting in [
+        (
+            {
+                "GOOGLE_OAUTH_EXCHANGE_SECRET": current,
+                "GOOGLE_OAUTH_EXCHANGE_PREVIOUS_SECRET": current,
+            },
+            "GOOGLE_OAUTH_EXCHANGE_PREVIOUS_SECRET",
+        ),
+        (
+            {"EMAIL_WEBHOOK_PREVIOUS_SECRET": previous},
+            "EMAIL_WEBHOOK_PREVIOUS_SECRET",
+        ),
+        (
+            {
+                "EMAIL_WEBHOOK_SECRET": previous,
+                "EMAIL_WEBHOOK_PREVIOUS_SECRET": previous,
+            },
+            "EMAIL_WEBHOOK_PREVIOUS_SECRET",
+        ),
+    ]:
+        unsafe = _safe_production_settings(**overrides)
+        monkeypatch.setattr(config, "settings", unsafe)
+        with pytest.raises(RuntimeError, match=setting):
+            config.validate_production_settings()
+
+
+@pytest.mark.parametrize(
+    ("overrides", "setting"),
+    [
+        ({"JWT_SECRET": "too-short"}, "JWT_SECRET"),
+        ({"EMAIL_WEBHOOK_SECRET": "too-short"}, "EMAIL_WEBHOOK_SECRET"),
+        ({"UNSUBSCRIBE_TOKEN_SECRET": "too-short"}, "UNSUBSCRIBE_TOKEN_SECRET"),
+    ],
+)
+def test_production_rejects_short_creatorjobs_owned_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, object],
+    setting: str,
+) -> None:
+    unsafe = _safe_production_settings(**overrides)
+    monkeypatch.setattr(config, "settings", unsafe)
+
+    with pytest.raises(RuntimeError, match=setting):
+        config.validate_production_settings()
+
+
 def test_production_dual_write_requires_explicit_temporary_acknowledgement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
