@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import get_search_service
+from app.core.rate_limit import PUBLIC_SEARCH_LIMIT, rate_limit
 from app.schemas.search import (
     JobDeepSearchResponse,
     JobSearchMatch,
@@ -26,6 +27,7 @@ async def search_jobs(
     location: list[str] | None = Query(default=None),
     limit: int = Query(default=24, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    _limit: None = rate_limit(PUBLIC_SEARCH_LIMIT),
     service: SearchService = Depends(get_search_service),
 ) -> JobDeepSearchResponse:
     intent, results, total, no_exact_match = await service.search_jobs(
@@ -68,6 +70,7 @@ async def search_talent(
     availability: list[str] | None = Query(default=None),
     limit: int = Query(default=24, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    _limit: None = rate_limit(PUBLIC_SEARCH_LIMIT),
     service: SearchService = Depends(get_search_service),
 ) -> TalentDeepSearchResponse:
     intent, results, total, no_exact_match = await service.search_talent(

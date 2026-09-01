@@ -6,9 +6,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db, get_me_service, get_profile_service
+from app.api.deps import (
+    authenticated_rate_limit,
+    get_current_user,
+    get_db,
+    get_me_service,
+    get_profile_service,
+)
 from app.core.legal_documents import REQUIRED_DOCUMENTS, current_version
-from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
+from app.core.rate_limit import MEDIA_UPLOAD_LIMIT, OUTBOUND_FETCH_LIMIT
 from app.models import User
 from app.schemas import (
     AccountTypeUpdateRequest,
@@ -162,6 +168,7 @@ async def update_onboarding_intent(
     summary="Refresh linked YouTube channels from Google OAuth tokens",
 )
 async def refresh_youtube_channels(
+    _limit: None = authenticated_rate_limit(OUTBOUND_FETCH_LIMIT),
     current_user: User = Depends(get_current_user),
     service: MeService = Depends(get_me_service),
 ) -> YouTubeRefreshResponse:
@@ -240,6 +247,7 @@ async def update_my_profile(
 async def upload_my_avatar(
     payload: AvatarUploadRequest,
     request: Request,
+    _limit: None = authenticated_rate_limit(MEDIA_UPLOAD_LIMIT),
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> ProfileRead:
@@ -261,6 +269,7 @@ async def upload_my_avatar(
 async def upload_my_banner(
     payload: AvatarUploadRequest,
     request: Request,
+    _limit: None = authenticated_rate_limit(MEDIA_UPLOAD_LIMIT),
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> ProfileRead:
@@ -348,6 +357,7 @@ async def update_my_hiring_identity(
 async def request_my_hiring_identity_verification(
     identity_id: UUID,
     payload: HiringIdentityVerificationRequest | None = None,
+    _limit: None = authenticated_rate_limit(OUTBOUND_FETCH_LIMIT),
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> HiringIdentityVerificationResponse:
@@ -387,6 +397,7 @@ async def delete_my_hiring_identity(
 async def check_my_hiring_identity_verification(
     identity_id: UUID,
     _payload: HiringIdentityVerificationCheckRequest | None = None,
+    _limit: None = authenticated_rate_limit(OUTBOUND_FETCH_LIMIT),
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> HiringIdentityVerificationResponse:
@@ -476,7 +487,7 @@ async def delete_my_portfolio_item(
 )
 async def read_my_organization_page(
     payload: OrganizationPageRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(OUTBOUND_FETCH_LIMIT),
     current_user: User = Depends(get_current_user),
 ) -> OrganizationPageResponse:
     """Fetch a public page the signed-in user named, on the server's terms.

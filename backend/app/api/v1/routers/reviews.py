@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db
-from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
+from app.api.deps import authenticated_rate_limit, get_current_user, get_db
+from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT
 from app.models import Engagement, JobApplication, TalentInterest, User
 from app.schemas.reviews import (
     CompletionRequest,
@@ -48,7 +48,7 @@ async def _summary_and_commit(
 )
 async def request_application_start(
     application_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> EngagementSummary:
@@ -71,7 +71,7 @@ async def request_application_start(
 )
 async def request_interest_start(
     interest_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> EngagementSummary:
@@ -148,7 +148,7 @@ async def get_engagement(
 async def respond_to_start(
     engagement_id: UUID,
     payload: StartResponseRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> EngagementSummary:
@@ -164,7 +164,7 @@ async def respond_to_start(
 @router.post("/engagements/{engagement_id}/cancel", response_model=EngagementSummary)
 async def cancel_engagement(
     engagement_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> EngagementSummary:
@@ -179,7 +179,7 @@ async def cancel_engagement(
 async def request_completion(
     engagement_id: UUID,
     payload: CompletionRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> EngagementSummary:
@@ -200,7 +200,7 @@ async def request_completion(
 async def respond_to_completion(
     engagement_id: UUID,
     payload: CompletionResponseRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> EngagementSummary:
@@ -221,7 +221,7 @@ async def respond_to_completion(
 async def save_review(
     engagement_id: UUID,
     payload: ReviewUpsertRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> MyReviewRead:

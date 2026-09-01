@@ -21,7 +21,9 @@ from app.core.oauth_scopes import has_google_youtube_read_scope
 from app.core.rate_limit import (
     AUTH_EMAIL_LIMIT,
     AUTH_LOGIN_LIMIT,
+    AUTH_REFRESH_LIMIT,
     AUTH_REGISTER_LIMIT,
+    AUTH_VERIFY_LIMIT,
     STRONG_AUTH_CHALLENGE_LIMIT,
     STRONG_AUTH_ENROLL_LIMIT,
     STRONG_AUTH_FACTOR_CHANGE_LIMIT,
@@ -232,6 +234,7 @@ async def register(
 )
 async def verify_email(
     payload: VerifyEmailRequest,
+    _limit: None = rate_limit(AUTH_VERIFY_LIMIT),
     service: AuthService = Depends(get_auth_service),
 ) -> AuthStatusResponse:
     try:
@@ -324,6 +327,7 @@ async def login(
 )
 async def refresh_backend_session(
     payload: RefreshTokenRequest,
+    _limit: None = rate_limit(AUTH_REFRESH_LIMIT),
     service: AuthService = Depends(get_auth_service),
 ) -> LoginResponse:
     try:

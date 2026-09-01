@@ -9,13 +9,14 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
+    authenticated_rate_limit,
     get_current_user,
     get_db,
     get_job_service,
     require_job_owner,
 )
 from app.core.brand_about_eligibility import should_enrich_brand_about
-from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
+from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, OUTBOUND_FETCH_LIMIT
 from app.integrations.openai.brand_site_finder import (
     BrandSiteFinderConfig,
     OpenAIBrandSiteFinder,
@@ -179,7 +180,7 @@ async def get_job(job_id: UUID, service: JobService = Depends(get_job_service)) 
 async def create_job(
     payload: JobCreate,
     background: BackgroundTasks,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobService = Depends(get_job_service),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -218,7 +219,7 @@ async def create_job(
 async def update_job(
     payload: JobUpdate,
     background: BackgroundTasks,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     owned_job: Job = Depends(require_job_owner),
     service: JobService = Depends(get_job_service),
     session: AsyncSession = Depends(get_db),
@@ -254,7 +255,7 @@ async def update_job(
     description="Soft-deletes the job by setting deleted_at and archiving status.",
 )
 async def delete_job(
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     owned_job: Job = Depends(require_job_owner),
     service: JobService = Depends(get_job_service),
 ) -> JobRead:
@@ -322,6 +323,7 @@ async def get_brand_about_state(
 )
 async def enrich_brand_about(
     background: BackgroundTasks,
+    _limit: None = authenticated_rate_limit(OUTBOUND_FETCH_LIMIT),
     owned_job: Job = Depends(require_job_owner),
     session: AsyncSession = Depends(get_db),
 ) -> BrandAboutEnrichResponse:

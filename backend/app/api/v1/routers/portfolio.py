@@ -4,7 +4,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.deps import get_current_user, get_optional_current_user, get_profile_service
+from app.api.deps import (
+    authenticated_rate_limit,
+    get_current_user,
+    get_optional_current_user,
+    get_profile_service,
+)
+from app.core.rate_limit import OUTBOUND_FETCH_LIMIT
 from app.models import User
 from app.schemas import (
     AuthStatusResponse,
@@ -45,6 +51,7 @@ def _youtube_error_status(error: YouTubeAPIError) -> int:
 )
 async def preview_link_portfolio_item(
     payload: PortfolioLinkPreviewRequest,
+    _limit: None = authenticated_rate_limit(OUTBOUND_FETCH_LIMIT),
     current_user: User = Depends(get_current_user),
 ) -> PortfolioLinkPreviewResponse:
     _ = current_user
@@ -61,6 +68,7 @@ async def preview_link_portfolio_item(
 )
 async def preview_youtube_portfolio_item(
     payload: PortfolioYouTubePreviewRequest,
+    _limit: None = authenticated_rate_limit(OUTBOUND_FETCH_LIMIT),
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> PortfolioYouTubePreviewResponse:
@@ -81,6 +89,7 @@ async def preview_youtube_portfolio_item(
 )
 async def create_portfolio_item_from_youtube(
     payload: PortfolioYouTubeCreateRequest,
+    _limit: None = authenticated_rate_limit(OUTBOUND_FETCH_LIMIT),
     current_user: User = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service),
 ) -> PortfolioItemRead:

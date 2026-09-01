@@ -16,6 +16,12 @@ from fastapi import Depends, HTTPException, status
 
 from app.api.deps import get_current_user
 from app.core.account_types import is_admin
+from app.core.rate_limit import (
+    ADMIN_REQUEST_LIMIT,
+    enforce_rate_limit,
+    tag_rate_limit_dependency,
+    user_rate_limit_key,
+)
 from app.models import User
 
 PERMISSION_KEYS: frozenset[str] = frozenset(
@@ -88,6 +94,15 @@ def require_permission(key: str):
     async def _check(current_user: User = Depends(get_current_user)) -> User:
         if key not in permissions_for(current_user):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin permission required")
+        await enforce_rate_limit(
+            key=user_rate_limit_key(current_user.id),
+            rule=ADMIN_REQUEST_LIMIT,
+        )
         return current_user
 
+    tag_rate_limit_dependency(
+        _check,
+        rule=ADMIN_REQUEST_LIMIT,
+        identity_scope="user",
+    )
     return _check

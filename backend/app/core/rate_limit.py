@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from ipaddress import IPv4Network, IPv6Network, ip_address, ip_network
 from threading import Lock
-from typing import Protocol
+from typing import Literal, Protocol
 
 from fastapi import Depends, HTTPException, Request, status
 from redis import asyncio as redis_asyncio
@@ -20,6 +21,17 @@ class RateLimitRule:
     name: str
     limit: int
     window_seconds: int
+
+
+RateLimitIdentityScope = Literal["ip", "user"]
+
+
+@dataclass(frozen=True)
+class RateLimitPolicy:
+    """Auditable policy metadata attached to every HTTP quota dependency."""
+
+    rule: RateLimitRule
+    identity_scope: RateLimitIdentityScope
 
 
 class RateLimitBackend(Protocol):
@@ -254,36 +266,82 @@ def client_identity(request: Request) -> str:
     return peer
 
 
+def client_rate_limit_key(request: Request) -> str:
+    """Namespace anonymous/pre-auth callers so they cannot collide with users."""
+
+    return f"ip:{client_identity(request)}"
+
+
+def user_rate_limit_key(user_id: object) -> str:
+    """Return the stable cross-device bucket for an independently verified user."""
+
+    return f"user:{user_id}"
+
+
+_POLICY_ATTRIBUTE = "__creatorjobs_rate_limit_policy__"
+
+
+def tag_rate_limit_dependency(
+    dependency: Callable[..., object],
+    *,
+    rule: RateLimitRule,
+    identity_scope: RateLimitIdentityScope,
+) -> None:
+    """Expose route policy to structural tests and future inventory tooling."""
+
+    setattr(
+        dependency,
+        _POLICY_ATTRIBUTE,
+        RateLimitPolicy(rule=rule, identity_scope=identity_scope),
+    )
+
+
+def rate_limit_policy_for(dependency: object) -> RateLimitPolicy | None:
+    policy = getattr(dependency, _POLICY_ATTRIBUTE, None)
+    return policy if isinstance(policy, RateLimitPolicy) else None
+
+
+async def enforce_rate_limit(*, key: str, rule: RateLimitRule) -> None:
+    """Apply one policy through the configured backend, failing closed safely."""
+
+    if settings.app_env == "test":
+        return
+    try:
+        allowed, retry_after = await _limiter.hit(key=key, rule=rule)
+    except Exception as exc:
+        # Never fall back to the process-local store after a shared-backend
+        # outage: two instances would silently grant separate allowances.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Request safeguards are temporarily unavailable. Please try again.",
+        ) from exc
+    if allowed:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail="Too many requests. Please wait a moment and try again.",
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
 def rate_limit(rule: RateLimitRule):
     async def dependency(request: Request) -> None:
-        if settings.app_env == "test":
-            return
-        try:
-            allowed, retry_after = await _limiter.hit(
-                key=client_identity(request),
-                rule=rule,
-            )
-        except Exception as exc:
-            # Never fall back to the process-local store after a shared-backend
-            # outage: two instances would silently grant separate allowances.
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Request safeguards are temporarily unavailable. Please try again.",
-            ) from exc
-        if allowed:
-            return
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many requests. Please wait a moment and try again.",
-            headers={"Retry-After": str(retry_after)},
+        await enforce_rate_limit(
+            key=client_rate_limit_key(request),
+            rule=rule,
         )
 
+    tag_rate_limit_dependency(dependency, rule=rule, identity_scope="ip")
     return Depends(dependency)
 
 
 AUTH_REGISTER_LIMIT = RateLimitRule("auth_register", limit=30, window_seconds=600)
 AUTH_LOGIN_LIMIT = RateLimitRule("auth_login", limit=60, window_seconds=300)
 AUTH_EMAIL_LIMIT = RateLimitRule("auth_email", limit=30, window_seconds=600)
+# Token checks are cheap but externally reachable; refresh is intentionally
+# looser for households/offices whose legitimate sessions share one public IP.
+AUTH_VERIFY_LIMIT = RateLimitRule("auth_verify", limit=60, window_seconds=600)
+AUTH_REFRESH_LIMIT = RateLimitRule("auth_refresh", limit=120, window_seconds=300)
 STRONG_AUTH_ENROLL_LIMIT = RateLimitRule(
     "strong_auth_enroll",
     limit=5,
@@ -300,6 +358,13 @@ STRONG_AUTH_FACTOR_CHANGE_LIMIT = RateLimitRule(
     window_seconds=3600,
 )
 MARKETPLACE_ACTION_LIMIT = RateLimitRule("marketplace_action", limit=120, window_seconds=300)
+# These rules are shared within each category. Switching from a portfolio
+# preview to organization lookup, or from avatar to banner, cannot mint a new
+# allowance while ordinary interactive use still has ample headroom.
+OUTBOUND_FETCH_LIMIT = RateLimitRule("outbound_fetch", limit=30, window_seconds=600)
+MEDIA_UPLOAD_LIMIT = RateLimitRule("media_upload", limit=20, window_seconds=3600)
+PUBLIC_SEARCH_LIMIT = RateLimitRule("public_search", limit=120, window_seconds=60)
+ADMIN_REQUEST_LIMIT = RateLimitRule("admin_request", limit=300, window_seconds=300)
 REPORT_LIMIT = RateLimitRule("report", limit=30, window_seconds=600)
 CHECKOUT_LIMIT = RateLimitRule("checkout", limit=30, window_seconds=600)
 CLIENT_ERROR_LIMIT = RateLimitRule("client_error", limit=30, window_seconds=300)

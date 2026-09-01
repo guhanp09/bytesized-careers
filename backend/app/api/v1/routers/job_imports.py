@@ -6,6 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
+    authenticated_rate_limit,
     get_current_user,
     get_db,
     get_job_import_conversation_service,
@@ -13,7 +14,7 @@ from app.api.deps import (
     get_job_import_service,
     get_job_import_url_service,
 )
-from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
+from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, OUTBOUND_FETCH_LIMIT
 from app.models import User
 from app.schemas.job import JobRead
 from app.schemas.job_import import (
@@ -88,7 +89,7 @@ async def get_native_job_import_context(
 )
 async def create_import_source(
     payload: JobImportSourceCreate,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportService = Depends(get_job_import_service),
     current_user: User = Depends(get_current_user),
 ) -> JobImportSourceRead:
@@ -107,7 +108,7 @@ async def create_import_source(
 )
 async def create_url_import_source(
     payload: JobImportUrlSourceCreate,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(OUTBOUND_FETCH_LIMIT),
     url_service: JobImportUrlService = Depends(get_job_import_url_service),
     service: JobImportService = Depends(get_job_import_service),
     current_user: User = Depends(get_current_user),
@@ -143,7 +144,7 @@ async def get_import_source(
 )
 async def delete_import_source(
     source_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportService = Depends(get_job_import_service),
     current_user: User = Depends(get_current_user),
 ) -> Response:
@@ -163,7 +164,7 @@ async def delete_import_source(
 async def initialize_import_draft(
     source_id: UUID,
     payload: JobImportDraftInitialize,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportService = Depends(get_job_import_service),
     current_user: User = Depends(get_current_user),
 ) -> JobImportDraftRead:
@@ -203,7 +204,7 @@ async def get_import_draft(
 async def process_import_draft(
     draft_id: UUID,
     _payload: JobImportProcessRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     processing_service: JobImportProcessingService = Depends(get_job_import_processing_service),
     service: JobImportService = Depends(get_job_import_service),
     current_user: User = Depends(get_current_user),
@@ -230,7 +231,7 @@ async def review_import_field(
     draft_id: UUID,
     field_path: str,
     payload: JobImportFieldReviewRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportService = Depends(get_job_import_service),
     current_user: User = Depends(get_current_user),
 ) -> JobImportDraftRead:
@@ -267,7 +268,7 @@ def _conversation_read(snapshot: ConversationSnapshot) -> JobImportConversationR
 )
 async def read_import_conversation(
     draft_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportConversationService = Depends(get_job_import_conversation_service),
     current_user: User = Depends(get_current_user),
 ) -> JobImportConversationRead:
@@ -287,7 +288,7 @@ async def read_import_conversation(
 )
 async def begin_import_conversation(
     draft_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportConversationService = Depends(get_job_import_conversation_service),
     current_user: User = Depends(get_current_user),
 ) -> JobImportConversationRead:
@@ -306,7 +307,7 @@ async def begin_import_conversation(
 async def answer_import_question(
     draft_id: UUID,
     payload: JobImportAnswerRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportConversationService = Depends(get_job_import_conversation_service),
     current_user: User = Depends(get_current_user),
 ) -> JobImportConversationRead:
@@ -331,7 +332,7 @@ async def answer_import_question(
 async def skip_import_question(
     draft_id: UUID,
     remaining: bool = False,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportConversationService = Depends(get_job_import_conversation_service),
     current_user: User = Depends(get_current_user),
 ) -> JobImportConversationRead:
@@ -357,7 +358,7 @@ async def skip_import_question(
 )
 async def continue_import_manually(
     draft_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportConversationService = Depends(get_job_import_conversation_service),
     current_user: User = Depends(get_current_user),
 ) -> JobImportConversationRead:
@@ -375,7 +376,7 @@ async def continue_import_manually(
 )
 async def pause_import_conversation(
     draft_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportConversationService = Depends(get_job_import_conversation_service),
     current_user: User = Depends(get_current_user),
 ) -> JobImportConversationRead:
@@ -395,7 +396,7 @@ async def set_import_prefill(
     draft_id: UUID,
     field_path: str,
     payload: JobImportPrefillRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportService = Depends(get_job_import_service),
     current_user: User = Depends(get_current_user),
 ) -> JobImportDraftRead:
@@ -420,7 +421,7 @@ async def resolve_import_conflict(
     draft_id: UUID,
     field_path: str,
     payload: JobImportConflictResolutionRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportService = Depends(get_job_import_service),
     current_user: User = Depends(get_current_user),
 ) -> JobImportDraftRead:
@@ -443,7 +444,7 @@ async def resolve_import_conflict(
 )
 async def discard_import_draft(
     draft_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportService = Depends(get_job_import_service),
     current_user: User = Depends(get_current_user),
 ) -> JobImportDraftRead:
@@ -464,7 +465,7 @@ async def discard_import_draft(
 )
 async def delete_import_draft(
     draft_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportService = Depends(get_job_import_service),
     current_user: User = Depends(get_current_user),
 ) -> Response:
@@ -484,7 +485,7 @@ async def apply_import_draft(
     draft_id: UUID,
     payload: JobImportApplyRequest,
     background: BackgroundTasks,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportService = Depends(get_job_import_service),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -516,7 +517,7 @@ async def attach_import_draft(
     draft_id: UUID,
     payload: JobImportAttachRequest,
     background: BackgroundTasks,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportService = Depends(get_job_import_service),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

@@ -22,6 +22,12 @@ from app.core.qa_personas import (
     qa_persona_feature_enabled,
     qa_session_is_revoked,
 )
+from app.core.rate_limit import (
+    RateLimitRule,
+    enforce_rate_limit,
+    tag_rate_limit_dependency,
+    user_rate_limit_key,
+)
 from app.core.security import SESSION_ID_CLAIM, TokenError, decode_access_token
 from app.core.strong_auth_secrets import (
     StrongAuthSecretConfigurationError,
@@ -495,6 +501,19 @@ BaseAuthenticatedAccessDependency = Annotated[
     AuthenticatedAccessContext,
     Depends(get_current_base_access_context),
 ]
+
+
+def authenticated_rate_limit(rule: RateLimitRule):
+    """Count an authenticated person once across devices, tabs, and IP changes."""
+
+    async def dependency(current_user: CurrentUserDependency) -> None:
+        await enforce_rate_limit(
+            key=user_rate_limit_key(current_user.id),
+            rule=rule,
+        )
+
+    tag_rate_limit_dependency(dependency, rule=rule, identity_scope="user")
+    return Depends(dependency)
 
 
 async def require_authenticated_user(current_user: CurrentUserDependency) -> User:

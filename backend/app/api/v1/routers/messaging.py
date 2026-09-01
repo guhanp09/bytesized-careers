@@ -10,8 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db
-from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
+from app.api.deps import authenticated_rate_limit, get_current_user, get_db
+from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT
 from app.models import Conversation, JobApplication, Message, TalentInterest, User, UserBlock
 from app.realtime import events as realtime_events
 from app.schemas.reviews import EngagementSummary
@@ -348,7 +348,7 @@ async def get_conversation(
 async def send_screening_answers(
     conversation_id: UUID,
     payload: SendScreeningAnswersRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> MessageRead:
@@ -409,7 +409,7 @@ async def send_screening_answers(
 async def send_message(
     conversation_id: UUID,
     payload: SendMessageRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> MessageRead:
@@ -461,7 +461,7 @@ async def send_message(
 async def send_status_update(
     conversation_id: UUID,
     payload: SendStatusUpdateRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> MessageRead:
@@ -536,6 +536,7 @@ async def send_status_update(
 @router.post("/conversations/{conversation_id}/read", response_model=ConversationRead)
 async def mark_conversation_read(
     conversation_id: UUID,
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> ConversationRead:
@@ -590,6 +591,7 @@ async def list_my_blocks(
 @router.post("/blocks/{user_id}", response_model=BlockMutationRead)
 async def block_user(
     user_id: UUID,
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> BlockMutationRead:
@@ -615,6 +617,7 @@ async def block_user(
 @router.delete("/blocks/{user_id}", response_model=BlockMutationRead)
 async def unblock_user(
     user_id: UUID,
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> BlockMutationRead:
@@ -721,6 +724,7 @@ async def _apply_preference(
 async def set_conversation_star(
     conversation_id: UUID,
     payload: StarUpdate,
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> InteractionPreferenceRead:
@@ -741,6 +745,7 @@ async def set_conversation_star(
 async def set_conversation_snooze(
     conversation_id: UUID,
     payload: SnoozeUpdate,
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> InteractionPreferenceRead:
@@ -764,6 +769,7 @@ async def set_conversation_snooze(
 async def set_conversation_queue_dismissal(
     conversation_id: UUID,
     payload: QueueDismissalUpdate,
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> InteractionPreferenceRead:
@@ -787,6 +793,7 @@ async def set_conversation_queue_dismissal(
 async def set_conversation_decision_prompt(
     conversation_id: UUID,
     payload: DecisionPromptUpdate,
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> InteractionPreferenceRead:
@@ -925,7 +932,7 @@ async def list_my_interviews(
 async def propose_interview(
     conversation_id: UUID,
     payload: ProposeInterviewRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> InterviewRead:
@@ -980,7 +987,7 @@ async def propose_interview(
 async def confirm_interview(
     conversation_id: UUID,
     payload: InterviewActionRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> InterviewRead:
@@ -1007,7 +1014,7 @@ async def confirm_interview(
 async def complete_interview(
     conversation_id: UUID,
     payload: InterviewActionRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> InterviewRead:
@@ -1034,7 +1041,7 @@ async def complete_interview(
 async def cancel_interview(
     conversation_id: UUID,
     payload: CancelInterviewRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> InterviewRead:

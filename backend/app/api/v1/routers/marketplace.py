@@ -13,7 +13,12 @@ from sqlalchemy import String, and_, case, delete, func, literal, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db, get_optional_current_user
+from app.api.deps import (
+    authenticated_rate_limit,
+    get_current_user,
+    get_db,
+    get_optional_current_user,
+)
 from app.core.account_state import account_is_blocked
 from app.core.rate_limit import CHECKOUT_LIMIT, MARKETPLACE_ACTION_LIMIT, REPORT_LIMIT, rate_limit
 from app.models import (
@@ -755,7 +760,7 @@ async def _get_listing_or_404(session: AsyncSession, listing_id: UUID) -> Talent
 async def save_job(
     job_id: UUID,
     payload: SaveJobRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> SavedJobRead:
@@ -795,7 +800,7 @@ async def save_job(
 @router.delete("/jobs/{job_id}/save", response_model=dict)
 async def unsave_job(
     job_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -857,7 +862,7 @@ async def get_my_application_for_job(
 async def apply_to_job(
     job_id: UUID,
     payload: JobApplicationCreate,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> JobApplicationRead:
@@ -1471,7 +1476,7 @@ async def list_application_private_notes(
 async def create_application_private_note(
     application_id: UUID,
     payload: InteractionPrivateNoteCreate,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> InteractionPrivateNoteRead:
@@ -1495,7 +1500,7 @@ async def create_application_private_note(
 async def delete_application_private_note(
     application_id: UUID,
     note_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> None:
@@ -1737,7 +1742,7 @@ async def list_my_talent_listings(
 @router.post("/talent-listings", response_model=TalentListingRead, status_code=status.HTTP_201_CREATED)
 async def create_talent_listing(
     payload: TalentListingCreate,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> TalentListingRead:
@@ -1773,7 +1778,7 @@ async def create_talent_listing(
 async def update_talent_listing(
     listing_id: UUID,
     payload: TalentListingUpdate,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> TalentListingRead:
@@ -1812,7 +1817,7 @@ async def update_talent_listing(
 @router.delete("/talent-listings/{listing_id}", response_model=dict)
 async def delete_talent_listing(
     listing_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -1829,7 +1834,7 @@ async def delete_talent_listing(
 async def save_talent_listing(
     listing_id: UUID,
     payload: SaveTalentListingRequest,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> SavedTalentListingRead:
@@ -1865,7 +1870,7 @@ async def save_talent_listing(
 @router.delete("/talent-listings/{listing_id}/save", response_model=dict)
 async def unsave_talent_listing(
     listing_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -1997,7 +2002,7 @@ async def get_my_talent_interest(
 async def send_talent_interest(
     listing_id: UUID,
     payload: TalentInterestCreate,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> TalentInterestRead:
@@ -2912,7 +2917,7 @@ async def list_interest_private_notes(
 async def create_interest_private_note(
     interest_id: UUID,
     payload: InteractionPrivateNoteCreate,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> InteractionPrivateNoteRead:
@@ -2936,7 +2941,7 @@ async def create_interest_private_note(
 async def delete_interest_private_note(
     interest_id: UUID,
     note_id: UUID,
-    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    _limit: None = authenticated_rate_limit(MARKETPLACE_ACTION_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> None:
@@ -3201,7 +3206,7 @@ async def list_my_jobs(
 @router.post("/checkout/launch-free", response_model=EntitlementRead, status_code=status.HTTP_201_CREATED)
 async def complete_launch_free_checkout(
     payload: LaunchCheckoutRequest,
-    _limit: None = rate_limit(CHECKOUT_LIMIT),
+    _limit: None = authenticated_rate_limit(CHECKOUT_LIMIT),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> EntitlementRead:
