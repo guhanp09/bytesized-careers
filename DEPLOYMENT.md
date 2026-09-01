@@ -328,7 +328,8 @@ Before real customer production, CreatorJobs still needs:
 - SMTP/email verification delivery
 - production Google OAuth verification/consent setup
 - production object storage for uploads
-- shared rate limiting such as Redis
+- a managed Redis 7.2+ service and `RATE_LIMIT_BACKEND=redis`; production boot
+  pings this security dependency and refuses traffic if it is unavailable
 - backups and restore testing
 - monitoring and error tracking
 - admin operations

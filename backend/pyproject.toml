@@ -30,6 +30,9 @@ dependencies = [
   "openai>=2.49.0,<3.0.0",
   "httpx>=0.28.1,<0.29.0",
   "httpcore>=1.0.9,<1.1.0",
+  # Shared production rate limiting. redis-py 8 supports Redis 7.2+; keep the
+  # next major as an explicit protocol/response-shape migration.
+  "redis>=8.1.0,<9.0.0",
   "babel>=2.17.0",
   "geonamescache>=3.0.0",
 ]

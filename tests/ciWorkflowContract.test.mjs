@@ -166,6 +166,16 @@ test("backend and postgres suites run as separate jobs", () => {
   assert.match(ci, /^ {2}backend-postgres:$/m);
 });
 
+test("CI executes the atomic limiter against an exact loopback Redis service", () => {
+  assert.match(ci, /image: redis:7\.4\.11-alpine/);
+  assert.match(ci, /RATE_LIMIT_TEST_REDIS_URL: redis:\/\/127\.0\.0\.1:56379\/15/);
+  assert.match(ci, /uv run python -m scripts\.exercise_redis_rate_limit/);
+  assert.ok(
+    existsSync(join(root, "backend", "scripts", "exercise_redis_rate_limit.py")),
+    "the Redis contention command must exist",
+  );
+});
+
 test("no artifact upload includes secrets or databases", () => {
   for (const source of [ci, security]) {
     const uploads = [...source.matchAll(/path: \|?([\s\S]*?)(?=\n {6}[a-z-]+:|\n {4}- |\n {2}[a-z-]+:)/g)]

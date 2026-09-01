@@ -95,6 +95,19 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # Exact supported Redis line for the production security boundary. The
+    # ordinary pytest aggregate uses protocol fakes; this service executes the
+    # Lua under real cross-client contention and proves the TTL on Redis itself.
+    services:
+      redis:
+        image: redis:7.4.11-alpine
+        ports:
+          - 56379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -123,6 +136,11 @@ jobs:
         env:
           APP_ENV: test
         run: uv run pytest tests/ -q --junitxml=junit-backend.xml
+
+      - name: Redis atomic rate-limit contention
+        env:
+          RATE_LIMIT_TEST_REDIS_URL: redis://127.0.0.1:56379/15
+        run: uv run python -m scripts.exercise_redis_rate_limit
 
       - name: Alembic single head
         env:

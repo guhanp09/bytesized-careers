@@ -94,8 +94,10 @@ and an approved recovery target exist.
    prints names and enforcement only; it deliberately reads no values.
 3. Inspect the original bounded event and Redis service health. Do not switch to
    process-local production limiting to make the alert disappear.
-4. RATE-001 remains a launch blocker until atomic real-Redis contention, outage,
-   and recovery are proven; telemetry does not close it.
+4. The repository proves atomic real-Redis contention, expiry, outage and
+   recovery on loopback. Keep the affected write surface closed until the
+   configured managed service is healthy; local proof does not prove hosted
+   failover, credentials or alert delivery.
 
 ## Email worker failed
 

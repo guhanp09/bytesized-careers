@@ -46,7 +46,9 @@ The walkthrough also confirmed intentional limits rather than hiding them:
 
 - there is no production maintenance/read-only switch;
 - no hosted backup/PITR or media restore has run;
-- the Redis limiter lacks real atomic contention proof;
+- the Redis limiter lacked real atomic contention proof during this tabletop;
+  that local code/service proof was completed later, while hosted failover and
+  the production incident drill remain external;
 - no shared realtime adapter exists;
 - the shared email-delivery gate stops real authentication and notification sends
   only after the worker is restarted with the new configuration;

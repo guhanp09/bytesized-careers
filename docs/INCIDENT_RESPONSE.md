@@ -415,9 +415,11 @@ Recheck AI quotas/budget caps if they were part of the incident.
 
 ### External gate
 
-RATE-001 remains a beta blocker: the current Redis limiter is not proven atomic
-under real contention and no real broker outage/recovery drill exists. This
-runbook does not promote that implementation by documentation.
+The repository now proves the atomic limiter against a real loopback Redis
+7.4.11 service under eight-client contention, including expiry, fail-closed
+outage and recovery. Managed Redis provisioning, credential cutover, provider
+alert delivery, failover and the production incident drill remain external.
+Local proof does not establish any of those hosted controls.
 
 ## Transactional email outage
 

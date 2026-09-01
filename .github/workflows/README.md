@@ -79,6 +79,15 @@ advisory aliases; it fails if the finding changes or disappears. The exception
 is backed by the enforced HMAC-only JWT configuration, not by a severity
 threshold or a blanket ignore flag.
 
+## Redis rate-limit contention
+
+The backend job starts exact Redis `7.4.11-alpine` and runs the same standalone
+exercise available locally. Two hundred requests are issued through eight
+independent async clients into one bucket; exactly the configured allowance must
+win. The exercise also verifies a real Redis TTL, caller isolation, fail-closed
+outage behavior, and recovery. Its URL parser refuses every non-loopback target,
+so this gate cannot be pointed at a hosted or production cache.
+
 ## What is still external
 
 - GitHub-hosted execution of any of this (`RELEASE-001`).

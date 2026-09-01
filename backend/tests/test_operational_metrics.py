@@ -284,39 +284,17 @@ async def test_database_probe_records_success_and_unavailability_without_detail(
     assert "private database detail" not in json.dumps(events)
 
 
-class _RedisPipeline:
-    def __init__(self, count: int, error: Exception | None = None) -> None:
-        self.count = count
-        self.error = error
-
-    def zremrangebyscore(self, *_args: object) -> None:
-        return None
-
-    def zcard(self, *_args: object) -> None:
-        return None
-
-    async def execute(self) -> tuple[int, int]:
-        if self.error is not None:
-            raise self.error
-        return 0, self.count
-
-
 class _RedisClient:
     def __init__(self, count: int, error: Exception | None = None) -> None:
         self.count = count
         self.error = error
 
-    def pipeline(self) -> _RedisPipeline:
-        return _RedisPipeline(self.count, self.error)
-
-    async def zrange(self, *_args: object, **_kwargs: object) -> list[tuple[str, int]]:
-        return [("oldest", 0)]
-
-    async def zadd(self, *_args: object, **_kwargs: object) -> None:
-        return None
-
-    async def expire(self, *_args: object, **_kwargs: object) -> None:
-        return None
+    async def eval(self, *_args: object) -> list[int]:
+        if self.error is not None:
+            raise self.error
+        if self.count >= 2:
+            return [0, 60]
+        return [1, 0]
 
 
 def _redis_backend(client: _RedisClient) -> RedisRateLimitBackend:

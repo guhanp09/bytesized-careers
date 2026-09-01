@@ -13,6 +13,7 @@ from app.api.v1.api import api_router
 from app.core.config import settings, validate_production_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
+from app.core.rate_limit import close_rate_limit_backend, ensure_rate_limit_backend_ready
 from app.db.dev_sqlite_schema import sync_dev_sqlite_schema
 from app.db.seed import seed_roles_if_missing
 from app.db.session import SessionLocal, engine
@@ -95,6 +96,10 @@ _import_sweeper: dict[str, object] = {}
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    # Redis is a production security dependency, not an optional enhancement.
+    # Refuse traffic at boot rather than discovering the missing limiter on the
+    # first protected customer action.
+    await ensure_rate_limit_backend_ready()
     await sync_dev_sqlite_schema(engine)
     async with SessionLocal() as session:
         await seed_roles_if_missing(session)
@@ -145,3 +150,4 @@ async def on_shutdown() -> None:
         if isinstance(task, asyncio.Task):
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+    await close_rate_limit_backend()

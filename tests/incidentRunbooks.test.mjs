@@ -166,7 +166,11 @@ test("recovery documentation preserves external truth and safe health semantics"
   assert.match(ledger, /\| OPS-002 \| HIGH \| Media backup\/lifecycle \|[^\n]+\| BLOCKED_EXTERNAL \|/);
   assert.match(runbook, /No hosted backup or PITR restore has been run/);
   assert.match(runbook, /Only the process-local adapter exists in this repository/);
-  assert.match(runbook, /current Redis limiter is not proven atomic/);
+  assert.match(runbook, /proves the atomic limiter against a real loopback Redis/);
+  assert.match(
+    runbook,
+    /Managed Redis provisioning, credential cutover, provider[\s\S]+production incident drill remain external/,
+  );
 
   const health = executableSource("backend/app/health/router.py");
   assert.match(health, /async def health\(\)/);

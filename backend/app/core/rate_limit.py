@@ -9,6 +9,7 @@ from threading import Lock
 from typing import Protocol
 
 from fastapi import Depends, HTTPException, Request, status
+from redis import asyncio as redis_asyncio
 
 from app.core.config import settings
 from app.core.operational_metrics import record_redis_rate_limit
@@ -49,54 +50,90 @@ class InMemoryRateLimitBackend:
 
 
 class RedisRateLimitBackend:
-    """Redis-backed limiter.
+    """Shared sliding-window limiter whose decision is one Redis operation."""
 
-    The implementation intentionally imports redis lazily. Local development does
-    not need Redis installed, while production can opt into RATE_LIMIT_BACKEND=redis
-    after adding the redis package and REDIS_URL to the deployment.
-    """
+    #: One script, one key, one linearization point. A pipeline only batches the
+    #: old remove/count calls; it does not stop two instances from both observing
+    #: a count below the limit and both admitting a request. Redis executes this
+    #: script atomically, and its own clock keeps application-host skew from
+    #: producing different windows.
+    _HIT_SCRIPT = """
+local bucket_key = KEYS[1]
+local request_limit = tonumber(ARGV[1])
+local window_ms = tonumber(ARGV[2])
+local member = ARGV[3]
+
+if request_limit == nil or request_limit < 1 then
+  return redis.error_reply("rate limit must be a positive integer")
+end
+if window_ms == nil or window_ms < 1 then
+  return redis.error_reply("rate limit window must be positive")
+end
+
+local redis_time = redis.call("TIME")
+local now_ms = (tonumber(redis_time[1]) * 1000) + math.floor(tonumber(redis_time[2]) / 1000)
+local cutoff_ms = now_ms - window_ms
+
+redis.call("ZREMRANGEBYSCORE", bucket_key, "-inf", cutoff_ms)
+local count = redis.call("ZCARD", bucket_key)
+
+if count >= request_limit then
+  local oldest = redis.call("ZRANGE", bucket_key, 0, 0, "WITHSCORES")
+  local retry_ms = window_ms
+  if oldest[2] ~= nil then
+    retry_ms = math.max(1, math.ceil(tonumber(oldest[2]) + window_ms - now_ms))
+  end
+  return {0, math.max(1, math.ceil(retry_ms / 1000))}
+end
+
+redis.call("ZADD", bucket_key, now_ms, member)
+redis.call("PEXPIRE", bucket_key, window_ms)
+return {1, 0}
+"""
 
     def __init__(self, redis_url: str) -> None:
-        try:
-            from redis import asyncio as redis_asyncio  # type: ignore[import-not-found]
-        except ImportError as exc:  # pragma: no cover - depends on optional deployment package
-            raise RuntimeError(
-                "RATE_LIMIT_BACKEND=redis requires the optional 'redis' Python package. "
-                "Install redis>=5 and set REDIS_URL."
-            ) from exc
+        self._client = redis_asyncio.from_url(
+            redis_url,
+            decode_responses=True,
+            # A security dependency must not hold a request open indefinitely.
+            socket_connect_timeout=1.0,
+            socket_timeout=1.0,
+            retry_on_timeout=False,
+            health_check_interval=30,
+            # redis-py 8 defaults to RESP3. Keep the wire contract explicit
+            # while production Redis 7.2/7.4 remains supported.
+            protocol=2,
+        )
 
-        self._client = redis_asyncio.from_url(redis_url, decode_responses=True)
+    async def ping(self) -> None:
+        if await self._client.ping() is not True:
+            raise RuntimeError("Shared rate-limit backend returned an invalid ping response.")
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
 
     async def hit(self, *, key: str, rule: RateLimitRule) -> tuple[bool, int]:
         started = time.perf_counter()
         try:
-            now_ms = int(time.time() * 1000)
             window_ms = rule.window_seconds * 1000
-            cutoff_ms = now_ms - window_ms
             bucket_key = f"rate_limit:{rule.name}:{key}"
-            pipe = self._client.pipeline()
-            pipe.zremrangebyscore(bucket_key, 0, cutoff_ms)
-            pipe.zcard(bucket_key)
-            _, count = await pipe.execute()
-            if int(count) >= rule.limit:
-                oldest = await self._client.zrange(bucket_key, 0, 0, withscores=True)
-                if oldest:
-                    retry_after = max(
-                        1,
-                        int((int(oldest[0][1]) + window_ms - now_ms) / 1000),
-                    )
-                else:
-                    retry_after = rule.window_seconds
-                record_redis_rate_limit(
-                    allowed=False,
-                    elapsed_seconds=time.perf_counter() - started,
-                )
-                return False, retry_after
-            await self._client.zadd(
+            result = await self._client.eval(
+                self._HIT_SCRIPT,
+                1,
                 bucket_key,
-                {f"{now_ms}:{uuid.uuid4().hex}": now_ms},
+                rule.limit,
+                window_ms,
+                uuid.uuid4().hex,
             )
-            await self._client.expire(bucket_key, rule.window_seconds)
+            if not isinstance(result, (list, tuple)) or len(result) != 2:
+                raise RuntimeError("Shared rate-limit backend returned a malformed decision.")
+            decision, retry_after = int(result[0]), int(result[1])
+            if decision == 1 and retry_after == 0:
+                allowed = True
+            elif decision == 0 and retry_after >= 1:
+                allowed = False
+            else:
+                raise RuntimeError("Shared rate-limit backend returned an invalid decision.")
         except Exception:
             record_redis_rate_limit(
                 allowed=None,
@@ -104,10 +141,10 @@ class RedisRateLimitBackend:
             )
             raise
         record_redis_rate_limit(
-            allowed=True,
+            allowed=allowed,
             elapsed_seconds=time.perf_counter() - started,
         )
-        return True, 0
+        return allowed, retry_after
 
 
 def _build_backend() -> RateLimitBackend:
@@ -119,6 +156,21 @@ def _build_backend() -> RateLimitBackend:
 
 
 _limiter: RateLimitBackend = _build_backend()
+
+
+async def ensure_rate_limit_backend_ready() -> None:
+    """Refuse production startup when its required shared limiter is unreachable."""
+
+    if isinstance(_limiter, RedisRateLimitBackend):
+        try:
+            await _limiter.ping()
+        except Exception as exc:
+            raise RuntimeError("Shared rate-limit backend is unavailable.") from exc
+
+
+async def close_rate_limit_backend() -> None:
+    if isinstance(_limiter, RedisRateLimitBackend):
+        await _limiter.aclose()
 
 
 def _parse_networks(raw: str | None) -> tuple[IPv4Network | IPv6Network, ...]:
@@ -206,7 +258,18 @@ def rate_limit(rule: RateLimitRule):
     async def dependency(request: Request) -> None:
         if settings.app_env == "test":
             return
-        allowed, retry_after = await _limiter.hit(key=client_identity(request), rule=rule)
+        try:
+            allowed, retry_after = await _limiter.hit(
+                key=client_identity(request),
+                rule=rule,
+            )
+        except Exception as exc:
+            # Never fall back to the process-local store after a shared-backend
+            # outage: two instances would silently grant separate allowances.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Request safeguards are temporarily unavailable. Please try again.",
+            ) from exc
         if allowed:
             return
         raise HTTPException(
