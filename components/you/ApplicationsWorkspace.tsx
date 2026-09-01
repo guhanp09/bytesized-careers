@@ -2432,6 +2432,10 @@ export default function ApplicationsWorkspace({
     backendUserId,
     onEvent: handleRealtimeEvent,
   });
+  const realtimeStateRef = useRef(realtimeState);
+  useEffect(() => {
+    realtimeStateRef.current = realtimeState;
+  }, [realtimeState]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
@@ -2635,7 +2639,7 @@ export default function ApplicationsWorkspace({
         if (!cancelled) {
           timer = setTimeout(
             refreshUnread,
-            realtimeState === "connected" ? 15_000 : UNREAD_POLL_INTERVAL_MS
+            realtimeStateRef.current === "connected" ? 15_000 : UNREAD_POLL_INTERVAL_MS
           );
         }
       }
@@ -2646,7 +2650,7 @@ export default function ApplicationsWorkspace({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [liveMode, backendAccessToken, reloadNonce, realtimeRefreshNonce, realtimeState]);
+  }, [liveMode, backendAccessToken, reloadNonce, realtimeRefreshNonce]);
 
   /*
     How many conversations are rendered. Not which ones — that is derived — so
@@ -2830,7 +2834,7 @@ export default function ApplicationsWorkspace({
 
     const refreshConversation = async () => {
       let nextPollMs =
-        realtimeState === "connected" ? 15_000 : CONVERSATION_POLL_INTERVAL_MS;
+        realtimeStateRef.current === "connected" ? 15_000 : CONVERSATION_POLL_INTERVAL_MS;
       try {
         const detail = await (selectedKind === "hiring_request"
           ? getInterestConversation(backendAccessToken, recordId)
@@ -2898,7 +2902,6 @@ export default function ApplicationsWorkspace({
     selectedKind,
     reloadNonce,
     realtimeRefreshNonce,
-    realtimeState,
     sending,
   ]);
 
@@ -3771,14 +3774,30 @@ export default function ApplicationsWorkspace({
    */
   const toggleStar = useCallback(
     async (item: OwnerInteraction) => {
-      const conversationId = preferenceKeyOf(item);
-      const previous = preferences[conversationId];
+      /*
+        A list row can become interactive before its conversation fallback has
+        finished loading. Previously that path painted an optimistic star under
+        the application id and returned without ever writing it. Resolve the
+        server-owned conversation first so every live-mode success corresponds
+        to a durable, participant-authorised preference row.
+      */
+      let conversationId = conversationIdOf(item);
+      if (backendAccessToken && !conversationId) {
+        try {
+          conversationId = await resolveConversationId(item);
+        } catch {
+          setActionError("Couldn\u2019t save that. Try again.");
+          return;
+        }
+      }
+      const preferenceKey = conversationId ?? preferenceKeyOf(item);
+      const previous = preferences[preferenceKey];
       const next = !previous?.starred;
       setPreferences((current) => ({
         ...current,
-        [conversationId]: {
-          ...(current[conversationId] ?? {
-            conversation_id: conversationId,
+        [preferenceKey]: {
+          ...(current[preferenceKey] ?? {
+            conversation_id: preferenceKey,
             starred: false,
             queue_dismissed: false,
             decision_prompt_dismissed: false,
@@ -3792,21 +3811,27 @@ export default function ApplicationsWorkspace({
         control that looks live and is not. The optimistic state is the whole
         state in that case.
       */
-      if (!backendAccessToken || !conversationIdOf(item)) return;
+      if (!backendAccessToken || !conversationId) return;
       try {
         const saved = await setConversationStarred(backendAccessToken, conversationId, next);
         setPreferences((current) => ({ ...current, [conversationId]: saved }));
       } catch {
         setPreferences((current) => {
           const restored = { ...current };
-          if (previous) restored[conversationId] = previous;
-          else delete restored[conversationId];
+          if (previous) restored[preferenceKey] = previous;
+          else delete restored[preferenceKey];
           return restored;
         });
         setActionError("Couldn\u2019t save that. Try again.");
       }
     },
-    [preferenceKeyOf, conversationIdOf, backendAccessToken, preferences]
+    [
+      preferenceKeyOf,
+      conversationIdOf,
+      resolveConversationId,
+      backendAccessToken,
+      preferences,
+    ]
   );
 
   /**

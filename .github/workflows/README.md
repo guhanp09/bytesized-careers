@@ -70,10 +70,14 @@ artifact is downloadable by anyone who can read the run.
 
 ## Dependency audits
 
-`npm audit --omit=dev` and `pip-audit` against the locked production set. The
-backend audit installs with `--no-dev` first: auditing a developer environment
-reports advisories for pytest and ruff, which never ship, and can miss what does
-ship if the two sets have drifted.
+`npm audit --omit=dev` and a pinned `pip-audit` against requirements exported
+from the locked `--no-dev` production set. The backend gate does not audit the
+active developer environment: doing that reports advisories for pytest and
+Pygments, which never ship, and can miss what does ship if the two sets have
+drifted. Its one analysed exception is exact by package, version, and all known
+advisory aliases; it fails if the finding changes or disappears. The exception
+is backed by the enforced HMAC-only JWT configuration, not by a severity
+threshold or a blanket ignore flag.
 
 ## What is still external
 

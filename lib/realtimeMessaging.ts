@@ -193,9 +193,11 @@ class RealtimeMessagingClient {
       for (const conversationId of this.subscriptions.keys()) {
         this.send({ type: "subscribe", conversation_id: conversationId });
       }
-      for (const listener of this.listeners.values()) {
-        listener({ type: "connected", event_id: `connected:${Date.now()}` });
-      }
+      // The authenticated server handshake sends the canonical `connected`
+      // event. Synthesising a second one here made every consumer reconcile
+      // twice for one socket connection (and doubled their HTTP fallback
+      // reads). Wait for the server frame so "connected" also means the
+      // protocol handshake, not merely that the TCP/WebSocket transport opened.
     };
     socket.onmessage = (message) => {
       let parsed: RealtimeMessagingEvent | null = null;

@@ -183,6 +183,10 @@ test("the production dependency audit installs without dev dependencies", () => 
   // ships, and can miss what does ship if the sets have drifted.
   // The backend audit lives in security.yml; the frontend one in ci.yml.
   assert.match(security, /uv sync --locked --no-dev/);
+  assert.match(
+    security,
+    /\.venv\/bin\/python -m scripts\.audit_production_dependencies/,
+  );
   // The frontend gate runs through the analysed-exception script rather than
   // bare npm audit; the script itself asserts the --omit=dev flag.
   assert.match(ci, /npm run audit:production/);
@@ -190,6 +194,15 @@ test("the production dependency audit installs without dev dependencies", () => 
   assert.match(gate, /"--omit=dev"/);
   // A severity threshold would be suppression by another name.
   assert.ok(!/--audit-level/.test(gate));
+
+  const backendGate = readFileSync(
+    join(root, "backend", "scripts", "audit_production_dependencies.py"),
+    "utf8",
+  );
+  assert.match(backendGate, /"--no-dev"/);
+  assert.match(backendGate, /"--require-hashes"/);
+  assert.match(backendGate, /PIP_AUDIT_VERSION = "2\.10\.1"/);
+  assert.ok(!/--ignore-vuln/.test(backendGate));
 });
 
 test("the README does not claim remote CI has run", () => {

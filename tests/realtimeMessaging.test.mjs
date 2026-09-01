@@ -24,6 +24,11 @@ test("the realtime client uses bounded reconnects and throttles typing transport
   assert.match(source, /event\.code === 4401 \|\| event\.code === 4403/);
 });
 
+test("one authenticated socket handshake produces one canonical connected event", () => {
+  const source = read("lib/realtimeMessaging.ts");
+  assert.doesNotMatch(source, /listener\(\{ type: "connected"/);
+});
+
 test("both Inbox surfaces reconcile real-time events and retain HTTP fallback polling", () => {
   const workspace = read("components/you/ApplicationsWorkspace.tsx");
   const dock = read("components/you/CompactChatDock.tsx");
@@ -31,7 +36,8 @@ test("both Inbox surfaces reconcile real-time events and retain HTTP fallback po
     assert.match(source, /useRealtimeMessaging\(/);
     assert.match(source, /conversation\.typing/);
     assert.match(source, /conversation\.read_progress/);
-    assert.match(source, /realtimeState === "connected" \? 15_000/);
+    assert.match(source, /realtimeStateRef\.current === "connected" \? 15_000/);
+    assert.match(source, /realtimeStateRef\.current = realtimeState/);
     assert.match(source, /read_by_recipient/);
   }
   assert.match(workspace, /data-testid="block-user-confirmation"/);

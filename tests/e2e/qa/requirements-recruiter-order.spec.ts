@@ -192,7 +192,12 @@ test("the recruiter can read the answers a candidate submitted", async ({ page }
     waitUntil: "domcontentloaded",
   });
 
-  const row = page.getByTestId("interaction-row").first();
+  // Prove the browser surface for the same record the API established carries
+  // answers. Row order is activity-driven and the first record may legitimately
+  // be an unrelated historical application with no submitted requirements.
+  const row = page.locator(
+    `[data-testid="interaction-row"][data-record-id="${withAnswers!.id}"]`
+  );
   await expect(row).toBeVisible({ timeout: 30_000 });
   await row.click();
 

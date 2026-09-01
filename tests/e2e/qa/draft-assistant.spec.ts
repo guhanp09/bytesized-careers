@@ -38,6 +38,25 @@ async function openFixture(page: Page, scenario: string) {
 /** Settle whichever supported control the fixture currently presents. */
 async function answerCurrentConversationTurn(page: Page) {
   const turn = page.getByTestId("conversation-turn");
+  /*
+   * A reply replaces the active question asynchronously. Under aggregate QA
+   * load the next card can arrive after the caller's short visual settle. Wait
+   * on the actual interaction contract instead of sampling the DOM once and
+   * reporting that a visible choice does not exist.
+   */
+  await turn
+    .locator(
+      [
+        '[data-testid^="conversation-alternative-"]',
+        '[data-testid="conversation-accept-suggestion"]',
+        '[data-testid="conversation-accept-multi-recommendation"]',
+        '[data-testid^="conversation-option-"]',
+        '[data-testid^="conversation-chip-"]',
+        '[data-testid="conversation-text-answer"]',
+      ].join(", ")
+    )
+    .first()
+    .waitFor({ state: "visible" });
   const oneClick = [
     turn.locator('[data-testid^="conversation-alternative-"]').first(),
     turn.getByTestId("conversation-accept-suggestion"),

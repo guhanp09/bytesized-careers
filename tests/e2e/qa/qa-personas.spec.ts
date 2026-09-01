@@ -112,6 +112,11 @@ test("workspace controls switch real views, retain an empty mode, and open statu
   await expect(page).toHaveURL(/mode=recruiter/);
   await expect(page.getByTestId("applications-detail")).toBeVisible();
 
+  // Returning from the intentionally empty talent workspace may preserve an
+  // historical withdrawn selection. Choose the scenario's actionable record
+  // explicitly before asserting the actions available for that record.
+  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+
   const moreActions = page.getByRole("button", { name: "More actions" });
   await moreActions.click();
   await expect(page.getByRole("menu")).toBeVisible();

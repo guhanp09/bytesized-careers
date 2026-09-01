@@ -56,10 +56,7 @@ jobs:
         run: uv sync --locked --no-dev
 
       - name: Audit the locked production environment
-        run: |
-          uv run --with pip-audit pip-audit \
-            --progress-spinner off \
-            --strict
+        run: .venv/bin/python -m scripts.audit_production_dependencies
 
   sbom:
     name: SBOM

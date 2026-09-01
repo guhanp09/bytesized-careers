@@ -352,6 +352,10 @@ test("composer intents are optional accelerators, never a required step", async 
 
   const composer = page.getByRole("textbox", { name: "Reply message" });
   const header = page.getByTestId("applications-detail-header");
+  // Deliberately opening a new application is itself the reviewed/viewed
+  // transition. Let that server-owned lifecycle change settle before proving
+  // that ordinary messages and optional composer intents do not change it.
+  await expect(header).toContainText("Viewed");
   const stageBefore = (await header.innerText()).replace(/\s+/g, "");
 
   // Freeform is available immediately, with no intent selected.
@@ -440,8 +444,19 @@ test("Star is private, durable, and independent per participant", async ({ page 
   await row.click();
 
   const star = page.getByTestId("star-toggle");
+  const header = page.getByTestId("applications-detail-header");
+  // Opening a new application is itself the server-owned Viewed transition.
+  // Let that settle before proving the private Star preference cannot change
+  // the shared application lifecycle.
+  await expect(header).toContainText("Viewed");
+  const lifecycleBeforeStar = (await header.innerText()).replace(/\s+/g, "");
   await expect(star).toBeVisible();
   await expect(star).toHaveAttribute("aria-pressed", "false");
+  const persisted = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PUT" &&
+      /\/preferences\/star$/.test(new URL(response.url()).pathname)
+  );
   await star.click();
   await expect(star).toHaveAttribute("aria-pressed", "true");
   /*
@@ -453,13 +468,20 @@ test("Star is private, durable, and independent per participant", async ({ page 
   */
   await expect(row.locator("xpath=..").getByTestId("row-starred")).toBeVisible();
 
+  // `aria-pressed` changes optimistically. Durability begins when the server
+  // acknowledges the idempotent write, not when that local paint occurs.
+  const persistedResponse = await persisted;
+  expect(persistedResponse.ok(), await persistedResponse.text()).toBeTruthy();
+
   // Durable across a full reload.
   await page.reload({ waitUntil: "domcontentloaded" });
   await row.click();
   await expect(page.getByTestId("star-toggle")).toHaveAttribute("aria-pressed", "true");
 
   // Starring changed no lifecycle state.
-  await expect(page.getByTestId("applications-detail-header")).toContainText("New");
+  await expect
+    .poll(async () => (await header.innerText()).replace(/\s+/g, ""))
+    .toBe(lifecycleBeforeStar);
 
   // The applicant sees nothing of it, and can save the same thread themselves.
   await returnToController(page);

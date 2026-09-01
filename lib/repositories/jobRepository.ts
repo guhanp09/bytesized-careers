@@ -165,7 +165,9 @@ const mapRecordToJob = (record: {
     responseRate: record.responseRate,
     channel: {
       name: record.channelName,
-      logoUrl: record.channelLogoUrl || "https://picsum.photos/seed/new/96/96",
+      // Missing identity media must stay missing. Inventing a random public
+      // avatar misrepresents the employer and makes rendering network-bound.
+      logoUrl: record.channelLogoUrl || "",
       subscribers: record.channelSubscribers ?? null,
       verified: record.channelVerified || undefined,
     },

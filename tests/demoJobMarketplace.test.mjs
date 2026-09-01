@@ -38,6 +38,10 @@ test("frontend mock mapping carries complete V3 card and detail data", () => {
   }
 });
 
+test("demo hiring identities never invent third-party avatar imagery", () => {
+  assert.ok(JOBS.every((job) => job.channel.logoUrl === ""));
+});
+
 test("frontend portfolio covers meaningful filters and candidate states", () => {
   const values = (field) => new Set(JOBS.map((job) => job[field]).filter(Boolean));
   assert.deepEqual(values("workMode"), new Set(["remote", "hybrid", "onsite"]));

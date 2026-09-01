@@ -1,0 +1,20 @@
+{
+  "advisories": [
+    {
+      "package": "ecdsa",
+      "version": "0.19.2",
+      "ids": [
+        "PYSEC-2026-1325",
+        "CVE-2024-23342",
+        "GHSA-wj6h-64fc-37mp"
+      ],
+      "classification": "NOT_REACHABLE_WITH_EVIDENCE",
+      "reason": "The advisory affects ECDSA private-key signing, key generation, and ECDH. CreatorJobs signs and verifies only HMAC JWTs, and its parsed configuration rejects every asymmetric JWT algorithm before application startup; no production path invokes the vulnerable operations.",
+      "evidence": [
+        "app/core/config.py",
+        "app/core/security.py",
+        "tests/test_config.py"
+      ]
+    }
+  ]
+}

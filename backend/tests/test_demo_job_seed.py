@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.config import settings
 from app.db.base import Base
 from app.db.seed import seed_jobs_from_seed_data_if_missing
-from app.db.seed_data_jobs import DEMO_JOB_IDS, _stable_uuid, job_specs
+from app.db.seed_data_jobs import DEMO_JOB_IDS, _stable_uuid, demo_hiring_identities, job_specs
 from app.models import Job, Role, User
 from app.repositories.job_repository import JobRepository
 from app.services.job_service import JobService, JobValidationError
@@ -149,6 +149,10 @@ async def test_demo_job_seed_is_deterministic_idempotent_public_safe_and_non_des
             assert {job.id for job in public_jobs}.isdisjoint(
                 {_stable_uuid("job_22"), _stable_uuid("job_23"), _stable_uuid("job_24")}
             )
+
+
+def test_demo_hiring_identities_do_not_invent_avatar_evidence() -> None:
+    assert all(identity["avatar_url"] is None for identity in demo_hiring_identities())
 
 
 @pytest.mark.asyncio

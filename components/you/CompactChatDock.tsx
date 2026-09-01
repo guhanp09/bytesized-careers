@@ -247,6 +247,10 @@ export default function CompactChatDock({
     backendUserId,
     onEvent: handleRealtimeEvent,
   });
+  const realtimeStateRef = useRef(realtimeState);
+  useEffect(() => {
+    realtimeStateRef.current = realtimeState;
+  }, [realtimeState]);
 
   const dockStorageKey = userStorageKey(DOCK_STORAGE_KEY, backendUserId);
 
@@ -385,7 +389,7 @@ export default function CompactChatDock({
 
     const refreshConversation = async () => {
       let nextPollMs =
-        realtimeState === "connected" ? 15_000 : CONVERSATION_POLL_INTERVAL_MS;
+        realtimeStateRef.current === "connected" ? 15_000 : CONVERSATION_POLL_INTERVAL_MS;
       try {
         const detail = await (threadKind === "hiring_request"
           ? getInterestConversation(backendAccessToken, threadId)
@@ -440,7 +444,6 @@ export default function CompactChatDock({
     sending,
     onThreadRead,
     realtimeRefreshNonce,
-    realtimeState,
   ]);
 
   const conversation: ChatMessage[] = useMemo(() => {

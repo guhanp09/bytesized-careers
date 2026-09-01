@@ -298,7 +298,10 @@ const toJob = (spec: DemoJobSpec): Job => {
     responseRate: spec.response_rate,
     channel: {
       name: identity.display_name,
-      logoUrl: `https://picsum.photos/seed/creatorjobs-${identity.key}/96/96`,
+      // Demo identities intentionally use the product's initials fallback. A
+      // random public image is neither identity evidence nor a deterministic
+      // dependency for the marketplace and browser certification suite.
+      logoUrl: "",
       subscribers: identity.subscribers,
       verified: identity.verification_status === "VERIFIED",
     },

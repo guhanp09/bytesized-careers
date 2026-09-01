@@ -94,7 +94,10 @@ def demo_hiring_identities() -> list[dict[str, Any]]:
                 "display_name": spec["display_name"],
                 "handle": spec.get("handle"),
                 "url": f"https://example.com/creatorjobs-demo/{key}",
-                "avatar_url": f"https://picsum.photos/seed/creatorjobs-{key}/96/96",
+                # Demo identities use the client's honest missing-avatar
+                # fallback. Random public images are not identity evidence and
+                # would make local seeds depend on an unrelated third party.
+                "avatar_url": None,
                 "description": spec["description"],
                 "managed_by_agency_name": spec.get("managed_by_agency_name"),
                 "is_agency_represented": spec["type"] == "AGENCY_REPRESENTED_CHANNEL",
