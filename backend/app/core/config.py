@@ -250,6 +250,11 @@ class Settings(BaseSettings):
     )
     youtube_api_key: str | None = Field(default=None, alias="YOUTUBE_API_KEY")
     youtube_data_api_key: str | None = Field(default=None, alias="YOUTUBE_DATA_API_KEY")
+    google_places_api_key: SecretStr | None = Field(
+        default=None,
+        max_length=2048,
+        alias="GOOGLE_PLACES_API_KEY",
+    )
     openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
     openai_model: str = Field(
         default="gpt-5.6-luna",

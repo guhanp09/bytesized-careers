@@ -1,134 +1,120 @@
-import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { NextRequest, NextResponse } from "next/server";
 
+import { authOptions } from "../../../../lib/auth";
+import {
+  BackendRequestError,
+  searchMyLocationSuggestions,
+} from "../../../../lib/backendClient";
 import { searchLocalLocations } from "../../../../lib/localLocations";
-import type { LocationAutocompleteResponse, LocationAutocompleteSuggestion } from "../../../../lib/locationTypes";
+import type { LocationAutocompleteResponse } from "../../../../lib/locationTypes";
+import { normalizeCustomLocationInput } from "../../../../lib/locationValidation";
 
 export const runtime = "nodejs";
 
-const GOOGLE_PLACES_AUTOCOMPLETE_URL = "https://maps.googleapis.com/maps/api/place/autocomplete/json";
 const MIN_QUERY_LENGTH = 2;
-const FETCH_TIMEOUT_MS = 4000;
+const MAX_QUERY_LENGTH = 255;
 
-type GoogleAutocompletePrediction = {
-  place_id?: string;
-  description?: string;
-  structured_formatting?: {
-    main_text?: string;
-    secondary_text?: string;
-  };
+const sameOrigin = (request: NextRequest): boolean => {
+  const origin = request.headers.get("origin");
+  if (origin && origin !== request.nextUrl.origin) return false;
+  return request.headers.get("sec-fetch-site") !== "cross-site";
 };
 
-type GoogleAutocompleteResponse = {
-  status?: string;
-  predictions?: GoogleAutocompletePrediction[];
-};
-
-const noStoreJson = (payload: LocationAutocompleteResponse, status = 200) => {
+const noStoreJson = (
+  payload: LocationAutocompleteResponse,
+  status = 200,
+  retryAfterSeconds?: number
+) => {
   const response = NextResponse.json(payload, { status });
   response.headers.set("Cache-Control", "no-store");
+  response.headers.set("Pragma", "no-cache");
+  if (retryAfterSeconds) response.headers.set("Retry-After", String(retryAfterSeconds));
   return response;
 };
 
-const normalizePrediction = (prediction: GoogleAutocompletePrediction): LocationAutocompleteSuggestion | null => {
-  const placeId = prediction.place_id?.trim();
-  const displayName = prediction.description?.replace(/\s+/g, " ").trim();
-  if (!placeId || !displayName) return null;
+export async function GET(request: NextRequest) {
+  if (!sameOrigin(request)) {
+    return noStoreJson(
+      { suggestions: [], error: "Request origin was not accepted.", code: "origin_rejected" },
+      403
+    );
+  }
 
-  const primaryText = prediction.structured_formatting?.main_text?.trim() || displayName.split(",")[0]?.trim() || displayName;
-  const secondaryText =
-    prediction.structured_formatting?.secondary_text?.trim() ||
-    displayName
-      .split(",")
-      .slice(1)
-      .join(",")
-      .trim();
+  const session = await getServerSession(authOptions);
+  if (!session?.backendAccessToken || session.backendAuthError) {
+    return noStoreJson(
+      {
+        suggestions: [],
+        error: "Sign in to search for a location.",
+        code: "authentication_required",
+      },
+      401
+    );
+  }
 
-  return {
-    placeId,
-    displayName,
-    primaryText,
-    secondaryText,
-  };
-};
-
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const query = (searchParams.get("q") || "").replace(/\s+/g, " ").trim();
-
+  const query = normalizeCustomLocationInput(request.nextUrl.searchParams.get("q") || "");
   if (query.length < MIN_QUERY_LENGTH) {
     return noStoreJson({ suggestions: [] });
   }
-
-  const apiKey = process.env.GOOGLE_PLACES_API_KEY?.trim();
-  if (!apiKey) {
-    return noStoreJson({ suggestions: searchLocalLocations(query) });
+  if (query.length > MAX_QUERY_LENGTH) {
+    return noStoreJson(
+      { suggestions: [], error: "Enter a shorter location.", code: "invalid_query" },
+      400
+    );
   }
 
-  const url = new URL(GOOGLE_PLACES_AUTOCOMPLETE_URL);
-  url.searchParams.set("input", query);
-  url.searchParams.set("types", "(cities)");
-  url.searchParams.set("language", "en");
-  url.searchParams.set("location", "20.5937,78.9629");
-  url.searchParams.set("radius", "3000000");
-  url.searchParams.set("key", apiKey);
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
   try {
-    const response = await fetch(url, {
-      cache: "no-store",
-      signal: controller.signal,
+    const result = await searchMyLocationSuggestions(session.backendAccessToken, query);
+    return noStoreJson({
+      suggestions: result.suggestions.map((item) => ({
+        placeId: item.place_id,
+        displayName: item.display_name,
+        primaryText: item.primary_text,
+        secondaryText: item.secondary_text,
+      })),
+      ...(result.attribution === "google_maps" ? { attribution: "google_maps" as const } : {}),
     });
-
-    if (!response.ok) {
-      return noStoreJson(
-        {
-          suggestions: [],
-          error: "Location search is unavailable right now.",
-          code: "provider_error",
-        },
-        502
-      );
+  } catch (error) {
+    if (error instanceof BackendRequestError) {
+      if (error.code === "missing_api_key") {
+        return noStoreJson({ suggestions: searchLocalLocations(query) });
+      }
+      if (error.status === 401 || error.status === 403) {
+        return noStoreJson(
+          {
+            suggestions: [],
+            error: "Sign in to search for a location.",
+            code: "authentication_required",
+          },
+          401
+        );
+      }
+      if (error.status === 429) {
+        return noStoreJson(
+          {
+            suggestions: [],
+            error: "Too many location searches. Wait a moment and try again.",
+            code: "rate_limited",
+          },
+          429,
+          error.retryAfterSeconds
+        );
+      }
+      if (error.code === "invalid_query" || error.status === 422) {
+        return noStoreJson(
+          { suggestions: [], error: "Enter a valid location.", code: "invalid_query" },
+          400
+        );
+      }
     }
-
-    const data = (await response.json()) as GoogleAutocompleteResponse;
-    if (data.status === "ZERO_RESULTS") {
-      return noStoreJson({ suggestions: [] });
-    }
-    if (data.status && data.status !== "OK") {
-      return noStoreJson(
-        {
-          suggestions: [],
-          error: "Location search is unavailable right now.",
-          code: "provider_error",
-        },
-        502
-      );
-    }
-
-    const seen = new Set<string>();
-    const suggestions = (data.predictions || [])
-      .map(normalizePrediction)
-      .filter((item): item is LocationAutocompleteSuggestion => Boolean(item))
-      .filter((item) => {
-        if (seen.has(item.placeId)) return false;
-        seen.add(item.placeId);
-        return true;
-      })
-      .slice(0, 6);
-
-    return noStoreJson({ suggestions });
-  } catch {
     return noStoreJson(
       {
         suggestions: [],
         error: "Location search is unavailable right now.",
-        code: "network_error",
+        code: "provider_error",
       },
       502
     );
-  } finally {
-    clearTimeout(timeoutId);
   }
 }

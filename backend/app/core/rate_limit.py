@@ -362,6 +362,7 @@ MARKETPLACE_ACTION_LIMIT = RateLimitRule("marketplace_action", limit=120, window
 # preview to organization lookup, or from avatar to banner, cannot mint a new
 # allowance while ordinary interactive use still has ample headroom.
 OUTBOUND_FETCH_LIMIT = RateLimitRule("outbound_fetch", limit=30, window_seconds=600)
+LOCATION_LOOKUP_LIMIT = RateLimitRule("location_lookup", limit=120, window_seconds=60)
 MEDIA_UPLOAD_LIMIT = RateLimitRule("media_upload", limit=20, window_seconds=3600)
 PUBLIC_SEARCH_LIMIT = RateLimitRule("public_search", limit=120, window_seconds=60)
 ADMIN_REQUEST_LIMIT = RateLimitRule("admin_request", limit=300, window_seconds=300)

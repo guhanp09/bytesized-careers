@@ -12,6 +12,7 @@ from app.api.v1.routers.email_webhooks import router as email_webhooks_router
 from app.api.v1.routers.health import router as health_router
 from app.api.v1.routers.job_imports import router as job_imports_router
 from app.api.v1.routers.jobs import router as jobs_router
+from app.api.v1.routers.locations import router as locations_router
 from app.api.v1.routers.marketplace import router as marketplace_router
 from app.api.v1.routers.me import router as me_router
 from app.api.v1.routers.messaging import router as messaging_router
@@ -37,6 +38,7 @@ api_router.include_router(email_webhooks_router)
 api_router.include_router(health_router)
 api_router.include_router(jobs_router)
 api_router.include_router(job_imports_router)
+api_router.include_router(locations_router)
 api_router.include_router(marketplace_router)
 api_router.include_router(me_router)
 api_router.include_router(messaging_router)

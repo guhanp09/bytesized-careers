@@ -47,6 +47,7 @@ from app.repositories.search_repository import SearchRepository
 from app.schemas.profile_capabilities import ProfileCapabilities
 from app.services.auth_service import AuthService
 from app.services.google_identity import GoogleIdentityVerifier
+from app.services.google_places_service import GooglePlacesService
 from app.services.job_import_conversation_service import JobImportConversationService
 from app.services.job_import_processing_service import JobImportProcessingService
 from app.services.job_import_provider import JobImportExtractionProvider
@@ -165,6 +166,15 @@ async def get_auth_repository(session: AsyncSession = Depends(get_db)) -> AuthRe
 
 def get_google_identity_verifier() -> GoogleIdentityVerifier:
     return GoogleIdentityVerifier(settings.google_client_id)
+
+
+def get_google_places_service() -> GooglePlacesService:
+    api_key = (
+        settings.google_places_api_key.get_secret_value()
+        if settings.google_places_api_key is not None
+        else None
+    )
+    return GooglePlacesService(api_key)
 
 
 async def get_auth_service(

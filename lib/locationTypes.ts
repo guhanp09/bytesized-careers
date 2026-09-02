@@ -18,12 +18,27 @@ export type LocationDetails = {
 
 export type LocationAutocompleteResponse = {
   suggestions: LocationAutocompleteSuggestion[];
+  attribution?: "google_maps";
   error?: string;
-  code?: "missing_api_key" | "invalid_query" | "provider_error" | "network_error";
+  code?:
+    | "authentication_required"
+    | "origin_rejected"
+    | "missing_api_key"
+    | "invalid_query"
+    | "provider_error"
+    | "network_error"
+    | "rate_limited";
 };
 
 export type LocationDetailsResponse = {
   location?: LocationDetails;
   error?: string;
-  code?: "missing_api_key" | "invalid_place" | "provider_error" | "network_error";
+  code?:
+    | "authentication_required"
+    | "origin_rejected"
+    | "missing_api_key"
+    | "invalid_place"
+    | "provider_error"
+    | "network_error"
+    | "rate_limited";
 };

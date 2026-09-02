@@ -513,6 +513,13 @@ CONFIG_CONTRACT: dict[str, ConfigContract] = {
         "The same, for the Data API surface. Absent means that lookup does not "
         "happen, not that it happens unauthenticated.",
     ),
+    "google_places_api_key": ConfigContract(
+        Requirement.FEATURE_CONDITIONAL,
+        Enforcement.FEATURE_GATE,
+        "Only authenticated city autocomplete and details use this credential. "
+        "Absent, the backend refuses provider work and the frontend uses its "
+        "bounded local location catalogue without exposing a provider secret.",
+    ),
     "openai_api_key": ConfigContract(
         Requirement.FEATURE_CONDITIONAL,
         Enforcement.FEATURE_GATE,

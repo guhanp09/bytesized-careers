@@ -1936,12 +1936,13 @@ export class BackendRequestError extends Error {
   code?: string;
   details?: unknown;
   requestId?: string;
+  retryAfterSeconds?: number;
 
   constructor(
     status: number,
     message: string,
     fieldErrors?: Record<string, string[]>,
-    metadata?: { code?: string; details?: unknown; requestId?: string }
+    metadata?: { code?: string; details?: unknown; requestId?: string; retryAfterSeconds?: number }
   ) {
     super(message);
     this.name = "BackendRequestError";
@@ -1950,6 +1951,7 @@ export class BackendRequestError extends Error {
     this.code = metadata?.code;
     this.details = metadata?.details;
     this.requestId = metadata?.requestId;
+    this.retryAfterSeconds = metadata?.retryAfterSeconds;
   }
 }
 
@@ -2049,7 +2051,7 @@ export async function requestJson<T>(path: string, init?: RequestJsonOptions): P
     const text = await response.text();
     let fieldErrors: Record<string, string[]> | undefined;
     let errorMetadata:
-      | { code?: string; details?: unknown; requestId?: string }
+      | { code?: string; details?: unknown; requestId?: string; retryAfterSeconds?: number }
       | undefined;
     try {
       const parsed = JSON.parse(text) as BackendErrorShape;
@@ -2068,6 +2070,14 @@ export async function requestJson<T>(path: string, init?: RequestJsonOptions): P
             ? wrappedDetails.details
             : wrappedDetails,
         requestId: parsed.error?.request_id,
+        retryAfterSeconds: (() => {
+          const parsedRetryAfter = Number(response.headers.get("Retry-After"));
+          return Number.isInteger(parsedRetryAfter) &&
+            parsedRetryAfter > 0 &&
+            parsedRetryAfter <= 86400
+            ? parsedRetryAfter
+            : undefined;
+        })(),
       };
     } catch {
       // The message parser below handles non-JSON responses.
@@ -2711,6 +2721,53 @@ export async function readOrganizationPage(
     body: JSON.stringify({ url }),
     accessToken,
   });
+}
+
+export type BackendLocationSuggestion = {
+  place_id: string;
+  display_name: string;
+  primary_text: string;
+  secondary_text: string;
+};
+
+export type BackendLocationAutocompleteResponse = {
+  suggestions: BackendLocationSuggestion[];
+  attribution?: "google_maps" | null;
+};
+
+export type BackendLocationDetailsResponse = {
+  location: {
+    place_id: string;
+    display_name: string;
+    city: string;
+    region: string;
+    country: string;
+    country_code: string;
+    latitude?: number | null;
+    longitude?: number | null;
+  };
+};
+
+export async function searchMyLocationSuggestions(
+  accessToken: string,
+  query: string
+): Promise<BackendLocationAutocompleteResponse> {
+  const params = new URLSearchParams({ q: query });
+  return requestJson<BackendLocationAutocompleteResponse>(
+    `/me/location/autocomplete?${params.toString()}`,
+    { accessToken, timeoutMs: 7000 }
+  );
+}
+
+export async function readMyLocationDetails(
+  accessToken: string,
+  placeId: string
+): Promise<BackendLocationDetailsResponse> {
+  const params = new URLSearchParams({ place_id: placeId });
+  return requestJson<BackendLocationDetailsResponse>(
+    `/me/location/details?${params.toString()}`,
+    { accessToken, timeoutMs: 7000 }
+  );
 }
 
 export async function previewPortfolioLink(

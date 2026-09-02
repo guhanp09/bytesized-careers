@@ -46,6 +46,7 @@ export default function LocationAutocompleteField({
   const inputId = id || `location-autocomplete-${generatedId}`;
   const listboxId = `${inputId}-listbox`;
   const [suggestions, setSuggestions] = useState<LocationAutocompleteSuggestion[]>([]);
+  const [attribution, setAttribution] = useState<"google_maps" | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -61,6 +62,7 @@ export default function LocationAutocompleteField({
     const query = normalizeCustomLocationInput(value);
     if (!query || query.length < MIN_QUERY_LENGTH || query === selectedLocation?.displayName) {
       setSuggestions([]);
+      setAttribution(null);
       setActiveIndex(-1);
       setLoading(false);
       setStatusMessage(null);
@@ -82,6 +84,7 @@ export default function LocationAutocompleteField({
 
           if (!response.ok) {
             setSuggestions([]);
+            setAttribution(null);
             setActiveIndex(-1);
             setOpen(false);
             setStatusMessage(data.error || "Location search is unavailable right now.");
@@ -89,12 +92,16 @@ export default function LocationAutocompleteField({
           }
 
           setSuggestions(data.suggestions);
+          setAttribution(
+            data.attribution === "google_maps" && data.suggestions.length ? "google_maps" : null
+          );
           setActiveIndex(data.suggestions.length || canUseCustomLocation(query) ? 0 : -1);
           setOpen(true);
           setStatusMessage(null);
         } catch {
           if (controller.signal.aborted) return;
           setSuggestions([]);
+          setAttribution(null);
           setActiveIndex(-1);
           setOpen(false);
           setStatusMessage("Location search is unavailable right now.");
@@ -137,6 +144,7 @@ export default function LocationAutocompleteField({
     onValueChange(normalized);
     onSelectionChange(null);
     setSuggestions([]);
+    setAttribution(null);
     setActiveIndex(-1);
     setOpen(false);
     setStatusMessage(null);
@@ -163,6 +171,7 @@ export default function LocationAutocompleteField({
       onValueChange(data.location.displayName);
       onSelectionChange(data.location);
       setSuggestions([]);
+      setAttribution(null);
       setActiveIndex(-1);
       setOpen(false);
       setStatusMessage(null);
@@ -270,56 +279,64 @@ export default function LocationAutocompleteField({
         ) : null}
         {showSuggestions ? (
           <div
-            id={listboxId}
-            role="listbox"
-            className="absolute left-0 right-0 top-full z-30 mt-2 max-h-64 overflow-y-auto rounded-xl border border-white/12 bg-[#141519] p-1.5 shadow-[0_24px_70px_-38px_rgba(0,0,0,1)]"
+            className="absolute left-0 right-0 top-full z-30 mt-2 max-h-64 overflow-hidden rounded-xl border border-white/12 bg-[#141519] shadow-[0_24px_70px_-38px_rgba(0,0,0,1)]"
           >
-            {dropdownOptions.map((option, index) => {
-              const isActive = index === activeIndex;
-              if (option.kind === "custom") {
+            <div id={listboxId} role="listbox" className="max-h-56 overflow-y-auto p-1.5">
+              {dropdownOptions.map((option, index) => {
+                const isActive = index === activeIndex;
+                if (option.kind === "custom") {
+                  return (
+                    <button
+                      key={`custom-${option.value}`}
+                      id={`${listboxId}-option-${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={isActive}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => selectCustomLocation(option.value)}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      className={[
+                        "flex w-full cursor-pointer flex-col rounded-lg border-t border-white/[0.06] px-3 py-2 text-left transition-colors first:border-t-0",
+                        isActive ? "bg-white/[0.08]" : "hover:bg-white/[0.06]",
+                      ].join(" ")}
+                    >
+                      <span className="text-sm font-semibold text-white">Use &quot;{option.value}&quot;</span>
+                      <span className="mt-0.5 text-xs text-muted">Custom location</span>
+                    </button>
+                  );
+                }
+
                 return (
                   <button
-                    key={`custom-${option.value}`}
+                    key={option.suggestion.placeId}
                     id={`${listboxId}-option-${index}`}
                     type="button"
                     role="option"
                     aria-selected={isActive}
                     onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => selectCustomLocation(option.value)}
+                    onClick={() => void selectSuggestion(option.suggestion)}
                     onMouseEnter={() => setActiveIndex(index)}
                     className={[
-                      "flex w-full cursor-pointer flex-col rounded-lg border-t border-white/[0.06] px-3 py-2 text-left transition-colors first:border-t-0",
+                      "flex w-full cursor-pointer flex-col rounded-lg px-3 py-2 text-left transition-colors",
                       isActive ? "bg-white/[0.08]" : "hover:bg-white/[0.06]",
                     ].join(" ")}
                   >
-                    <span className="text-sm font-semibold text-white">Use &quot;{option.value}&quot;</span>
-                    <span className="mt-0.5 text-xs text-muted">Custom location</span>
+                    <span className="text-sm font-semibold text-white">{option.suggestion.primaryText}</span>
+                    {option.suggestion.secondaryText ? (
+                      <span className="mt-0.5 text-xs text-muted">{option.suggestion.secondaryText}</span>
+                    ) : null}
                   </button>
                 );
-              }
-
-              return (
-                <button
-                  key={option.suggestion.placeId}
-                  id={`${listboxId}-option-${index}`}
-                  type="button"
-                  role="option"
-                  aria-selected={isActive}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => void selectSuggestion(option.suggestion)}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  className={[
-                    "flex w-full cursor-pointer flex-col rounded-lg px-3 py-2 text-left transition-colors",
-                    isActive ? "bg-white/[0.08]" : "hover:bg-white/[0.06]",
-                  ].join(" ")}
-                >
-                  <span className="text-sm font-semibold text-white">{option.suggestion.primaryText}</span>
-                  {option.suggestion.secondaryText ? (
-                    <span className="mt-0.5 text-xs text-muted">{option.suggestion.secondaryText}</span>
-                  ) : null}
-                </button>
-              );
-            })}
+              })}
+            </div>
+            {attribution === "google_maps" && suggestions.length ? (
+              <div
+                aria-label="Google Maps attribution"
+                className="border-t border-white/[0.08] bg-black/20 px-3 py-1.5 text-right text-xs text-white/60"
+              >
+                <span translate="no">Google Maps</span>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>

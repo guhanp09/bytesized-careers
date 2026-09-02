@@ -14,6 +14,7 @@ from app.api.v1.routers import (
     auth,
     job_imports,
     jobs,
+    locations,
     marketplace,
     me,
     messaging,
@@ -32,6 +33,7 @@ from app.core.rate_limit import (
     AUTH_REGISTER_LIMIT,
     AUTH_VERIFY_LIMIT,
     CHECKOUT_LIMIT,
+    LOCATION_LOOKUP_LIMIT,
     MARKETPLACE_ACTION_LIMIT,
     MEDIA_UPLOAD_LIMIT,
     OUTBOUND_FETCH_LIMIT,
@@ -198,6 +200,21 @@ def test_expensive_fetch_upload_and_search_routes_have_category_limits() -> None
     )
     for router, method, path in outbound_routes:
         _assert_policy(router, method, path, OUTBOUND_FETCH_LIMIT, "user")
+
+    _assert_policy(
+        locations.router,
+        "GET",
+        "/me/location/autocomplete",
+        LOCATION_LOOKUP_LIMIT,
+        "user",
+    )
+    _assert_policy(
+        locations.router,
+        "GET",
+        "/me/location/details",
+        LOCATION_LOOKUP_LIMIT,
+        "user",
+    )
 
     _assert_policy(me.router, "POST", "/me/avatar", MEDIA_UPLOAD_LIMIT, "user")
     _assert_policy(me.router, "POST", "/me/banner", MEDIA_UPLOAD_LIMIT, "user")
