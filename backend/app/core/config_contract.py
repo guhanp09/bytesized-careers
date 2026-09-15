@@ -204,6 +204,14 @@ CONFIG_CONTRACT: dict[str, ConfigContract] = {
         "limit by N. Refused unless a single-instance deployment says so.",
         unsafe_production_value="memory",
     ),
+    "max_concurrent_http_requests": ConfigContract(
+        Requirement.CORE_REQUIRED,
+        Enforcement.BOOT,
+        "Bounds simultaneous HTTP work per worker before parsing, auth and DB checkout. "
+        "An unset production capacity is refused; the local 100-request default is not "
+        "a production sizing recommendation or a shared account quota.",
+        unsafe_production_value=None,
+    ),
     "redis_url": ConfigContract(
         Requirement.FEATURE_CONDITIONAL,
         Enforcement.BOOT,

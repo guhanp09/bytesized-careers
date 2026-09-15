@@ -142,6 +142,7 @@ def _safe_production_settings(**overrides: object) -> config.Settings:
         # to boot without it. See test_db_pool_bounds.
         "DB_POOL_SIZE": 5,
         "DB_MAX_OVERFLOW": 5,
+        "MAX_CONCURRENT_HTTP_REQUESTS": 20,
         "CORS_ORIGINS": '["https://creatorjobs.example"]',
         "DATABASE_URL": "postgresql+asyncpg://user:pass@database.example/creatorjobs",
         "EMAIL_MODE": "smtp",

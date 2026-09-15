@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     allow_memory_rate_limit_in_production: bool = Field(
         default=False, alias="ALLOW_MEMORY_RATE_LIMIT_IN_PRODUCTION"
     )
+    # Per-worker resource admission, distinct from distributed user quotas.
+    # Production capacity depends on memory, database pool and worker count;
+    # require an operator decision instead of inventing a deployment capacity.
+    max_concurrent_http_requests: int | None = Field(
+        default=None, alias="MAX_CONCURRENT_HTTP_REQUESTS", ge=1, le=10_000
+    )
     # What the process is willing to hold in memory for one request, enforced at
     # the ASGI boundary before any parsing. The default covers ordinary JSON by a
     # wide margin — the largest non-media payload is job-import source text at
@@ -672,6 +678,11 @@ def validate_production_settings() -> None:
         )
     if settings.rate_limit_backend == "redis" and not settings.redis_url:
         failures.append("REDIS_URL is required when RATE_LIMIT_BACKEND=redis.")
+    if settings.max_concurrent_http_requests is None:
+        failures.append(
+            "MAX_CONCURRENT_HTTP_REQUESTS must explicitly size HTTP admission per worker "
+            "for the deployment's memory, database pool and worker count."
+        )
     # The realtime bus documents a startup refusal, and until this was added
     # nothing called it: `build_realtime_bus()` had exactly one caller, the
     # health probe, which catches the error and reports it. The delivery path

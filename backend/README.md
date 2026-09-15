@@ -37,6 +37,9 @@ Key vars:
 - `DATABASE_URL`
 - `CORS_ORIGINS`
 - `LOG_LEVEL`
+- `MAX_CONCURRENT_HTTP_REQUESTS` (required explicit per-worker capacity in production;
+  omitted outside production uses 100 for the existing local concurrency harness,
+  not a production sizing recommendation)
 - `JWT_SECRET`
 - `JWT_ACCESS_TOKEN_EXPIRES_MINUTES` (production maximum: 60)
 - `JWT_REFRESH_TOKEN_EXPIRES_MINUTES`
@@ -70,6 +73,18 @@ Key vars:
   defaults to 60 seconds for synchronous URL extraction)
 - `OPENAI_MAX_RETRIES`
 - `JOB_IMPORT_PROMPT_VERSION`
+
+HTTP admission rejects excess concurrent work immediately with a privacy-safe
+`503 server_busy`, `Retry-After: 1`, `Cache-Control: no-store` and request correlation.
+Rejected requests never enter body parsing, authentication, DB checkout or provider
+work; there is no waiting queue. A slot remains owned through response transmission
+and application cancellation cleanup. This per-worker resource ceiling supplements,
+but never replaces, Redis account quotas. Size it against process count, memory,
+database pool and upstream connection limits. Only exact `GET /api/v1/health` has
+one separately bounded liveness slot; readiness and feature probes use ordinary
+capacity. WebSocket/lifespan scopes retain their existing lifecycle. This does not
+impose a blanket transaction deadline or claim a timed-out mutation was rolled back;
+ingress connection/slow-client protection and full request deadlines remain separate.
 
 Private normalized-text import processing is available to an authenticated draft
 owner at `POST /api/v1/job-imports/drafts/{draft_id}/process`. The request body

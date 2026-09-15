@@ -17,6 +17,7 @@ from app.core.rate_limit import close_rate_limit_backend, ensure_rate_limit_back
 from app.db.dev_sqlite_schema import sync_dev_sqlite_schema
 from app.db.seed import seed_roles_if_missing
 from app.db.session import SessionLocal, engine
+from app.middleware.http_admission import HttpAdmissionMiddleware
 from app.middleware.operational_metrics import OperationalMetricsMiddleware
 from app.middleware.qa_audit import QaPersonaAuditMiddleware
 from app.middleware.request_body_limit import RequestBodyLimitMiddleware
@@ -64,6 +65,7 @@ app = FastAPI(
 # still passes back out through the request-id and CORS layers, which a browser
 # needs in order to read the response at all.
 app.add_middleware(RequestBodyLimitMiddleware)
+app.add_middleware(HttpAdmissionMiddleware)
 app.add_middleware(OperationalMetricsMiddleware)
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(QaPersonaAuditMiddleware)
