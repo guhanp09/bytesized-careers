@@ -86,6 +86,17 @@ capacity. WebSocket/lifespan scopes retain their existing lifecycle. This does n
 impose a blanket transaction deadline or claim a timed-out mutation was rolled back;
 ingress connection/slow-client protection and full request deadlines remain separate.
 
+`REQUEST_BODY_IDLE_TIMEOUT_SECONDS` (default 10, maximum 120) bounds one wait for
+an incomplete upload chunk. `REQUEST_BODY_WAIT_BUDGET_SECONDS` (default 60, maximum
+300) bounds cumulative time inside body receives, so small drips cannot restart
+the allowance indefinitely. Both must be finite and positive. A stalled upload
+returns `408 request_body_timeout`, no-store and connection-close, before normal
+JSON route dependencies or mutations run. Streamed oversized bodies retain
+`413 request_body_too_large` through FastAPI's parser. Neither timer covers
+processing between chunks, completed-body disconnect listeners, database commits,
+provider work or WebSockets. Operators must validate permitted upload sizes on
+staging networks and also configure slow-header/socket limits at ingress.
+
 Private normalized-text import processing is available to an authenticated draft
 owner at `POST /api/v1/job-imports/drafts/{draft_id}/process`. The request body
 must be `{}`; provider, model, and audit metadata are server-owned. Processing

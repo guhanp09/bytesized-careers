@@ -60,6 +60,14 @@ class Settings(BaseSettings):
     max_media_request_body_bytes: int = Field(
         default=12 * 1024 * 1024, alias="MAX_MEDIA_REQUEST_BODY_BYTES", ge=64 * 1024
     )
+    request_body_idle_timeout_seconds: float = Field(
+        default=10.0, alias="REQUEST_BODY_IDLE_TIMEOUT_SECONDS",
+        gt=0, le=120, allow_inf_nan=False,
+    )
+    request_body_wait_budget_seconds: float = Field(
+        default=60.0, alias="REQUEST_BODY_WAIT_BUDGET_SECONDS",
+        gt=0, le=300, allow_inf_nan=False,
+    )
     # Closed beta. Off by default so existing environments are unchanged by the
     # code arriving; production turns it on. When on, an account can only be
     # created by someone holding a valid invitation for that exact address, and

@@ -14,15 +14,18 @@ no change at all for an honest client.
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
 from starlette.applications import Starlette
+from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 from starlette.testclient import TestClient
 
 from app.core.config import settings
+from app.core.errors import http_exception_handler
 from app.middleware.request_body_limit import RequestBodyLimitMiddleware
 
 LIMIT = settings.max_request_body_bytes
@@ -67,6 +70,10 @@ def client(spy: _Spy) -> TestClient:
             WebSocketRoute("/ws", socket),
         ]
     )
+    # Exercise the application's JSON HTTP-error contract. Starlette's bare
+    # default accepts only plain-text detail, unlike our FastAPI handler. Body
+    # rejections must be HTTPExceptions to survive FastAPI's parser unchanged.
+    app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_middleware(RequestBodyLimitMiddleware)
     return TestClient(app)
 
@@ -190,11 +197,11 @@ class TestContentLengthIsNotTheOnlyDefence:
     ) -> None:
         # An unusable header must fall through to the counting path rather than
         # raising. Whatever the outcome, it is never a 500.
-        response = client.post(
-            "/echo", content=b"x" * 32, headers={"content-length": declared}
-        )
+        response = client.post("/echo", content=b"x" * 32, headers={"content-length": declared})
 
-        assert response.status_code < 500, f"content-length {declared!r} caused {response.status_code}"
+        assert response.status_code < 500, (
+            f"content-length {declared!r} caused {response.status_code}"
+        )
 
 
 class TestTheMediaAllowance:
@@ -207,9 +214,7 @@ class TestTheMediaAllowance:
         encoded = int(8 * 1024 * 1024 * 4 / 3) + 512
         assert encoded < MEDIA_LIMIT, "the media ceiling cannot fit a legitimate banner"
 
-        response = client.post(
-            f"{settings.api_v1_prefix}/me/banner", content=b"x" * encoded
-        )
+        response = client.post(f"{settings.api_v1_prefix}/me/banner", content=b"x" * encoded)
 
         assert response.status_code == 200
         assert spy.calls == 1
@@ -235,9 +240,7 @@ class TestTheMediaAllowance:
     ) -> None:
         # Substring or prefix matching here would let any caller claim the larger
         # ceiling by appending to a media path. Matching is exact.
-        response = client.post(
-            f"{settings.api_v1_prefix}/me/avatarx", content=b"x" * (LIMIT + 1)
-        )
+        response = client.post(f"{settings.api_v1_prefix}/me/avatarx", content=b"x" * (LIMIT + 1))
 
         assert response.status_code == 413
         assert spy.calls == 0
@@ -276,3 +279,217 @@ def test_the_error_body_is_valid_json_for_a_client(client: TestClient) -> None:
 
     assert response.headers["content-type"].startswith("application/json")
     json.loads(response.content)
+
+
+@pytest.mark.anyio
+async def test_stalled_body_is_cancelled_and_admission_capacity_recovers(monkeypatch) -> None:
+    from app.middleware.http_admission import HttpAdmissionMiddleware
+
+    monkeypatch.setattr(settings, "request_body_idle_timeout_seconds", 0.01)
+    monkeypatch.setattr(settings, "request_body_wait_budget_seconds", 1.0)
+    cancelled = asyncio.Event()
+    complete = False
+    scope = {"type": "http", "method": "POST", "path": "/echo", "headers": []}
+
+    async def receive():
+        if complete:
+            return {"type": "http.request", "body": b"{}", "more_body": False}
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    async def handler(scope, receive, send):
+        await receive()
+        await JSONResponse({"ok": True})(scope, receive, send)
+
+    guarded = HttpAdmissionMiddleware(
+        RequestBodyLimitMiddleware(handler), max_concurrent_requests=1
+    )
+    messages = []
+
+    async def send(message):
+        messages.append(message)
+
+    await guarded(scope, receive, send)
+    assert cancelled.is_set()
+    assert messages[0]["status"] == 408
+    assert json.loads(messages[1]["body"])["error"]["code"] == "request_body_timeout"
+    assert dict(messages[0]["headers"])[b"connection"] == b"close"
+    complete = True
+    messages.clear()
+    await guarded(scope, receive, send)
+    assert messages[0]["status"] == 200
+
+
+@pytest.mark.anyio
+async def test_small_drips_cannot_reset_the_cumulative_receive_budget(monkeypatch) -> None:
+    from app.middleware import request_body_limit as module
+
+    monkeypatch.setattr(settings, "request_body_idle_timeout_seconds", 5.0)
+    monkeypatch.setattr(settings, "request_body_wait_budget_seconds", 7.0)
+    # Each individual receive is under the idle ceiling. The third exceeds the
+    # cumulative budget; use a deterministic clock rather than wall-clock sleeps.
+    readings = iter([0.0, 3.0, 3.0, 6.0, 6.0, 9.0])
+    monkeypatch.setattr(module, "monotonic", lambda: next(readings))
+    calls = 0
+    delivered = 0
+
+    async def receive():
+        nonlocal calls
+        calls += 1
+        return {"type": "http.request", "body": b"x", "more_body": True}
+
+    async def handler(scope, receive, send):
+        nonlocal delivered
+        for _ in range(10):
+            await receive()
+            delivered += 1
+
+    messages = []
+
+    async def send(message):
+        messages.append(message)
+
+    await RequestBodyLimitMiddleware(handler)(
+        {"type": "http", "path": "/echo", "headers": []},
+        receive,
+        send,
+    )
+    assert calls == 3
+    assert delivered == 2
+    assert messages[0]["status"] == 408
+
+
+@pytest.mark.anyio
+async def test_completed_body_disconnect_wait_and_handler_work_have_no_upload_deadline(
+    monkeypatch,
+) -> None:
+    from app.middleware import request_body_limit as module
+
+    readings = iter([0.0, 0.5])
+    monkeypatch.setattr(module, "monotonic", lambda: next(readings))
+    observed_timeouts = []
+    real_timeout = asyncio.timeout
+
+    def timeout(delay):
+        observed_timeouts.append(delay)
+        return real_timeout(delay)
+
+    monkeypatch.setattr(module.asyncio, "timeout", timeout)
+    chunks = iter(
+        [
+            {"type": "http.request", "body": b"{}", "more_body": False},
+            {"type": "http.disconnect"},
+        ]
+    )
+
+    async def receive():
+        return next(chunks)
+
+    async def handler(scope, receive, send):
+        assert (await receive())["body"] == b"{}"
+        # A second clock lookup would exhaust the iterator: no receive deadline
+        # is established after the complete body, regardless of handler duration.
+        assert (await receive())["type"] == "http.disconnect"
+
+    async def send(_message):
+        pytest.fail("no response is sent by this test handler")
+
+    await RequestBodyLimitMiddleware(handler)(
+        {"type": "http", "path": "/echo", "headers": []},
+        receive,
+        send,
+    )
+    assert observed_timeouts == [settings.request_body_idle_timeout_seconds]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", [asyncio.CancelledError(), TimeoutError("transport timeout")])
+async def test_external_cancellation_or_transport_error_is_not_an_upload_timeout(failure) -> None:
+    async def receive():
+        raise failure
+
+    async def handler(scope, receive, send):
+        await receive()
+
+    async def send(_message):
+        pytest.fail("an unrelated failure must not be translated to a body error")
+
+    with pytest.raises(type(failure)) as captured:
+        await RequestBodyLimitMiddleware(handler)(
+            {"type": "http", "path": "/echo", "headers": []},
+            receive,
+            send,
+        )
+    assert captured.value is failure
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mode", ["stall", "streamed_oversize"])
+async def test_real_fastapi_parser_preserves_body_error_before_dependencies(
+    mode, monkeypatch
+) -> None:
+    import httpx
+    from fastapi import Depends, FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+
+    from app.core.errors import register_exception_handlers
+    from app.middleware.request_id import RequestIDMiddleware
+
+    monkeypatch.setattr(settings, "request_body_idle_timeout_seconds", 0.01)
+    inner = FastAPI()
+    reached = []
+
+    async def dependency():
+        reached.append("auth/db dependency")
+
+    @inner.post("/write")
+    async def write(payload: dict, _auth=Depends(dependency)):
+        reached.append("mutation")
+        return payload
+
+    register_exception_handlers(inner)
+    inner.add_middleware(RequestBodyLimitMiddleware)
+    inner.add_middleware(RequestIDMiddleware)
+    inner.add_middleware(CORSMiddleware, allow_origins=["https://creatorjobs.example"])
+
+    async def body():
+        if mode == "stall":
+            await asyncio.Event().wait()
+        else:
+            yield b"x" * (settings.max_request_body_bytes + 1)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=inner), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/write",
+            content=body(),
+            headers={
+                "content-type": "application/json",
+                "origin": "https://creatorjobs.example",
+            },
+        )
+    assert response.status_code == (408 if mode == "stall" else 413)
+    assert reached == []
+    assert response.json()["error"]["code"] == (
+        "request_body_timeout" if mode == "stall" else "request_body_too_large"
+    )
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["connection"] == "close"
+    assert response.headers["access-control-allow-origin"] == "https://creatorjobs.example"
+    assert response.json()["error"]["request_id"] == response.headers["x-request-id"]
+
+
+@pytest.mark.parametrize(
+    "alias", ["REQUEST_BODY_IDLE_TIMEOUT_SECONDS", "REQUEST_BODY_WAIT_BUDGET_SECONDS"]
+)
+@pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan"), 301])
+def test_body_deadline_settings_are_finite_positive_and_bounded(alias, value) -> None:
+    from pydantic import ValidationError
+
+    from app.core.config import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **{alias: value})

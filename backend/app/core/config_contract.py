@@ -248,6 +248,18 @@ CONFIG_CONTRACT: dict[str, ConfigContract] = {
         "safe: on, every signup path checks an invitation server-side; off, "
         "registration is open as it always was.",
     ),
+    "request_body_idle_timeout_seconds": ConfigContract(
+        Requirement.OPTIONAL_DEVELOPMENT,
+        Enforcement.BOUNDED,
+        "Caps each wait for an incomplete HTTP request body chunk, before parsing. "
+        "It never wraps handler/provider/transaction work or a completed-body disconnect check.",
+    ),
+    "request_body_wait_budget_seconds": ConfigContract(
+        Requirement.OPTIONAL_DEVELOPMENT,
+        Enforcement.BOUNDED,
+        "Caps cumulative body receive waiting, so sending one small chunk per idle window "
+        "cannot retain admission forever. Time spent processing outside receive is excluded.",
+    ),
     "email_webhook_secret": ConfigContract(
         Requirement.FEATURE_CONDITIONAL,
         Enforcement.FEATURE_GATE,

@@ -23,6 +23,11 @@ has moved the unbounded allocation rather than prevented it, so the counting
 happens inside a `receive` wrapper that passes each chunk straight through and
 keeps only a running total.
 
+Incomplete-body receives also have an idle timeout and a cumulative wait budget.
+Only time inside receive counts: processing between chunks and work after the
+last chunk are not transaction deadlines. Completed-body disconnect listeners
+and non-HTTP protocols retain their existing lifetime.
+
 It is not a replacement for the decoded-size checks in the services. Those
 protect product meaning — what a profile picture is allowed to be — while this
 protects the process. Both are needed, and they are not interchangeable: the
@@ -32,16 +37,43 @@ avatar, and the inner one cannot run before the allocation it is trying to bound
 
 from __future__ import annotations
 
+import asyncio
 import json
+from time import monotonic
 
+from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.config import settings
 from app.middleware.request_id import get_request_id
 
 
-class _BodyTooLarge(Exception):
+class _BodyTooLarge(HTTPException):
     """Raised from inside the receive wrapper once the ceiling is crossed."""
+
+    def __init__(self, limit: int) -> None:
+        # FastAPI deliberately preserves HTTPException during body parsing;
+        # an ordinary exception here is otherwise translated to a generic 400.
+        super().__init__(
+            413,
+            detail={
+                "code": "request_body_too_large",
+                "message": f"This request is too large. The most this endpoint accepts is {limit} bytes.",
+            },
+            headers={"Connection": "close", "Cache-Control": "no-store"},
+        )
+
+
+class _BodyReadTimeout(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            408,
+            detail={
+                "code": "request_body_timeout",
+                "message": "The request body did not arrive in time. Send the complete request again.",
+            },
+            headers={"Connection": "close", "Cache-Control": "no-store"},
+        )
 
 
 def _limit_for(path: str) -> int:
@@ -81,14 +113,10 @@ def _declared_length(scope: Scope) -> int | None:
     return None
 
 
-async def _send_too_large(send: Send, limit: int) -> None:
+async def _send_body_error(send: Send, error: HTTPException) -> None:
     payload = {
         "error": {
-            "code": "request_body_too_large",
-            "message": (
-                "This request is too large. "
-                f"The most this endpoint accepts is {limit} bytes."
-            ),
+            **error.detail,
             "request_id": get_request_id(),
         }
     }
@@ -96,13 +124,12 @@ async def _send_too_large(send: Send, limit: int) -> None:
     await send(
         {
             "type": "http.response.start",
-            "status": 413,
+            "status": error.status_code,
             "headers": [
                 (b"content-type", b"application/json"),
                 (b"content-length", str(len(body)).encode()),
-                # The caller cannot fix this by retrying the same request, and
-                # saying so keeps a client from looping on it.
                 (b"connection", b"close"),
+                (b"cache-control", b"no-store"),
             ],
         }
     )
@@ -132,19 +159,43 @@ class RequestBodyLimitMiddleware:
         declared = _declared_length(scope)
         if declared is not None and declared > limit:
             # Refused without reading anything at all.
-            await _send_too_large(send, limit)
+            await _send_body_error(send, _BodyTooLarge(limit))
             return
 
         received = 0
         response_started = False
+        body_complete = False
+        wait_remaining = settings.request_body_wait_budget_seconds
+        idle_timeout = settings.request_body_idle_timeout_seconds
 
         async def limited_receive() -> Message:
-            nonlocal received
-            message = await receive()
+            nonlocal received, body_complete, wait_remaining
+            if body_complete:
+                # StreamingResponse may listen for disconnect after receiving
+                # the body. That is not a stalled upload or a handler deadline.
+                return await receive()
+            if wait_remaining <= 0:
+                raise _BodyReadTimeout()
+            started = monotonic()
+            deadline = asyncio.timeout(min(idle_timeout, wait_remaining))
+            try:
+                async with deadline:
+                    message = await receive()
+            except TimeoutError:
+                if deadline.expired():
+                    raise _BodyReadTimeout() from None
+                raise
+            finally:
+                wait_remaining -= max(0.0, monotonic() - started)
+            if wait_remaining <= 0:
+                raise _BodyReadTimeout()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
                 if received > limit:
-                    raise _BodyTooLarge
+                    raise _BodyTooLarge(limit)
+                body_complete = not message.get("more_body", False)
+            elif message["type"] == "http.disconnect":
+                body_complete = True
             return message
 
         async def counting_send(message: Message) -> None:
@@ -155,11 +206,11 @@ class RequestBodyLimitMiddleware:
 
         try:
             await self.app(scope, limited_receive, counting_send)
-        except _BodyTooLarge:
+        except (_BodyTooLarge, _BodyReadTimeout) as exc:
             if response_started:
                 # The handler already began answering, so the status is spent.
                 # Dropping the connection is the only honest option left; it is
                 # also unreachable for any endpoint that reads its body before
                 # replying, which is all of them that accept one.
                 raise
-            await _send_too_large(send, limit)
+            await _send_body_error(send, exc)
