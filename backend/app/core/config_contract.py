@@ -504,14 +504,14 @@ CONFIG_CONTRACT: dict[str, ConfigContract] = {
     "youtube_api_key": ConfigContract(
         Requirement.FEATURE_CONDITIONAL,
         Enforcement.FEATURE_GATE,
-        "Only channel enrichment reads it. Absent, enrichment is skipped and "
-        "the profile keeps what the creator entered.",
+        "Only the fixed backend YouTube provider client reads it. Absent, "
+        "channel enrichment falls back to the URL and manual portfolio entry remains available.",
     ),
     "youtube_data_api_key": ConfigContract(
         Requirement.FEATURE_CONDITIONAL,
         Enforcement.FEATURE_GATE,
-        "The same, for the Data API surface. Absent means that lookup does not "
-        "happen, not that it happens unauthenticated.",
+        "Backward-compatible backend-only alias for the same fixed Data API client. "
+        "Absent means lookup does not happen, not that it happens unauthenticated.",
     ),
     "google_places_api_key": ConfigContract(
         Requirement.FEATURE_CONDITIONAL,

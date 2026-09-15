@@ -130,6 +130,9 @@ from app.schemas.profile import (
     SocialConnections,
     SocialInstagramConnection,
     SocialYouTubeConnection,
+    YouTubeIdentityRead,
+    YouTubeIdentityRequest,
+    YouTubeIdentityResponse,
 )
 from app.schemas.profile_capabilities import ProfileCapabilities
 from app.schemas.reviews import (
@@ -305,5 +308,8 @@ __all__ = [
     "VerifyEmailRequest",
     "YouTubeChannelsResponse",
     "YouTubeDisconnectResponse",
+    "YouTubeIdentityRead",
+    "YouTubeIdentityRequest",
+    "YouTubeIdentityResponse",
     "YouTubeRefreshResponse",
 ]

@@ -41,6 +41,23 @@ test.describe("signed in", () => {
     await login(page);
   });
 
+  test("keeps a usable YouTube URL identity when provider configuration is absent", async ({ page }) => {
+    // The local QA server explicitly has no provider key; this exercises the
+    // signed-in Next -> backend -> URL fallback without a live provider request.
+    const response = await page.request.post(RESOLVE, {
+      data: { url: "https://www.youtube.com/@creatorjobsqa" },
+    });
+
+    expect(response.ok()).toBeTruthy();
+    const body = await response.json();
+    expect(body.error).toBeNull();
+    expect(body.platform).toBe("YouTube");
+    expect(body.handle).toBe("@creatorjobsqa");
+    expect(body.canonicalUrl).toBe("https://www.youtube.com/@creatorjobsqa");
+    expect(body.source).toBe("url_fallback");
+    expect(body.logoUrl).toBeNull();
+  });
+
   test("resolves a valid Instagram profile URL to a usable identity", async ({ page }) => {
     const response = await page.request.post(RESOLVE, {
       data: { url: "https://www.instagram.com/guhanpurushothaman/" },

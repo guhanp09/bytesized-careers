@@ -2723,6 +2723,33 @@ export async function readOrganizationPage(
   });
 }
 
+export type BackendYouTubeIdentitySelector = {
+  selector: "channel_id" | "handle" | "username" | "video_id";
+  value: string;
+};
+
+export type BackendYouTubeIdentityResponse = {
+  identity: {
+    channel_id: string;
+    title: string;
+    thumbnail_url?: string | null;
+    handle?: string | null;
+    canonical_url: string;
+  } | null;
+};
+
+export async function resolveMyYouTubeIdentity(
+  accessToken: string,
+  selector: BackendYouTubeIdentitySelector
+): Promise<BackendYouTubeIdentityResponse> {
+  return requestJson<BackendYouTubeIdentityResponse>("/me/youtube-identity", {
+    method: "POST",
+    accessToken,
+    body: JSON.stringify(selector),
+    timeoutMs: 14000,
+  });
+}
+
 export type BackendLocationSuggestion = {
   place_id: string;
   display_name: string;

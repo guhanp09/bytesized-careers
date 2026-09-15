@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import ts from "typescript";
 
 import {
   clearYouTubeIdentityCacheForTests,
@@ -7,24 +9,34 @@ import {
   resolveYouTubeChannelIdentity,
 } from "../lib/youtubeIdentity.ts";
 
-const jsonResponse = (body) =>
-  new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
+const providerIdentity = (overrides = {}) => ({
+  platform: "YouTube",
+  name: "Marques Brownlee",
+  logoUrl: "https://yt3.ggpht.com/high.jpg",
+  canonicalUrl: "https://www.youtube.com/channel/UC1234567890123456789012",
+  externalId: "UC1234567890123456789012",
+  handle: "@mkbhd",
+  confidence: "high",
+  source: "youtube_data_api",
+  ...overrides,
+});
 
-const channelItem = (overrides = {}) => ({
-  id: "UCxxxx",
-  snippet: {
-    title: "Marques Brownlee",
-    customUrl: "@mkbhd",
-    thumbnails: {
-      default: { url: "https://yt3.ggpht.com/default.jpg" },
-      medium: { url: "https://yt3.ggpht.com/medium.jpg" },
-      high: { url: "https://yt3.ggpht.com/high.jpg" },
-    },
-    ...overrides,
-  },
+test("YouTube provider credentials and network execution live only in the backend", () => {
+  const sourceWithoutComments = (path) => ts.createPrinter({ removeComments: true }).printFile(
+    ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true)
+  );
+  const envWithoutComments = (path) => readFileSync(path, "utf8").split("\n")
+    .filter((line) => !line.trimStart().startsWith("#")).join("\n");
+  const resolver = sourceWithoutComments("lib/youtubeIdentity.ts");
+  const route = sourceWithoutComments("app/api/profile/organization-identity/route.ts");
+  const frontendEnv = envWithoutComments(".env.example");
+  const backendEnv = envWithoutComments("backend/.env.example");
+
+  assert.doesNotMatch(resolver, /googleapis\.com|\bfetch\s*\(|apiKey/);
+  assert.doesNotMatch(route, /YOUTUBE_(?:DATA_)?API_KEY|googleapis\.com/);
+  assert.match(route, /resolveMyYouTubeIdentity\(accessToken, selector\)/);
+  assert.doesNotMatch(frontendEnv, /YOUTUBE_(?:DATA_)?API_KEY/);
+  assert.match(backendEnv, /YOUTUBE_API_KEY=/);
 });
 
 test("parses YouTube handle URLs", () => {
@@ -56,10 +68,10 @@ test("parses legacy user, custom, and video URLs", () => {
     path: "somecustomname",
     normalizedUrl: "https://www.youtube.com/c/somecustomname",
   });
-  assert.deepEqual(parseYouTubeUrl("https://youtu.be/abc123"), {
+  assert.deepEqual(parseYouTubeUrl("https://youtu.be/abc123DEF_-"), {
     type: "video",
-    videoId: "abc123",
-    normalizedUrl: "https://youtu.be/abc123",
+    videoId: "abc123DEF_-",
+    normalizedUrl: "https://youtu.be/abc123DEF_-",
   });
 });
 
@@ -67,52 +79,37 @@ test("rejects non-YouTube URLs", () => {
   assert.equal(parseYouTubeUrl("https://example.com/@mkbhd").type, "invalid");
 });
 
-test("resolves YouTube channel identity from mocked channels API", async () => {
+test("selects an authenticated backend handle lookup and returns its normalized identity", async () => {
   clearYouTubeIdentityCacheForTests();
-  const requestedUrls = [];
-  const fetcher = async (input) => {
-    requestedUrls.push(String(input));
-    return jsonResponse({ items: [channelItem()] });
-  };
-
+  const requested = [];
   const result = await resolveYouTubeChannelIdentity("https://www.youtube.com/@mkbhd", {
-    apiKey: "test-key",
-    fetcher,
-  });
-
-  assert.equal(result?.platform, "YouTube");
-  assert.equal(result?.name, "Marques Brownlee");
-  assert.equal(result?.logoUrl, "https://yt3.ggpht.com/high.jpg");
-  assert.equal(result?.externalId, "UCxxxx");
-  assert.equal(result?.canonicalUrl, "https://www.youtube.com/channel/UCxxxx");
-  assert.equal(result?.handle, "@mkbhd");
-  assert.equal(result?.confidence, "high");
-  assert.equal(result?.source, "youtube_data_api");
-  assert.match(requestedUrls[0], /forHandle=%40mkbhd/);
-});
-
-test("falls back without API key and does not fetch", async () => {
-  clearYouTubeIdentityCacheForTests();
-  let fetchCount = 0;
-  const result = await resolveYouTubeChannelIdentity("https://www.youtube.com/@mkbhd", {
-    apiKey: "",
-    fetcher: async () => {
-      fetchCount += 1;
-      return jsonResponse({ items: [] });
+    resolveProviderIdentity: async (selector) => {
+      requested.push(selector);
+      return providerIdentity();
     },
   });
 
-  assert.equal(fetchCount, 0);
+  assert.deepEqual(requested, [{ selector: "handle", value: "mkbhd" }]);
+  assert.deepEqual(result, providerIdentity());
+});
+
+test("falls back without a backend provider resolver", async () => {
+  clearYouTubeIdentityCacheForTests();
+  const warnings = [];
+  const result = await resolveYouTubeChannelIdentity("https://www.youtube.com/@mkbhd", {
+    warn: (message) => warnings.push(message),
+  });
+
   assert.equal(result?.name, "@mkbhd");
   assert.equal(result?.logoUrl, null);
   assert.equal(result?.source, "url_fallback");
+  assert.equal(warnings.length, 1);
 });
 
-test("falls back when channels API returns no items", async () => {
+test("falls back when the backend finds no provider identity", async () => {
   clearYouTubeIdentityCacheForTests();
   const result = await resolveYouTubeChannelIdentity("https://www.youtube.com/@mkbhd", {
-    apiKey: "test-key",
-    fetcher: async () => jsonResponse({ items: [] }),
+    resolveProviderIdentity: async () => null,
   });
 
   assert.equal(result?.name, "@mkbhd");
@@ -121,38 +118,15 @@ test("falls back when channels API returns no items", async () => {
   assert.equal(result?.source, "url_fallback");
 });
 
-test("uses medium thumbnail when high thumbnail is absent", async () => {
+test("falls back when the authenticated backend lookup is unavailable", async () => {
   clearYouTubeIdentityCacheForTests();
   const result = await resolveYouTubeChannelIdentity("https://www.youtube.com/@mkbhd", {
-    apiKey: "test-key",
-    fetcher: async () =>
-      jsonResponse({
-        items: [
-          channelItem({
-            thumbnails: {
-              default: { url: "https://yt3.ggpht.com/default.jpg" },
-              medium: { url: "https://yt3.ggpht.com/medium.jpg" },
-            },
-          }),
-        ],
-      }),
+    resolveProviderIdentity: async () => {
+      throw new Error("backend unavailable");
+    },
   });
 
-  assert.equal(result?.logoUrl, "https://yt3.ggpht.com/medium.jpg");
-});
-
-test("returns null logo when channel has no thumbnails", async () => {
-  clearYouTubeIdentityCacheForTests();
-  const result = await resolveYouTubeChannelIdentity("https://www.youtube.com/@mkbhd", {
-    apiKey: "test-key",
-    fetcher: async () =>
-      jsonResponse({
-        items: [channelItem({ thumbnails: {} })],
-      }),
-  });
-
-  assert.equal(result?.name, "Marques Brownlee");
-  assert.equal(result?.logoUrl, null);
+  assert.equal(result?.source, "url_fallback");
 });
 
 test("a custom path asks the server for the channel id and never fetches the page", async () => {
@@ -162,56 +136,40 @@ test("a custom path asks the server for the channel id and never fetches the pag
   // only asks for the id.
   clearYouTubeIdentityCacheForTests();
   const requested = [];
-  const fetcher = async (input) => {
-    const url = String(input);
-    requested.push(url);
-    if (url.includes("youtube.com/somebrand")) {
-      throw new Error("the page must never be fetched from this runtime");
-    }
-    return {
-      ok: true,
-      status: 200,
-      headers: { get: () => "application/json" },
-      json: async () => ({
-        items: [
-          {
-            id: "UCabcdefghijklmnopqrstuv",
-            snippet: { title: "Some Brand", customUrl: "@somebrand", thumbnails: {} },
-          },
-        ],
-      }),
-    };
-  };
 
   const result = await resolveYouTubeChannelIdentity("https://www.youtube.com/somebrand", {
-    apiKey: "test-key",
-    fetcher,
     resolveChannelIdFromPage: async () => "UCabcdefghijklmnopqrstuv",
+    resolveProviderIdentity: async (selector) => {
+      requested.push(selector);
+      return providerIdentity({
+        name: "Some Brand",
+        externalId: "UCabcdefghijklmnopqrstuv",
+        canonicalUrl: "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv",
+        handle: "@somebrand",
+      });
+    },
   });
 
   assert.equal(result.externalId, "UCabcdefghijklmnopqrstuv");
   assert.equal(result.source, "youtube_data_api");
-  assert.ok(
-    requested.every((url) => url.includes("googleapis.com")),
-    `only fixed provider endpoints may be called, saw ${requested.join(", ")}`
-  );
+  assert.deepEqual(requested, [
+    { selector: "channel_id", value: "UCabcdefghijklmnopqrstuv" },
+  ]);
 });
 
 test("without a server-side resolver a custom path falls back instead of fetching", async () => {
   clearYouTubeIdentityCacheForTests();
-  const requested = [];
-  const fetcher = async (input) => {
-    requested.push(String(input));
-    throw new Error("nothing should be fetched");
-  };
+  let providerCalls = 0;
 
   const result = await resolveYouTubeChannelIdentity("https://www.youtube.com/somebrand", {
-    apiKey: "test-key",
-    fetcher,
+    resolveProviderIdentity: async () => {
+      providerCalls += 1;
+      return providerIdentity();
+    },
   });
 
   // Losing an enrichment is cheaper than keeping an unpinned fetch alive for it.
   assert.notEqual(result, null);
   assert.notEqual(result.source, "youtube_data_api");
-  assert.deepEqual(requested, []);
+  assert.equal(providerCalls, 0);
 });

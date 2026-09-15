@@ -17,13 +17,19 @@ export type YouTubeIdentity = {
   source: "youtube_data_api" | "youtube_html_fallback" | "url_fallback";
 };
 
-type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>;
+export type YouTubeProviderSelector = {
+  selector: "channel_id" | "handle" | "username" | "video_id";
+  value: string;
+};
 
 type ResolveYouTubeOptions = {
-  apiKey?: string | null;
-  fetcher?: Fetcher;
-  timeoutMs?: number;
   warn?: (message: string) => void;
+  /**
+   * The authenticated backend owns the provider credential, fixed endpoints,
+   * response bounds and quota. This utility only parses the URL and selects
+   * the provider lookup the backend may perform.
+   */
+  resolveProviderIdentity?: (selector: YouTubeProviderSelector) => Promise<YouTubeIdentity | null>;
   /**
    * How to turn a YouTube custom-path URL into its channel id.
    *
@@ -40,31 +46,6 @@ type ResolveYouTubeOptions = {
   resolveChannelIdFromPage?: (normalizedUrl: string) => Promise<string | null>;
 };
 
-type YouTubeThumbnail = {
-  url?: string;
-};
-
-type YouTubeApiItem = {
-  id?: string;
-  snippet?: {
-    title?: string;
-    localized?: {
-      title?: string;
-    };
-    customUrl?: string;
-    channelId?: string;
-    thumbnails?: {
-      default?: YouTubeThumbnail;
-      medium?: YouTubeThumbnail;
-      high?: YouTubeThumbnail;
-    };
-  };
-};
-
-type YouTubeApiResponse = {
-  items?: YouTubeApiItem[];
-};
-
 const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"]);
 const CUSTOM_PATH_RESERVED = new Set([
   "about",
@@ -78,10 +59,12 @@ const CUSTOM_PATH_RESERVED = new Set([
   "user",
   "watch",
 ]);
-const DEFAULT_TIMEOUT_MS = 4500;
 const SUCCESS_TTL_MS = 24 * 60 * 60 * 1000;
 const FALLBACK_TTL_MS = 5 * 60 * 1000;
-const CHANNEL_ID_PATTERN = /UC[\w-]{20,}/;
+const MAX_URL_CHARS = 2048;
+const MAX_SELECTOR_CHARS = 128;
+const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
+const CHANNEL_ID_PATTERN = /^UC[A-Za-z0-9_-]{20,126}$/;
 
 const identityCache = new Map<string, { expiresAt: number; value: YouTubeIdentity }>();
 
@@ -89,14 +72,16 @@ const cleanExperienceText = (value?: string | null) => value?.trim() || null;
 
 const normalizeExperienceUrl = (value?: string | null) => {
   const raw = cleanExperienceText(value);
-  if (!raw) return null;
+  if (!raw || raw.length > MAX_URL_CHARS) return null;
 
   const candidate = /^[a-z]+:\/\//i.test(raw) ? raw : `https://${raw}`;
   try {
     const url = new URL(candidate);
     if (!["http:", "https:"].includes(url.protocol)) return null;
+    if (url.username || url.password) return null;
     url.hash = "";
-    return url.toString().replace(/\/$/, "");
+    const normalized = url.toString().replace(/\/$/, "");
+    return normalized.length <= MAX_URL_CHARS ? normalized : null;
   } catch {
     return null;
   }
@@ -120,35 +105,6 @@ const fallbackNameForParsedYouTubeUrl = (parsed: YouTubeUrlParseResult) => {
   return "YouTube Channel";
 };
 
-const bestThumbnailUrl = (item: YouTubeApiItem) =>
-  item.snippet?.thumbnails?.high?.url ||
-  item.snippet?.thumbnails?.medium?.url ||
-  item.snippet?.thumbnails?.default?.url ||
-  null;
-
-const cleanHandle = (value?: string | null) => {
-  const text = cleanExperienceText(value);
-  if (!text) return null;
-  return text.replace(/^\/+/, "").replace(/^@?/, "@");
-};
-
-const normalizeYouTubeApiItem = (item: YouTubeApiItem): YouTubeIdentity | null => {
-  const channelId = cleanExperienceText(item.id);
-  const title = cleanExperienceText(item.snippet?.localized?.title) || cleanExperienceText(item.snippet?.title);
-  if (!channelId || !title) return null;
-
-  return {
-    platform: "YouTube",
-    name: title,
-    logoUrl: bestThumbnailUrl(item),
-    canonicalUrl: `https://www.youtube.com/channel/${channelId}`,
-    externalId: channelId,
-    handle: cleanHandle(item.snippet?.customUrl),
-    confidence: "high",
-    source: "youtube_data_api",
-  };
-};
-
 const fallbackIdentity = (
   parsed: YouTubeUrlParseResult,
   normalizedUrl: string,
@@ -165,69 +121,9 @@ const fallbackIdentity = (
   source,
 });
 
-const fetchWithTimeout = async (fetcher: Fetcher, input: string | URL, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetcher(input, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
-};
-
-const fetchYouTubeJson = async (url: URL, fetcher: Fetcher, timeoutMs: number) => {
-  const response = await fetchWithTimeout(fetcher, url, { redirect: "follow" }, timeoutMs);
-  if (!response.ok) return null;
-  return (await response.json().catch(() => null)) as YouTubeApiResponse | null;
-};
-
-const channelsListUrl = (apiKey: string, filterKey: "id" | "forHandle" | "forUsername", filterValue: string) => {
-  const url = new URL("https://www.googleapis.com/youtube/v3/channels");
-  url.searchParams.set("part", "snippet");
-  url.searchParams.set(filterKey, filterValue);
-  url.searchParams.set("key", apiKey);
-  return url;
-};
-
-const videosListUrl = (apiKey: string, videoId: string) => {
-  const url = new URL("https://www.googleapis.com/youtube/v3/videos");
-  url.searchParams.set("part", "snippet");
-  url.searchParams.set("id", videoId);
-  url.searchParams.set("key", apiKey);
-  return url;
-};
-
-const resolveChannelByFilter = async (
-  apiKey: string,
-  fetcher: Fetcher,
-  timeoutMs: number,
-  filterKey: "id" | "forHandle" | "forUsername",
-  filterValue: string
-) => {
-  const data = await fetchYouTubeJson(channelsListUrl(apiKey, filterKey, filterValue), fetcher, timeoutMs);
-  const item = data?.items?.[0];
-  return item ? normalizeYouTubeApiItem(item) : null;
-};
-
-const resolveVideoChannel = async (apiKey: string, fetcher: Fetcher, timeoutMs: number, videoId: string) => {
-  const data = await fetchYouTubeJson(videosListUrl(apiKey, videoId), fetcher, timeoutMs);
-  const channelId = cleanExperienceText(data?.items?.[0]?.snippet?.channelId);
-  return channelId ? resolveChannelByFilter(apiKey, fetcher, timeoutMs, "id", channelId) : null;
-};
-
-const resolveCustomPathByChannelId = async (
-  normalizedUrl: string,
-  apiKey: string,
-  fetcher: Fetcher,
-  timeoutMs: number,
-  resolveChannelIdFromPage?: (normalizedUrl: string) => Promise<string | null>
-) => {
-  const url = new URL(normalizedUrl);
-  if (!YOUTUBE_HOSTS.has(url.hostname.toLowerCase())) return null;
-  if (!resolveChannelIdFromPage) return null;
-
-  const channelId = await resolveChannelIdFromPage(normalizedUrl);
-  return channelId ? resolveChannelByFilter(apiKey, fetcher, timeoutMs, "id", channelId) : null;
+const boundedSelector = (value?: string | null) => {
+  const cleaned = cleanExperienceText(value);
+  return cleaned && cleaned.length <= MAX_SELECTOR_CHARS ? cleaned : null;
 };
 
 export const parseYouTubeUrl = (input?: string | null): YouTubeUrlParseResult => {
@@ -241,46 +137,55 @@ export const parseYouTubeUrl = (input?: string | null): YouTubeUrlParseResult =>
 
     const pathParts = url.pathname.split("/").filter(Boolean);
     if (host === "youtu.be") {
-      const videoId = cleanExperienceText(pathParts[0]);
-      return videoId ? { type: "video", videoId, normalizedUrl } : { type: "invalid", normalizedUrl };
+      const videoId = boundedSelector(pathParts[0]);
+      return videoId && VIDEO_ID_PATTERN.test(videoId)
+        ? { type: "video", videoId, normalizedUrl }
+        : { type: "invalid", normalizedUrl };
     }
 
     const firstPart = pathParts[0] || "";
     const secondPart = pathParts[1] || "";
     if (firstPart.startsWith("@")) {
-      const handle = cleanExperienceText(firstPart.slice(1));
+      const handle = boundedSelector(firstPart.slice(1));
       return handle ? { type: "handle", handle, normalizedUrl } : { type: "invalid", normalizedUrl };
     }
 
     if (firstPart === "channel") {
-      const channelId = cleanExperienceText(secondPart);
+      const channelId = boundedSelector(secondPart);
       return channelId && CHANNEL_ID_PATTERN.test(channelId)
         ? { type: "channelId", channelId, normalizedUrl }
         : { type: "invalid", normalizedUrl };
     }
 
     if (firstPart === "user") {
-      const username = cleanExperienceText(secondPart);
+      const username = boundedSelector(secondPart);
       return username ? { type: "username", username, normalizedUrl } : { type: "invalid", normalizedUrl };
     }
 
     if (firstPart === "c") {
-      const path = cleanExperienceText(secondPart);
+      const path = boundedSelector(secondPart);
       return path ? { type: "customPath", path, normalizedUrl } : { type: "invalid", normalizedUrl };
     }
 
     if (firstPart === "watch") {
-      const videoId = cleanExperienceText(url.searchParams.get("v"));
-      return videoId ? { type: "video", videoId, normalizedUrl } : { type: "invalid", normalizedUrl };
+      const videoId = boundedSelector(url.searchParams.get("v"));
+      return videoId && VIDEO_ID_PATTERN.test(videoId)
+        ? { type: "video", videoId, normalizedUrl }
+        : { type: "invalid", normalizedUrl };
     }
 
     if (firstPart === "shorts") {
-      const videoId = cleanExperienceText(secondPart);
-      return videoId ? { type: "video", videoId, normalizedUrl } : { type: "invalid", normalizedUrl };
+      const videoId = boundedSelector(secondPart);
+      return videoId && VIDEO_ID_PATTERN.test(videoId)
+        ? { type: "video", videoId, normalizedUrl }
+        : { type: "invalid", normalizedUrl };
     }
 
     if (firstPart && !CUSTOM_PATH_RESERVED.has(firstPart.toLowerCase())) {
-      return { type: "customPath", path: firstPart, normalizedUrl };
+      const path = boundedSelector(firstPart);
+      return path
+        ? { type: "customPath", path, normalizedUrl }
+        : { type: "invalid", normalizedUrl };
     }
 
     return { type: "invalid", normalizedUrl };
@@ -293,10 +198,7 @@ export async function resolveYouTubeChannelIdentity(input: string, options: Reso
   const parsed = parseYouTubeUrl(input);
   if (parsed.type === "invalid") return null;
 
-  const apiKey = cleanExperienceText(options.apiKey);
-  const fetcher = options.fetcher || fetch;
-  const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
-  const cacheKey = `${apiKey ? "keyed" : "nokey"}:${parsed.normalizedUrl}`;
+  const cacheKey = `${options.resolveProviderIdentity ? "provider" : "local"}:${parsed.normalizedUrl}`;
   const cached = identityCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
@@ -308,34 +210,29 @@ export async function resolveYouTubeChannelIdentity(input: string, options: Reso
     return value;
   };
 
-  if (!apiKey) {
-    options.warn?.("YOUTUBE_DATA_API_KEY is not configured; using YouTube URL fallback identity.");
+  if (!options.resolveProviderIdentity) {
+    options.warn?.("YouTube provider resolution is unavailable; using URL fallback identity.");
     return store(fallbackIdentity(parsed, parsed.normalizedUrl));
   }
 
   try {
-    let resolved: YouTubeIdentity | null = null;
+    let selector: YouTubeProviderSelector | null = null;
     if (parsed.type === "handle") {
-      resolved = await resolveChannelByFilter(apiKey, fetcher, timeoutMs, "forHandle", `@${parsed.handle}`);
-      if (!resolved) {
-        resolved = await resolveChannelByFilter(apiKey, fetcher, timeoutMs, "forHandle", parsed.handle);
-      }
+      selector = { selector: "handle", value: parsed.handle };
     } else if (parsed.type === "channelId") {
-      resolved = await resolveChannelByFilter(apiKey, fetcher, timeoutMs, "id", parsed.channelId);
+      selector = { selector: "channel_id", value: parsed.channelId };
     } else if (parsed.type === "username") {
-      resolved = await resolveChannelByFilter(apiKey, fetcher, timeoutMs, "forUsername", parsed.username);
+      selector = { selector: "username", value: parsed.username };
     } else if (parsed.type === "video") {
-      resolved = await resolveVideoChannel(apiKey, fetcher, timeoutMs, parsed.videoId);
+      selector = { selector: "video_id", value: parsed.videoId };
     } else if (parsed.type === "customPath") {
-      resolved = await resolveCustomPathByChannelId(
-        parsed.normalizedUrl,
-        apiKey,
-        fetcher,
-        timeoutMs,
-        options.resolveChannelIdFromPage
-      );
+      const channelId = await options.resolveChannelIdFromPage?.(parsed.normalizedUrl);
+      if (channelId && CHANNEL_ID_PATTERN.test(channelId)) {
+        selector = { selector: "channel_id", value: channelId };
+      }
     }
 
+    const resolved = selector ? await options.resolveProviderIdentity(selector) : null;
     return store(resolved || fallbackIdentity(parsed, parsed.normalizedUrl));
   } catch {
     return store(fallbackIdentity(parsed, parsed.normalizedUrl));

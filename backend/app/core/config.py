@@ -248,8 +248,16 @@ class Settings(BaseSettings):
         default=False,
         alias="ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION",
     )
-    youtube_api_key: str | None = Field(default=None, alias="YOUTUBE_API_KEY")
-    youtube_data_api_key: str | None = Field(default=None, alias="YOUTUBE_DATA_API_KEY")
+    youtube_api_key: SecretStr | None = Field(
+        default=None,
+        max_length=2048,
+        alias="YOUTUBE_API_KEY",
+    )
+    youtube_data_api_key: SecretStr | None = Field(
+        default=None,
+        max_length=2048,
+        alias="YOUTUBE_DATA_API_KEY",
+    )
     google_places_api_key: SecretStr | None = Field(
         default=None,
         max_length=2048,

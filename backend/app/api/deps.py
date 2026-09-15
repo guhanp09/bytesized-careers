@@ -60,6 +60,7 @@ from app.services.oauth_credential_storage import OAuthCredentialStorage
 from app.services.profile_service import ProfileService
 from app.services.search_service import SearchService
 from app.services.strong_auth_service import StrongAuthService
+from app.services.youtube_service import YouTubeProviderClient, configured_youtube_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +176,10 @@ def get_google_places_service() -> GooglePlacesService:
         else None
     )
     return GooglePlacesService(api_key)
+
+
+def get_youtube_provider_client() -> YouTubeProviderClient:
+    return YouTubeProviderClient(configured_youtube_api_key())
 
 
 async def get_auth_service(

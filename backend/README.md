@@ -61,7 +61,9 @@ Key vars:
   AES-256-GCM keyring for Google access/refresh credentials)
 - `OAUTH_CREDENTIAL_WRITE_MODE` (`dual` only during the recoverable migration;
   `encrypted_only` for production steady state)
-- `YOUTUBE_API_KEY` (server-side YouTube Data API v3 key for portfolio metadata import)
+- `YOUTUBE_API_KEY` (preferred server-side YouTube Data API v3 key for authenticated
+  channel enrichment and portfolio metadata import; `YOUTUBE_DATA_API_KEY` is a
+  backward-compatible backend-only alias)
 - `OPENAI_API_KEY` (server-side only; required only for private text job-import processing)
 - `OPENAI_MODEL` (defaults to `gpt-5.6-luna`; clients cannot override it)
 - `OPENAI_REQUEST_TIMEOUT_SECONDS` (server-only, bounded to 5–120 seconds;

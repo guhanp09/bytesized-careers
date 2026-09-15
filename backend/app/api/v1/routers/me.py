@@ -12,6 +12,7 @@ from app.api.deps import (
     get_db,
     get_me_service,
     get_profile_service,
+    get_youtube_provider_client,
 )
 from app.core.legal_documents import REQUIRED_DOCUMENTS, current_version
 from app.core.rate_limit import MEDIA_UPLOAD_LIMIT, OUTBOUND_FETCH_LIMIT
@@ -41,6 +42,9 @@ from app.schemas import (
     ProfileUpdateRequest,
     YouTubeChannelsResponse,
     YouTubeDisconnectResponse,
+    YouTubeIdentityRead,
+    YouTubeIdentityRequest,
+    YouTubeIdentityResponse,
     YouTubeRefreshResponse,
 )
 from app.services.legal_acceptance_service import (
@@ -62,6 +66,14 @@ from app.services.profile_service import (
     ProfileNotFoundError,
     ProfileService,
     ProfileValidationError,
+)
+from app.services.youtube_service import (
+    YouTubeAPIError as YouTubeProviderError,
+)
+from app.services.youtube_service import (
+    YouTubeInvalidSelectorError,
+    YouTubeNotConfiguredError,
+    YouTubeProviderClient,
 )
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -514,6 +526,61 @@ async def read_my_organization_page(
         image_url=metadata.image_url,
         icon_url=metadata.icon_url,
         youtube_channel_id=metadata.youtube_channel_id,
+    )
+
+
+@router.post(
+    "/youtube-identity",
+    response_model=YouTubeIdentityResponse,
+    summary="Resolve bounded YouTube channel identity through the server provider boundary",
+)
+async def resolve_my_youtube_identity(
+    payload: YouTubeIdentityRequest,
+    _limit: None = authenticated_rate_limit(OUTBOUND_FETCH_LIMIT),
+    current_user: User = Depends(get_current_user),
+    provider: YouTubeProviderClient = Depends(get_youtube_provider_client),
+) -> YouTubeIdentityResponse:
+    _ = current_user
+    try:
+        identity = await provider.resolve_channel_identity(
+            payload.selector,
+            payload.value,
+        )
+    except YouTubeInvalidSelectorError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "invalid_youtube_identifier",
+                "message": "Enter a valid YouTube channel or video URL.",
+            },
+        ) from exc
+    except YouTubeNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "missing_api_key",
+                "message": "YouTube channel enrichment is not configured.",
+            },
+        ) from exc
+    except YouTubeProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "code": "provider_error",
+                "message": "YouTube channel enrichment is unavailable right now.",
+            },
+        ) from exc
+
+    if identity is None:
+        return YouTubeIdentityResponse()
+    return YouTubeIdentityResponse(
+        identity=YouTubeIdentityRead(
+            channel_id=identity.channel_id,
+            title=identity.title,
+            thumbnail_url=identity.thumbnail_url,
+            handle=identity.handle,
+            canonical_url=identity.canonical_url,
+        )
     )
 
 class LegalStatusResponse(BaseModel):

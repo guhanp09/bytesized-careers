@@ -340,6 +340,31 @@ class OrganizationPageResponse(BaseModel):
     youtube_channel_id: str = ""
 
 
+class YouTubeIdentityRequest(BaseModel):
+    """One parsed YouTube selector; raw URLs and provider credentials stay out."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    selector: Literal["channel_id", "handle", "username", "video_id"]
+    value: str = Field(min_length=1, max_length=128)
+
+
+class YouTubeIdentityRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    channel_id: str = Field(min_length=1, max_length=128)
+    title: str = Field(min_length=1, max_length=255)
+    thumbnail_url: str | None = Field(default=None, max_length=2048)
+    handle: str | None = Field(default=None, max_length=100)
+    canonical_url: str = Field(min_length=1, max_length=2048)
+
+
+class YouTubeIdentityResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    identity: YouTubeIdentityRead | None = None
+
+
 class PortfolioLinkPreviewRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
 

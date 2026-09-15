@@ -17,7 +17,7 @@ export default defineConfig({
   webServer: [
     {
       command:
-        "APP_ENV=test ENABLE_QA_PERSONA_SWITCHER=true QA_PERSONA_CONTROLLER_EMAILS=qa-controller@example.com QA_PERSONA_ACCESS_TOKEN_MINUTES=30 QA_TEST_CONTROLLER_EMAIL=qa-controller@example.com QA_TEST_CONTROLLER_PASSWORD=LocalQaController123! DATABASE_URL=sqlite+aiosqlite:///./.local-data/qa-playwright.db CORS_ORIGINS='[\"http://127.0.0.1:3200\"]' MEDIA_ROOT=.local-data/qa-playwright-media PORT=8100 .venv/bin/python scripts/start_qa_test_server.py",
+        "APP_ENV=test YOUTUBE_API_KEY= YOUTUBE_DATA_API_KEY= ENABLE_QA_PERSONA_SWITCHER=true QA_PERSONA_CONTROLLER_EMAILS=qa-controller@example.com QA_PERSONA_ACCESS_TOKEN_MINUTES=30 QA_TEST_CONTROLLER_EMAIL=qa-controller@example.com QA_TEST_CONTROLLER_PASSWORD=LocalQaController123! DATABASE_URL=sqlite+aiosqlite:///./.local-data/qa-playwright.db CORS_ORIGINS='[\"http://127.0.0.1:3200\"]' MEDIA_ROOT=.local-data/qa-playwright-media PORT=8100 .venv/bin/python scripts/start_qa_test_server.py",
       cwd: "./backend",
       url: `${backendUrl}/health`,
       reuseExistingServer: false,

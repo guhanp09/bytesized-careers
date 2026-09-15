@@ -5,11 +5,11 @@
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external
 CURRENT PHASE: Phase 3 resumed hardening inside Phase 13 certification — RATE-004 request safety
-LAST COMPLETED ATOMIC SLICE: Phase 3L / OF-105. Google Places autocomplete/details no longer execute in the Next runtime: same-origin signed-in proxies forward only the CreatorJobs bearer credential to two authenticated backend routes, and the backend-only `SecretStr` key reaches only exact fixed Google URLs through a redirect-free, proxy-independent, decoded-body/total-time-bounded client. Query, place ID, provider list, every returned field and coordinates are bounded; malformed JSON/status/type/coordinates fail closed without provider detail. Both calls share a 120/minute verified-user Redis allowance and numeric `Retry-After` survives the proxy. Missing provider configuration retains the owned local-location fallback. Google-sourced suggestions carry source-specific, non-translated visible `Google Maps` attribution outside the ARIA listbox. RATE-003 is now VALIDATED. The checkpoint commit is named `security(provider): bound authenticated Google Places lookup`; resolve the exact current HEAD with `git rev-parse HEAD` because this handoff is committed with the implementation.
-NEXT ATOMIC SLICE: Phase 3M / RATE-004, beginning with read-only OF-103/OF-104 inventory. The backend and Next-runtime YouTube Data API clients still need one coherent fixed-provider response/body/redirect/whole-attempt contract without weakening OAuth reauthentication classification. General request concurrency/cancellation ceilings also remain under RATE-004. Do not begin that implementation unless there is enough context to complete both callers coherently. Host load was about 69 during Phase 3L; do not start Playwright until it is quiet. Gitleaks and a built-image scan still require an environment with those tools and a functioning Docker daemon.
+LAST COMPLETED ATOMIC SLICE: Phase 3M / OF-103 and OF-104. Both YouTube Data API consumers now use one backend-only fixed-provider boundary; selector/body/field/time bounds, redirect/proxy refusal and generic errors are tested. OAuth 401/explicit permission errors retain reauth semantics; malformed or partial channel snapshots fail without replacing linked authority. Same-origin signed-in Next resolution forwards only the CreatorJobs bearer and preserves URL/manual fallback. Commit: `security(provider): consolidate bounded YouTube lookups` (this document is committed with the slice).
+NEXT ATOMIC SLICE: Phase 3N / RATE-004 — inspect general inbound concurrency, request deadline and cancellation behavior. Preserve WebSocket and transactional semantics; do not introduce an unbounded waiting queue or cancel a committed mutation and imply it did not happen. RATE-005 then needs an evidence-based reconciliation with the existing Phase 6 queue/quota implementation. Full certification and deterministic product rows remain open.
 PHASE 11 STATUS: SEO-001/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED; SEO-002 IMPLEMENTED pending a real-backend sitemap pagination check; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
-CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; the disposable PostgreSQL harness upgraded from empty, downgraded to 0038, loaded the historical fixture, and re-upgraded through 0070 successfully
+CURRENT ALEMBIC CURRENT: explicitly disposable local SQLite `.local-data/readiness-3m-alembic.db` is unstamped (checked 2026-09-15); no migration created. Historical disposable PostgreSQL 29/29 proof remains recorded below; no PostgreSQL drill rerun for this provider-only slice.
 IMPORTANT NEW ARCHITECTURE (RATE-003B / OF-105): `app.services.google_places_service.GooglePlacesService` is a fixed-destination provider adapter, not an arbitrary-URL fetcher. It owns the backend-only Places key, disables redirects/environment proxies/cookies, streams decoded JSON under 128 KiB, applies four-second operation and six-second whole-attempt deadlines, and returns only bounded normalized dataclasses. `GET /me/location/autocomplete` and `/details` are authenticated and share `LOCATION_LOOKUP_LIMIT` (120/minute/user) through the existing Redis fail-closed boundary. The Next routes perform same-origin/session enforcement, own no provider key or network client, preserve local-catalogue fallback only for an explicit missing-provider code, and proxy bounded numeric retry guidance. `LocationAutocompleteField` attributes only provider-backed results with exact non-translated `Google Maps` text in the same visual container but outside the ARIA listbox. IMPORTANT NEW ARCHITECTURE (RATE-003A): `app.core.rate_limit.enforce_rate_limit` is the only HTTP allow/reject/fail-closed path. `rate_limit` supplies a trusted `ip:<address>` key before authentication; `authenticated_rate_limit` supplies `user:<verified UUID>` after the normal durable-session/strong-auth dependency. The namespace prevents a textual IP/user collision and user buckets follow the account across devices and NAT changes. Each dependency carries a `RateLimitPolicy`, so structural tests inventory the actual FastAPI graph rather than grepping source. One shared outbound category (30/10m/user) prevents endpoint-switch evasion; media is 20/hour/user, public deep search 120/min/IP, marketplace/messaging actions 120/5m/user, admin/support 300/5m/user, refresh 120/5m/IP and verification 60/10m/IP. Admin allowance is consumed only after permission succeeds. Anonymous reports remain IP-scoped. Logout/logout-all are explicit recovery exemptions.
 IMPORTANT NEW ARCHITECTURE (RATE-001): `RedisRateLimitBackend.hit` is exactly one Lua `EVAL` over one sorted-set key. Redis `TIME` defines the window, a UUID defines each admission, and removal/count/admit/expiry or retry computation execute at one linearization point. The redis-py 8.1.0 client has one-second connect/command bounds, retry-on-timeout disabled and explicit RESP2 for supported Redis 7.2/7.4. Configured Redis is a mandatory production security dependency: startup pings it, runtime failure returns a generic 503, and neither path falls back to process-local counters. `backend/scripts/exercise_redis_rate_limit.py` accepts only an explicit loopback Redis URL and is shared by local proof and the exact Redis 7.4.11 CI service.
 IMPORTANT NEW ARCHITECTURE (13B): `backend/scripts/audit_production_dependencies.py` exports the committed `--no-dev` lock rather than auditing the active developer environment, invokes pinned pip-audit 2.10.1 over fully hashed requirements, and compares every finding to `backend/security/pip-audit-allowlist.json`. The one existing ecdsa Minerva finding is exact by package/version/PYSEC/CVE/GHSA and points to executable HMAC-only evidence; any new/changed finding, version drift, missing evidence, malformed report, audit failure, or stale exception fails the gate. There is no `--ignore-vuln` or severity threshold. Realtime consumers now receive one canonical server handshake and use a ref for adaptive poll cadence, so connection-state paint no longer restarts polling effects. Live Star writes resolve the participant-authorised conversation before optimistic state and await a real PUT. Missing demo identity media remains missing and renders the initials fallback rather than fetching random public images. IMPORTANT NEW ARCHITECTURE (13A): none. This slice removes a certification gate through behavior-preserving import/typing/lint cleanup and current-date-safe test data; it adds no runtime service, dependency, migration or product contract. IMPORTANT NEW ARCHITECTURE (12E): `docs/CREDENTIAL_ROTATION.md` is the complete 18-family application credential registry and exact planned/emergency procedure. `scripts.rotate_strong_auth_secrets` gives the TOTP AES-GCM keyring the same dry-run-first, bounded, resumable rewrap boundary stored OAuth grants already had; both refuse a missing old key and never emit plaintext. Google credential-authority and email-webhook verification now accept one backend-only previous secret during planned producer cutover, while current stays mandatory and retirement is behaviorally proven. Compromise rotation deliberately omits previous. Production frontend boot now requires at least 32-character `NEXTAUTH_SECRET` and `GOOGLE_OAUTH_EXCHANGE_SECRET`; backend production validation rejects short JWT/webhook/unsubscribe values, previous-without-current, and same-value overlap. Rewrap is explicitly not revocation: exposed TOTP seeds must be re-enrolled and exposed Google grants revoked/reconnected. IMPORTANT NEW ARCHITECTURE (12D): `docs/INCIDENT_RESPONSE.md` is the application-specific response contract and `docs/INCIDENT_TABLETOP.md` records the no-provider decision-path review without promoting it to a live drill. Each incident path identifies detection, smallest reversible containment, privacy-safe evidence, recovery, verification and the precise external stop. `tests/incidentRunbooks.test.mjs` requires every named application control to have executable declaration, enforcement and an operator consumer, and forbids destructive/credential-bearing command blocks. Emergency `scripts.grant_admin --revoke` now takes the same user-first lock order as auth security events, demotes the account, revokes every durable session/refresh credential and appends a bounded actor-less audit event in one transaction. Demotion removes privilege immediately; temporary claimless migration access cannot be selectively revoked and therefore requires the documented suspension or coordinated global-secret containment step for ordinary access before its production-capped expiry. The email incident path also resolved a misleading operator contract: authentication and notification mail share one outbox/provider, so `EMAIL_DELIVERY_ENABLED=false` gates every real send after worker restart while durable intents continue queueing.
@@ -18,13 +18,112 @@ NEW ENVIRONMENT VARIABLES: `GOOGLE_PLACES_API_KEY` moved from the frontend templ
 NEW DEPENDENCIES: backend runtime adds redis-py 8.1.0 (`redis>=8.1.0,<9.0.0`); the lock also records conditional async-timeout 5.0.1 for older Python. The current-Python production install is 53 packages and the hashed export is 55 requirement rows. No frontend dependency changed.
 NEW SERVICES: no service was provisioned. Google Places is an optional fixed external provider behind the backend boundary; keep its key absent until console API restrictions, billing quotas, current provider-policy review and a live lookup/attribution/outage drill are complete. Production still concretely requires managed Redis 7.2+ for shared rate limiting, but none was contacted here. Existing local/CI audit, rotation, incident, metric, error and synthetic services remain as documented.
 OUTSTANDING EXTERNAL REQUIREMENTS: Google Places console key/API/service restriction, billing quota, current terms/policy review and live lookup/attribution/outage drill before setting `GOOGLE_PLACES_API_KEY`; a human/operator tabletop; immutable artifact rollback/traffic-shift drill; hosted database/PITR and media restore; other real provider outage/failover/revocation drills; production credential rotation; production log ingestion/retention/access; real alert-destination delivery and acknowledgement; standalone-worker absence/process-death monitoring; scheduled synthetics against isolated staging data; evidence-backed traffic/latency/capacity thresholds; authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; staging soak
-KNOWN TEST FAILURES: no Phase 3L task-caused failure remains. Places/quota backend focus: 37/37. Final frontend boundary: 5/5. Complete current frontend Node: 1,297/1,297. TypeScript, production build and complete Ruff are green; complete ESLint exits zero with the same 32 existing warnings and the final targeted location lint is clean. Compatibility matrix: 152 passed/1 skipped/1 environmental timing failure. The exact failure is `test_auth_repository_is_importable_before_the_services_package`: its unchanged child-process deadline is ten seconds while host load was about 69. It failed in the matrix and isolated rerun; the identical import then completed correctly with exit 0 in 24.63 wall seconds while consuming only 1.61 user + 1.70 system seconds, proving scheduler starvation. No timeout, sleep, skip or assertion changed. The authoritative full-backend result from RATE-001 remains 7,499 passed/65 skipped/71 warnings; another 52-minute aggregate was not started. Browser status is unchanged and Playwright was deliberately not started on this host.
-COMMANDS TO RESUME: `git status --short`; `git branch --show-current`; `git rev-parse HEAD`; `uptime`. Phase 3L focus: `cd backend && APP_ENV=test .venv/bin/python -m pytest -q tests/test_google_places_service.py tests/test_endpoint_rate_limits.py`; `node --test tests/locationProviderBoundary.test.mjs`. Phase 3M inventory: `rg -n 'youtube.googleapis.com|googleapis.com/youtube|YOUTUBE_(DATA_)?API_KEY|fetch_user_youtube' app backend lib tests`; inspect both fixed-provider clients and their OAuth error tests before choosing one coherent boundary. Do not start Playwright while load remains abnormal. On a quiet host isolate the unchanged auth import deadline first, then run `npm run test:e2e:qa` alone and retain the exact report. Gitleaks and built-image scanning require another environment.
-FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; the Phase 3L checkpoint below; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md; backend/app/services/google_places_service.py; backend/app/api/v1/routers/locations.py; backend/tests/test_google_places_service.py; then `backend/app/services/youtube_service.py`, `lib/youtubeIdentity.ts` and their tests for Phase 3M
+KNOWN TEST FAILURES: no task-caused Phase 3M failure. Current focused backend JUnit: 104 passed (43 new provider cases); compatibility 169 passed/1 existing skip; session suite 16 passed, including the formerly load-sensitive auth import test. Full frontend Node 1,297/1,297; TSC and production build exit 0; ESLint 0 errors/32 existing warnings; whole-backend Ruff exit 0. Real-backend resolver browser suite 7/7. Full backend not rerun this slice; see the collection reconciliation in Phase 3M below rather than treating historical shorthand as a fresh count.
+COMMANDS TO RESUME: `git status --short`; `git branch --show-current`; `git rev-parse HEAD`; `uptime`. Read the Phase 3M checkpoint and RATE-004 ledger before another change. Focus: `cd backend && APP_ENV=test .venv/bin/python -m pytest -o addopts= -q tests/test_youtube_provider_boundary.py tests/test_google_oauth_refresh.py tests/test_auth_and_channels.py tests/test_endpoint_rate_limits.py tests/test_google_oauth_scope_disconnect.py`; browser: `npm run test:e2e:qa -- tests/e2e/qa/organization-resolver.spec.ts --reporter=line`. Do not overlap pytest processes or builds/Playwright. Do not retry Docker/Gitleaks without evidence the environment changed.
+FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase 3M below; backend/app/middleware/request_body_limit.py; backend/app/main.py; backend/app/core/config.py; backend/app/core/rate_limit.py; backend/app/db/session.py. Provider architecture: backend/app/services/youtube_service.py; backend/tests/test_youtube_provider_boundary.py; lib/youtubeIdentity.ts; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md.
 RELEASE ASSESSMENT: NO-GO
+IMPORTANT NEW ARCHITECTURE (Phase 3M): `YouTubeProviderClient` is the only YouTube Data API transport. `fetch_user_youtube_channels` and `fetch_youtube_video_metadata` remain compatible entrypoints. `POST /me/youtube-identity` shares the existing verified-user outbound quota. `YOUTUBE_API_KEY` is preferred; backend-only `YOUTUBE_DATA_API_KEY` is the compatibility alias; both are SecretStr, blank primary falls through. Remove keys from the frontend at eventual operator cutover; no live configuration changed. The QA harness explicitly blanks both keys. No new migration, dependency, service or AI behavior change.
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Resumed Phase 3M checkpoint (2026-09-15 — bounded YouTube provider)
+
+```text
+Phase: 3M / RATE-004 subitems OF-103 and OF-104
+Status: COMPLETE atomic slice. RATE-004 remains IN_PROGRESS for inbound concurrency/cancellation.
+Initial HEAD: 7f5d1fca960eeb251d846b4f050b4d850bca818f
+Final HEAD: resolve `git log -1 --format=%H --grep='security(provider): consolidate bounded YouTube lookups'`
+Commit(s): security(provider): consolidate bounded YouTube lookups
+Files materially changed:
+  backend/app/services/youtube_service.py; backend/app/api/deps.py
+  backend/app/api/v1/routers/me.py; backend/app/schemas/{profile,__init__}.py
+  backend/app/core/{config,config_contract}.py; backend/.env.example; backend/README.md
+  backend/tests/test_youtube_provider_boundary.py; backend/tests/test_endpoint_rate_limits.py
+  lib/{youtubeIdentity,backendClient}.ts; app/api/profile/organization-identity/route.ts
+  .env.example; tests/youtubeIdentityResolver.test.mjs
+  playwright.qa.config.ts; tests/e2e/qa/organization-resolver.spec.ts
+  docs/{CREDENTIAL_ROTATION,PRODUCTION_READINESS_EXECUTION,
+    PRODUCTION_READINESS_OUTBOUND_FETCH,PRODUCTION_READINESS_HANDOFF}.md
+Migrations: none. Dependencies: none. New services: none.
+Behavior changed:
+  - one backend YouTube client owns the exact channels/videos URLs, secret key and optional
+    owned-channel OAuth header; parsed selectors never choose a host, path or credential;
+  - fresh redirect-free, environment-proxy-free HTTP requests have 2s connect/8s operation/12s
+    whole-resolution deadlines and a 512 KiB decoded-response ceiling. Non-JSON, deeply nested,
+    non-standard numeric JSON, oversized fields and invalid result shapes fail safely;
+  - identity fields, metrics, duration and thumbnails are bounded before returning/persisting.
+    Owned thumbnails honor the existing 1024-character column; normalized @ handles honor the
+    100-character API limit. Valid missing thumbnails and manual portfolio entry still work;
+  - malformed, partial, paginated or >50-item owned-channel snapshots fail temporarily instead
+    of clearing/replacing links. Genuine empty items remain valid. Duplicate valid IDs dedupe.
+    401 and explicit 403 authError/insufficientPermissions still require reauthorization;
+    outage/quota/redirect/malformed replies never masquerade as revoked consent;
+  - `/me/youtube-identity` requires normal durable authentication and the shared 30/10m/user
+    outbound quota. The Next same-origin session boundary proxies the CreatorJobs bearer only;
+    it contains no YouTube provider credential or Data API fetch and preserves URL fallback;
+  - backend-only YOUTUBE_API_KEY/YOUTUBE_DATA_API_KEY now use SecretStr with one stripped-key
+    precedence rule. QA blanks both keys so its YouTube fallback cannot consume a live key.
+Security assumptions:
+  Fixed HTTPS Google endpoints rely on normal platform TLS/DNS trust, not arbitrary-user-URL
+  fetching. User-selected page reads still use the existing SafeOutboundFetcher. Deployment
+  operators must relocate any frontend YouTube key to backend configuration and restrict its
+  API/quota in Google Cloud; no real configuration or key was touched. Existing log formatter
+  discards HTTP log interpolation args and redacts URLs. No new credential exposure.
+Tests run and exact results (all exit 0):
+  APP_ENV=test YOUTUBE_API_KEY= YOUTUBE_DATA_API_KEY= .venv/bin/python -m pytest
+    -o addopts='' -q tests/test_youtube_provider_boundary.py tests/test_google_oauth_refresh.py
+    tests/test_auth_and_channels.py tests/test_endpoint_rate_limits.py
+    tests/test_google_oauth_scope_disconnect.py
+    --junitxml=/tmp/creatorjobs-3m-provider-20260915.xml
+    => 104 passed / 0 skipped / 5 warnings / 7.53s (43 provider-boundary cases)
+  APP_ENV=test .venv/bin/python -m pytest -o addopts='' -q tests/test_config.py
+    tests/test_config_contract.py tests/test_link_preview.py tests/test_portfolio_proof_cards.py
+    tests/test_creator_profile_phase1.py tests/test_oauth_credentials.py
+    --junitxml=/tmp/creatorjobs-3m-compat-20260915.xml
+    => 169 passed / 1 existing skip / 4 warnings / 13.31s
+  APP_ENV=test .venv/bin/python -m pytest -o addopts='' -q tests/test_auth_sessions.py
+    --junitxml=/tmp/creatorjobs-3m-sessions-20260915.xml
+    => 16 passed / 4 warnings / 24.64s. Prior host-load import timeout no longer reproduces.
+  node --test tests/youtubeIdentityResolver.test.mjs => 11/11
+  node --test tests/*.test.mjs => 1297 passed / 0 failed / 0 skipped
+  npx tsc --noEmit => exit 0
+  npm run lint => exit 0, 0 errors / 32 pre-existing warnings
+  backend/.venv/bin/ruff check backend (run as `.venv/bin/ruff check .` inside backend) => clean
+  npm run test:e2e:qa -- tests/e2e/qa/organization-resolver.spec.ts --reporter=line
+    => production build exit 0; 7/7 real-backend browser tests / 24.4s / one worker
+  Alembic heads/current with explicit disposable SQLite URL => one head 0070_activity_page_indexes;
+    current is unstamped. No hosted DB, migration or PostgreSQL container touched.
+  git diff --check => exit 0
+Collection reconciliation:
+  EXPECTED_CURRENT_COLLECTION backend: 7645 (pytest --collect-only -o addopts='' -q, exit 0).
+  LAST_FULL_SUITE_OBSERVED frontend: 1297 passed in this slice.
+  LAST_FULL_SUITE_OBSERVED backend: no fresh full run in this slice. Earlier Phase 10 JUnit note
+    says 7499 TOTAL / 65 skipped, whereas RATE-001 later says 7499 PASSED / 65 skipped. The old
+    XML is not retained here, so these are historical reports, not interchangeable/current
+    certifications. Do not infer either a fresh total or pass count from console dots. Next
+    full certification must retain and parse JUnit and reconcile against current collection.
+Test contract corrections:
+  The previous in-progress provider test tolerated malformed/truncated owned lists; this was
+    incorrect because consumers replace linked authority. It now requires a temporary error.
+  The frontend unit test no longer mocks its own Google fetch because that transport moved to
+    backend tests. Structural TS checks print the AST without comments; backend transport options
+    are behaviorally captured. A formerly invalid six-character video fixture is now a valid
+    eleven-character ID; production accepts only valid ID syntax.
+Known external failures:
+  No paid/credentialed Google/AI request made. Existing Instagram browser cases may attempt
+  unauthenticated public metadata enrichment; their assertions use URL-derived fallback.
+  Docker/Gitleaks/image scans not retried; managed infrastructure, provider key restrictions,
+  DNS, legal approval, authenticator device/accessibility review and staging soak remain external.
+Remaining risks:
+  RATE-004 inbound concurrency/cancellation; RATE-005 AI resource guard reconciliation; open
+  deterministic correctness/trust/product and certification items. AI import remains intact,
+  queue-backed and human-reviewed; this slice does not enable/disable it or alter its budget.
+Next phase: 3N — read existing middleware/ASGI/DB transaction contracts before a bounded slice.
+Important commands: top resume summary; never overlap pytest/build/browser owners.
+Repository safety: local commit only; all five frozen refs unchanged; no push, deployment,
+  hosted Neon, Vercel or Render modification. Release assessment remains NO-GO.
+```
 
 ## Resumed Phase 3L checkpoint (OF-105 — authenticated bounded Google Places)
 

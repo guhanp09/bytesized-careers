@@ -195,6 +195,7 @@ def test_expensive_fetch_upload_and_search_routes_have_category_limits() -> None
             "/me/hiring-identities/{identity_id}/check-verification",
         ),
         (me.router, "POST", "/me/organization-page"),
+        (me.router, "POST", "/me/youtube-identity"),
         (jobs.router, "POST", "/jobs/{job_id}/brand-about/enrich"),
         (job_imports.router, "POST", "/job-imports/url-sources"),
     )

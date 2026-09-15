@@ -2,7 +2,10 @@ import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 
 import { authOptions } from "../../../../lib/auth";
-import { readOrganizationPage } from "../../../../lib/backendClient";
+import {
+  readOrganizationPage,
+  resolveMyYouTubeIdentity,
+} from "../../../../lib/backendClient";
 import {
   decodeExperienceHtmlEntities,
   inferExperienceFromUrl,
@@ -23,11 +26,10 @@ export const runtime = "nodejs";
  *
  * It is now an orchestration boundary and nothing more. It requires a
  * same-origin signed-in caller, decides which identity strategy applies, and
- * asks the backend to read the page — where the shared `SafeOutboundFetcher`
- * pins each connection to the address that passed validation, re-validates
- * every redirect, refuses non-public destinations, and returns only the handful
- * of fields this resolver uses. No remote HTML reaches this runtime or the
- * browser.
+ * asks the backend either to read a page through `SafeOutboundFetcher` or to
+ * resolve one parsed YouTube selector through its fixed-provider client. No
+ * provider key, arbitrary remote response, or remote HTML reaches this runtime
+ * or the browser.
  */
 const sameOrigin = (request: NextRequest): boolean => {
   const origin = request.headers.get("origin");
@@ -185,7 +187,24 @@ export async function POST(request: NextRequest) {
 
   const inferred = inferExperienceFromUrl(normalizedUrl);
   const youtubeIdentity = await resolveYouTubeChannelIdentity(normalizedUrl, {
-    apiKey: process.env.YOUTUBE_DATA_API_KEY || process.env.YOUTUBE_API_KEY,
+    resolveProviderIdentity: async (selector) => {
+      try {
+        const result = await resolveMyYouTubeIdentity(accessToken, selector);
+        if (!result.identity) return null;
+        return {
+          platform: "YouTube" as const,
+          name: result.identity.title,
+          logoUrl: result.identity.thumbnail_url || null,
+          canonicalUrl: result.identity.canonical_url,
+          externalId: result.identity.channel_id,
+          handle: result.identity.handle || null,
+          confidence: "high" as const,
+          source: "youtube_data_api" as const,
+        };
+      } catch {
+        return null;
+      }
+    },
     // A custom path is the one YouTube shape whose channel id lives only in the
     // page. The backend reads it through the pinned boundary and returns the id
     // alone; nothing here fetches youtube.com.
