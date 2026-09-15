@@ -176,6 +176,19 @@ test("CI executes the atomic limiter against an exact loopback Redis service", (
   );
 });
 
+test("CI and the local PostgreSQL harness execute the owned timeout recovery drill", () => {
+  const yamlCode = ci.replace(/^\s*#.*$/gm, "");
+  const postgresJob = yamlCode.split("  backend-postgres:")[1]?.split("\n  browser:")[0];
+  assert.ok(postgresJob, "expected a PostgreSQL job");
+  assert.match(postgresJob, /run: uv run python -m scripts\.exercise_database_timeouts\s*\n/);
+  assert.match(postgresJob, /POSTGRES_TEST_DATABASE_URL: postgresql\+asyncpg:\/\/creatorjobs_test:creatorjobs_test@127\.0\.0\.1:55439\/creatorjobs_interaction_test/);
+  const shellCode = readFileSync(
+    join(root, "backend", "scripts", "test_interaction_status_postgres.sh"), "utf8",
+  ).replace(/^\s*#.*$/gm, "");
+  assert.match(shellCode, /"\$PYTHON_BIN" -m scripts\.exercise_database_timeouts\s*$/m);
+  assert.ok(existsSync(join(root, "backend", "scripts", "exercise_database_timeouts.py")));
+});
+
 test("no artifact upload includes secrets or databases", () => {
   for (const source of [ci, security]) {
     const uploads = [...source.matchAll(/path: \|?([\s\S]*?)(?=\n {6}[a-z-]+:|\n {4}- |\n {2}[a-z-]+:)/g)]

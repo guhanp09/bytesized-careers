@@ -35,6 +35,8 @@ Key vars:
 - `APP_ENV`
 - `EMAIL_MODE`
 - `DATABASE_URL`
+- `DB_CONNECT_TIMEOUT_SECONDS` (asyncpg establishment deadline; default 10, maximum 120)
+- `DB_COMMAND_TIMEOUT_SECONDS` (asyncpg default operation deadline; default 30, maximum 300)
 - `CORS_ORIGINS`
 - `LOG_LEVEL`
 - `MAX_CONCURRENT_HTTP_REQUESTS` (required explicit per-worker capacity in production;
@@ -73,6 +75,17 @@ Key vars:
   defaults to 60 seconds for synchronous URL extraction)
 - `OPENAI_MAX_RETRIES`
 - `JOB_IMPORT_PROMPT_VERSION`
+
+Database connect/command deadlines are finite and positive, separate from pool
+checkout timeout and capacity. They apply only to the application asyncpg engine;
+SQLite and Alembic migration engines are unchanged. The driver owns command
+cancellation; no request or write is automatically retried. A commit timeout is an
+unknown outcome until persisted state is reconciled, not proof of rollback. These
+are per-operation deadlines, not an absolute whole-request/transaction deadline.
+The owned loopback PostgreSQL harness also runs
+`python -m scripts.exercise_database_timeouts`: a read-only `pg_sleep` timeout,
+rollback, subsequent query and pooled-connection recovery check. Its URL guard
+refuses hosted databases and query-string destination overrides before engine import.
 
 HTTP admission rejects excess concurrent work immediately with a privacy-safe
 `503 server_busy`, `Retry-After: 1`, `Cache-Control: no-store` and request correlation.

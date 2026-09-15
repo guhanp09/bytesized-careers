@@ -33,3 +33,7 @@ PYTHONPATH=. "$PYTHON_BIN" tests/interaction_migration_fixtures.py
   tests/test_interaction_migration_postgres.py \
   tests/test_interaction_transitions_postgres.py \
   -q
+
+# Read-only query timeout, rollback and pooled-connection recovery. This script
+# independently refuses non-loopback/non-harness targets before engine import.
+"$PYTHON_BIN" -m scripts.exercise_database_timeouts

@@ -239,6 +239,9 @@ jobs:
             tests/test_interaction_transitions_postgres.py \
             -q --junitxml=junit-postgres.xml
 
+      - name: Database command timeout and recovery
+        run: uv run python -m scripts.exercise_database_timeouts
+
       - name: Upload PostgreSQL test results
         if: always()
         uses: actions/upload-artifact@v4

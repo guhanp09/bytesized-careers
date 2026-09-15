@@ -147,6 +147,12 @@ class Settings(BaseSettings):
     db_pool_recycle_seconds: int = Field(
         default=1800, alias="DB_POOL_RECYCLE_SECONDS", gt=0, le=86400
     )
+    db_connect_timeout_seconds: float = Field(
+        default=10.0, alias="DB_CONNECT_TIMEOUT_SECONDS", gt=0, le=120, allow_inf_nan=False
+    )
+    db_command_timeout_seconds: float = Field(
+        default=30.0, alias="DB_COMMAND_TIMEOUT_SECONDS", gt=0, le=300, allow_inf_nan=False
+    )
     jwt_secret: str = Field(default="change-me", alias="JWT_SECRET")
     # HMAC only, and the restriction is deliberate. Tokens are signed with
     # `jwt_secret`, a shared secret — the asymmetric families need a key pair, so

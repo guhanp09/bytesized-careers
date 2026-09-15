@@ -31,9 +31,7 @@ def _pool_options() -> dict[str, object]:
         # A local default only. Production supplies the real numbers; see
         # validate_production_settings, which refuses to start without them.
         "pool_size": settings.db_pool_size if settings.db_pool_size is not None else 5,
-        "max_overflow": (
-            settings.db_max_overflow if settings.db_max_overflow is not None else 5
-        ),
+        "max_overflow": (settings.db_max_overflow if settings.db_max_overflow is not None else 5),
         # Bounded wait. Without it, exhaustion becomes requests hanging until the
         # client gives up — an outage with no error recorded anywhere.
         "pool_timeout": settings.db_pool_timeout_seconds,
@@ -42,11 +40,29 @@ def _pool_options() -> dict[str, object]:
     }
 
 
+def _connection_options() -> dict[str, object]:
+    """Bound asyncpg network/command waits without changing transaction ownership.
+
+    Pool checkout timeout does not bound connection establishment or statements.
+    asyncpg otherwise defaults command_timeout to None. Let the maintained driver
+    own command cancellation/connection recovery; never retry writes here.
+    """
+    if not settings.database_url.startswith("postgresql+asyncpg://"):
+        return {}
+    return {
+        "connect_args": {
+            "timeout": settings.db_connect_timeout_seconds,
+            "command_timeout": settings.db_command_timeout_seconds,
+        }
+    }
+
+
 engine = create_async_engine(
     settings.database_url,
     pool_pre_ping=True,
     echo=settings.debug,
     **_pool_options(),
+    **_connection_options(),
 )
 
 

@@ -382,6 +382,18 @@ CONFIG_CONTRACT: dict[str, ConfigContract] = {
         "who has read this repository can mint a token for any account.",
         unsafe_production_value="change-me",
     ),
+    "db_connect_timeout_seconds": ConfigContract(
+        Requirement.OPTIONAL_DEVELOPMENT,
+        Enforcement.BOUNDED,
+        "Bounds asyncpg connection establishment separately from pool checkout. "
+        "SQLite receives no PostgreSQL driver options.",
+    ),
+    "db_command_timeout_seconds": ConfigContract(
+        Requirement.OPTIONAL_DEVELOPMENT,
+        Enforcement.BOUNDED,
+        "Replaces asyncpg's unlimited default command wait. This is an operation timeout, "
+        "not a whole-transaction deadline or proof that a timed-out commit was rolled back.",
+    ),
     "jwt_algorithm": ConfigContract(
         Requirement.CORE_REQUIRED,
         Enforcement.SCHEMA,
