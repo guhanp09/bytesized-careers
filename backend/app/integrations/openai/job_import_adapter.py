@@ -11,6 +11,7 @@ import openai
 from openai import AsyncOpenAI
 from pydantic import ValidationError
 
+from app.core.job_import_attempt_liveness import MAX_PROVIDER_RETRY_DELAY_SECONDS
 from app.core.job_import_intelligence_matrix import intelligence_matrix
 from app.core.job_import_request_compaction import compact_provider_request
 from app.integrations.openai.job_import_instructions import (
@@ -41,7 +42,7 @@ from app.services.job_import_provider import (
 
 OPENAI_MAX_OUTPUT_TOKENS = 16_000
 OPENAI_REASONING_EFFORT = "medium"
-_MAX_RETRY_DELAY_SECONDS = 2.0
+_MAX_RETRY_DELAY_SECONDS = MAX_PROVIDER_RETRY_DELAY_SECONDS
 _Sleep = Callable[[float], Awaitable[None]]
 
 

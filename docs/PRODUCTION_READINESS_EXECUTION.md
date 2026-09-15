@@ -127,11 +127,12 @@ Phase 3Q reinspection corrects the earlier local-completion claim: the HTTP proc
 | AI-010 | HIGH | Evaluation corpus | AI-001 | IMPLEMENTED | Literal, inference, currency, ambiguity, conflict, missing, malformed, injection, long-input fixtures | NO | NO | Yes | Yes | A large corpus predates this phase: test_job_import_inference, _intelligence_matrix, _semantic_containment, _source_corpus, _experience_semantics, _weekly_hours, _location_resolution, and test_import_prompt_injection for the hostile cases. Not re-derived here; no gap found by survey |
 | AI-011 | CRITICAL | Kill switch | AI-001 | VALIDATED | Runtime disable, in-flight behavior, UI message, audit and recovery tests | NO | NO | Yes | Yes | "feat(import): give AI job import a switch that actually turns it off" — JOB_IMPORT_ENABLED, default true; taken out of its AI-001 dependency because a kill switch is worth more before a durable queue than after |
 
-Phase 3Q lease sub-ledger:
+Phase 3Q–3R lease/provider sub-ledger:
 
 | ID | Severity | Phase | Subsystem | Dependencies | Status | Tests required | Migration | Infra | Blocks beta | Blocks unrestricted | Resolving commit |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | AI-001A | CRITICAL | 3Q | Attempt-owned lease cleanup | Existing0063 lease | VALIDATED | Baseline regression erased the newer lease; five new fencing cases now pass. Focus174 passed; broader AI5632 passed/39 existing skips; Node1298/1298; canonical import browser6/6 plus build. Both cleanup paths match the full attempt UUID; no schema or API change | NO | NO | Yes | Yes | `security(ai-import): fence cleanup by processing attempt` |
+| AI-005A | CRITICAL | 3R | Provider wall-clock/lease coherence | AI-001A | VALIDATED | Shared viable floor/backoff budget; owned provider deadline, cancellation/late-result rejection, source-preserving504/retry and configured-maximum lease tests. Final AI5658 passed/39 skips; browser6/6; Node1298/1298. Complete backend candidate7669 passed/65 skips before final late-result guard, then entire affected AI matrix rerun | NO | NO | Yes | Yes | `security(ai-import): align provider deadlines and durable leases` |
 
 ## Phase 7 — Durable media storage
 

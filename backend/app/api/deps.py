@@ -15,6 +15,7 @@ from app.core.account_state import account_block, account_is_blocked
 from app.core.account_types import isAdmin
 from app.core.auth_assurance import has_fresh_strong_auth
 from app.core.config import settings
+from app.core.job_import_attempt_liveness import MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS
 from app.core.job_import_readiness_check import require_allowed_model
 from app.core.qa_personas import (
     is_qa_controller_email,
@@ -98,7 +99,7 @@ async def get_job_import_service(
 #:
 #: Enforced here rather than in the settings bounds so an existing deployment
 #: keeps booting — but never silently, because silence is how this survived.
-MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS = 45.0
+# The constant is shared with lease/liveness and whole-provider budgets.
 
 
 def _viable_timeout_seconds(configured: float) -> float:

@@ -76,6 +76,16 @@ Key vars:
 - `OPENAI_MAX_RETRIES`
 - `JOB_IMPORT_PROMPT_VERSION`
 
+AI import wraps the complete asynchronous provider operation (including retries)
+in an owned wall-clock deadline: effective per-call timeout (minimum 45s) times
+attempt count, plus at most 2s per retry. Default 182s; configured maximum 726s.
+Its durable processing lease and read-time recovery budget include another 120s
+for surrounding work (default 302s, maximum 846s). No database transaction/commit is
+cancelled by this provider deadline. An expired provider attempt becomes a saved,
+retryable failure; source and human-review publication controls remain intact.
+At eventual rollout, drain old request-owning import processors before replacement;
+new code cannot retrofit longer leases or fenced cleanup into an old running process.
+
 Database connect/command deadlines are finite and positive, separate from pool
 checkout timeout and capacity. They apply only to the application asyncpg engine;
 SQLite and Alembic migration engines are unchanged. The driver owns command

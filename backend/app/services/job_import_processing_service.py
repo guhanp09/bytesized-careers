@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from app.core.config import settings
+from app.core.job_import_attempt_liveness import (
+    ATTEMPT_OVERHEAD_SECONDS,
+    maximum_provider_seconds,
+)
 from app.core.job_import_availability import refuse_if_disabled
 from app.core.job_import_execution import attempts_remain
 from app.core.operational_metrics import MetricOutcome, record_ai_provider_call
@@ -25,6 +30,7 @@ from app.schemas.job_import import JobImportProviderMetadata
 from app.services.job_import_provider import (
     JobImportExtractionProvider,
     JobImportProviderError,
+    extract_with_budget,
 )
 from app.services.job_import_service import JobImportError, JobImportService
 
@@ -142,6 +148,10 @@ class JobImportProcessingService:
 
         processing_attempt_id = uuid4()
         worker_id = _processing_worker_id(processing_attempt_id)
+        provider_budget = maximum_provider_seconds(
+            request_timeout_seconds=settings.openai_request_timeout_seconds,
+            max_retries=settings.openai_max_retries,
+        )
         # Durable ownership, taken before the status transition below. The
         # existing mutation token serializes writers inside one transaction; it
         # says nothing once the transaction ends, so a process that dies here
@@ -152,6 +162,7 @@ class JobImportProcessingService:
             draft_id,
             worker_id=worker_id,
             now=datetime.now(UTC),
+            lease_seconds=math.ceil(provider_budget + ATTEMPT_OVERHEAD_SECONDS),
         )
         if leased is None:
             # No provider call will happen, so the unit goes back.
@@ -206,7 +217,9 @@ class JobImportProcessingService:
 
         provider_started = time.perf_counter()
         try:
-            provider_result = await self.provider.extract(request)
+            provider_result = await extract_with_budget(
+                self.provider, request, budget_seconds=provider_budget
+            )
         except asyncio.CancelledError:
             record_ai_provider_call(
                 outcome=MetricOutcome.CANCELLED,

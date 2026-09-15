@@ -26,9 +26,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-#: Longer than the provider ceiling (90s) plus one retry, so an attempt that is
-#: merely slow is never declared dead underneath itself — reclaiming a live
-#: attempt is how one import becomes two provider calls and two bills.
+#: Generic claim/sweeper default. The provider processing path MUST supply its
+#: derived provider deadline plus persistence overhead instead; configured
+#: retries/timeouts can exceed this fixed recovery-only default.
 LEASE_SECONDS = 300
 
 #: Five, matching the email outbox. An import that has failed five times is not

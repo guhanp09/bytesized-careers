@@ -47,9 +47,9 @@ from tests.test_openai_job_import import (
 class TestTheAttemptBudgetComesFromTheServersOwnSettings:
     def test_the_ceiling_covers_every_attempt_the_adapter_may_make(self) -> None:
         # One call plus one retry, both at the full timeout, plus the work
-        # either side of them.
+        # either side of them, including the actual bounded retry delay.
         assert maximum_attempt_seconds(request_timeout_seconds=90.0, max_retries=1) == (
-            180.0 + ATTEMPT_OVERHEAD_SECONDS
+            182.0 + ATTEMPT_OVERHEAD_SECONDS
         )
 
     def test_raising_the_provider_timeout_raises_the_ceiling_with_it(self) -> None:
@@ -88,11 +88,13 @@ class TestOnlyAnUnfinishableAttemptIsDeclaredAbandoned:
         assert not self._assess(started_ago=5).abandoned
         assert not self._assess(started_ago=175).abandoned
         assert not self._assess(started_ago=299).abandoned
+        assert not self._assess(started_ago=302).abandoned
 
     def test_an_attempt_past_every_possible_budget_is_abandoned(self) -> None:
-        assessed = self._assess(started_ago=301)
+        # 90 + 90 + up to2s backoff +120s non-provider overhead.
+        assessed = self._assess(started_ago=303)
         assert assessed.abandoned
-        assert assessed.age_seconds is not None and assessed.age_seconds > 300
+        assert assessed.age_seconds is not None and assessed.age_seconds > 302
 
     def test_a_long_dead_attempt_is_abandoned(self) -> None:
         assert self._assess(started_ago=86_400).abandoned

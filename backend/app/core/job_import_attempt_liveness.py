@@ -33,6 +33,17 @@ from typing import Any
 #: abandoned one a minute late.
 ATTEMPT_OVERHEAD_SECONDS: float = 120.0
 
+# Shared with provider construction and retry backoff. Budgeting raw settings
+# below the viable floor would declare a legitimately running attempt abandoned.
+MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS: float = 45.0
+MAX_PROVIDER_RETRY_DELAY_SECONDS: float = 2.0
+
+
+def maximum_provider_seconds(*, request_timeout_seconds: float, max_retries: int) -> float:
+    retries = max(0, int(max_retries))
+    timeout = max(MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS, float(request_timeout_seconds))
+    return timeout * (1 + retries) + MAX_PROVIDER_RETRY_DELAY_SECONDS * retries
+
 
 @dataclass(frozen=True)
 class AttemptLiveness:
@@ -58,8 +69,9 @@ def maximum_attempt_seconds(
     silently start declaring live attempts dead.
     """
 
-    attempts = 1 + max(0, int(max_retries))
-    return max(0.0, float(request_timeout_seconds)) * attempts + ATTEMPT_OVERHEAD_SECONDS
+    return maximum_provider_seconds(
+        request_timeout_seconds=request_timeout_seconds, max_retries=max_retries
+    ) + ATTEMPT_OVERHEAD_SECONDS
 
 
 def _started_at(provider_metadata: Any) -> datetime | None:
