@@ -31,6 +31,12 @@ from app.services.job_import_service import JobImportError, JobImportService
 logger = logging.getLogger(__name__)
 
 
+def _processing_worker_id(attempt_id: UUID) -> str:
+    # Use the entire attempt identity for both claim and cleanup. A display
+    # abbreviation is not an ownership token.
+    return f"request-{attempt_id.hex}"
+
+
 @dataclass(frozen=True)
 class JobImportProcessResult:
     outcome: str
@@ -135,7 +141,7 @@ class JobImportProcessingService:
             )
 
         processing_attempt_id = uuid4()
-        worker_id = f"request-{processing_attempt_id.hex[:12]}"
+        worker_id = _processing_worker_id(processing_attempt_id)
         # Durable ownership, taken before the status transition below. The
         # existing mutation token serializes writers inside one transaction; it
         # says nothing once the transaction ends, so a process that dies here
@@ -313,7 +319,9 @@ class JobImportProcessingService:
         # The attempt produced a draft, so the lease has nothing left to protect.
         # Released without a retry time: this import is done, and a row that
         # still looks due would be picked up and spent again.
-        await self._release_lease(draft_id, retry=False)
+        await self._release_lease(
+            draft_id, processing_attempt_id=processing_attempt_id, retry=False
+        )
         return JobImportProcessResult(outcome="processed", draft=completed)
 
     async def _fail_or_fall_back(
@@ -521,27 +529,33 @@ class JobImportProcessingService:
                 details["invalid_evidence_span_ids"] = bounded_ids
         return details
 
-    async def _release_lease(self, draft_id: UUID, *, retry: bool) -> None:
+    async def _release_lease(
+        self, draft_id: UUID, *, processing_attempt_id: UUID, retry: bool
+    ) -> None:
         """Hand the row back once this attempt has an outcome.
 
         Always attempted, including on the failure paths: a lease left behind
         makes the draft look busy to every later sweep, which is the same
         "nobody will ever look at this again" state the lease exists to end.
 
-        Not scoped to this worker's id on purpose. If the lease already lapsed
-        and someone else took over, `processing_worker_id` no longer matches and
-        the update simply affects nothing — which is the intended outcome, and
-        cheaper to reason about than a second read to find out.
+        The lifecycle transition committed before this cleanup. Another worker
+        may have claimed the row in between. Fence BOTH updates by this attempt's
+        exact worker identity so delayed cleanup cannot erase newer ownership.
         """
 
         session = self.import_service.repository.session
         try:
             if retry:
                 await schedule_retry_after_failure(
-                    session, draft_id, now=datetime.now(UTC)
+                    session,
+                    draft_id,
+                    now=datetime.now(UTC),
+                    worker_id=_processing_worker_id(processing_attempt_id),
                 )
             else:
-                await settle_finished_attempt(session, draft_id)
+                await settle_finished_attempt(
+                    session, draft_id, worker_id=_processing_worker_id(processing_attempt_id)
+                )
             await session.commit()
         except Exception:  # noqa: BLE001 - releasing must not mask the outcome
             await session.rollback()
@@ -568,7 +582,9 @@ class JobImportProcessingService:
             )
             # Scheduled rather than immediate: a provider that just failed is
             # the worst possible thing to call again straight away.
-            await self._release_lease(draft_id, retry=True)
+            await self._release_lease(
+                draft_id, processing_attempt_id=processing_attempt_id, retry=True
+            )
         except JobImportError as error:
             if error.code not in {
                 "JOB_IMPORT_DRAFT_NOT_FOUND",

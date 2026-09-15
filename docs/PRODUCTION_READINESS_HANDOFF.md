@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external
 CURRENT PHASE: Phase 3 resumed hardening inside Phase 13 certification — RATE-004 request safety
-LAST COMPLETED ATOMIC SLICE: Phase 3P — asyncpg connect/command deadlines and owned-loopback recovery drill wired into CI/local harness. RATE-004C BLOCKED_EXTERNAL for actual PostgreSQL command cancellation/recovery proof. Commit: `security(database): bound asyncpg connection and command waits`.
-NEXT ATOMIC SLICE: Phase 3Q / RATE-005 — reconcile existing AI quota/budget/queue protections against per-user burst/daily/concurrency/input/cost requirements; close a coherent missing guard without duplicating Phase 6 architecture. No local psql/initdb/pg_ctl were available on 2026-09-15; do not repeatedly probe unchanged Docker blockers.
+LAST COMPLETED ATOMIC SLICE: Phase 3Q / AI-001A — fence success/failure lease cleanup by the full attempt UUID. Commit: `security(ai-import): fence cleanup by processing attempt`.
+NEXT ATOMIC SLICE: Phase 3R / RATE-005 — provider wall-clock/lease coherence before cross-draft user concurrency. Current lease is fixed300s while configurable provider waits/retries may exceed it. Preserve the viable45s provider floor/default90s and transaction cleanup. Then add per-user concurrency, durable enqueue/worker/poll compatibility and system-wide budget controls. Actual PostgreSQL race/recovery proof remains unavailable; do not repeatedly probe unchanged Docker blockers.
 PHASE 11 STATUS: SEO-001/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED; SEO-002 IMPLEMENTED pending a real-backend sitemap pagination check; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
 CURRENT ALEMBIC CURRENT: disposable SQLite `.local-data/readiness-3o-backend.db` unstamped (2026-09-15); one head 0070_activity_page_indexes; no migration. Historical PostgreSQL migration proof was not rerun.
@@ -18,7 +18,7 @@ NEW ENVIRONMENT VARIABLES: `GOOGLE_PLACES_API_KEY` moved from the frontend templ
 NEW DEPENDENCIES: backend runtime adds redis-py 8.1.0 (`redis>=8.1.0,<9.0.0`); the lock also records conditional async-timeout 5.0.1 for older Python. The current-Python production install is 53 packages and the hashed export is 55 requirement rows. No frontend dependency changed.
 NEW SERVICES: no service was provisioned. Google Places is an optional fixed external provider behind the backend boundary; keep its key absent until console API restrictions, billing quotas, current provider-policy review and a live lookup/attribution/outage drill are complete. Production still concretely requires managed Redis 7.2+ for shared rate limiting, but none was contacted here. Existing local/CI audit, rotation, incident, metric, error and synthetic services remain as documented.
 OUTSTANDING EXTERNAL REQUIREMENTS: Google Places console key/API/service restriction, billing quota, current terms/policy review and live lookup/attribution/outage drill before setting `GOOGLE_PLACES_API_KEY`; a human/operator tabletop; immutable artifact rollback/traffic-shift drill; hosted database/PITR and media restore; other real provider outage/failover/revocation drills; production credential rotation; production log ingestion/retention/access; real alert-destination delivery and acknowledgement; standalone-worker absence/process-death monitoring; scheduled synthetics against isolated staging data; evidence-backed traffic/latency/capacity thresholds; authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; staging soak
-KNOWN TEST FAILURES: no Phase 3P task-caused failure. Focus195 passed/1 existing skip; compatibility92 passed; Node1298/1298; Ruff0. Actual current collection7704 (+24). LAST FULL execution is 3O: backend7615 passed/65 skipped/72 warnings, TSC/build0, lint0errors/32warnings, browser42/42. These are not new 3P broad runs. Existing Next destination-stream-closed diagnostics remain unsuppressed; actual PostgreSQL query timeout/recovery is still unverified.
+KNOWN TEST FAILURES: no Phase 3Q task-caused failure. Focus174 passed; AI matrix5632 passed/39 existing skips/10warnings; Node1298/1298; Ruff/build0; canonical import browser6/6. Current collection7709 (+5). LAST ENTIRE BACKEND execution remains3O:7615 passed/65 skipped/72warnings. Last TSC/lint3O:0errors/32warnings. Existing Next destination-stream-closed diagnostics remain unsuppressed; actual PostgreSQL query timeout/recovery and cross-worker races are unverified.
 COMMANDS TO RESUME: `git status --short`; `git branch --show-current`; `git rev-parse HEAD`; `uptime`. Read Phase 3O and RATE-004. Focus: `cd backend && APP_ENV=test .venv/bin/python -m pytest -o addopts= -q tests/test_request_body_limit.py tests/test_http_admission.py tests/test_config.py tests/test_config_contract.py tests/test_health_contracts.py tests/test_operational_metrics.py`. Browser: `npm run test:e2e:qa -- tests/e2e/qa/organization-resolver.spec.ts tests/e2e/qa/qa-personas.spec.ts tests/e2e/qa/content-security-policy.spec.ts --reporter=line`. Do not overlap pytest/build/browser owners.
 FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase 3O below; backend/app/db/session.py; backend/tests/test_db_pool_bounds.py; backend/app/core/{config,config_contract}.py; backend/app/middleware/{request_body_limit,http_admission}.py; backend/tests/test_request_body_limit.py.
 RELEASE ASSESSMENT: NO-GO
@@ -28,6 +28,44 @@ IMPORTANT NEW ARCHITECTURE (Phase 3O): REQUEST_BODY_IDLE_TIMEOUT_SECONDS=10 and 
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 3Q checkpoint — attempt-owned AI lease cleanup (2026-09-15)
+
+```text
+SLICE / STATUS: 3Q AI-001A COMPLETE/VALIDATED; RATE-005 and AI-001 remain IN_PROGRESS.
+HEAD BEFORE: 1feff89335ef0249074b71fa788dc66005ac0b0c
+HEAD AFTER / COMMIT: `git log -1 --format=%H --grep='security(ai-import): fence cleanup by processing attempt'`
+CONTRACT: Success/failure cleanup passes the exact current worker ID into the existing guarded
+  SQL updates. Worker IDs use full attempt UUIDs, not a12-hex display prefix. A delayed old
+  cleanup cannot clear newer ownership or schedule its retry. Provider/UX/API/schema unchanged.
+KEY FILES: backend/app/services/job_import_processing_service.py;
+  backend/tests/test_job_import_lease_fencing.py; execution ledger/handoff.
+MIGRATION / DEPENDENCIES / ENV / SERVICES: none. Single Alembic head0070 unchanged; no DB migration.
+BASELINE REPRO: new failure-cleanup regression failed on1feff89 (new worker becameNone), exit1;
+  /tmp/creatorjobs-3q-fence-before-20260915.xml. Actual DB predicate regression, no sleeps.
+FOCUS: five new fencing cases + processing/execution/sweeper/terminal/quota/provider suites:
+  174 passed/5warnings/5.45s exit0; /tmp/creatorjobs-3q-fence-20260915.xml.
+BROAD: tests/test_job_import*.py tests/test_openai*.py tests/test_import*.py:
+  5632 passed/39 existing skips/10warnings/86.63s exit0;5671 JUnit testcases;
+  /tmp/creatorjobs-3q-ai-20260915.xml. Node1298/1298 and Ruff/diff-check0.
+BROWSER: npm run test:e2e:qa -- tests/e2e/qa/import-job-publish.spec.ts --reporter=line
+  =>6/6,31.4s,one worker,production build0; /tmp/creatorjobs-3q-browser-20260915.log.
+  Controlled fixtures, no paid provider. Existing Next destination-stream-closed diagnostics
+  occur; not suppressed/fixed. Private draft, retry and narrow/zoom canonical form checks pass.
+LAST_FULL_SUITE_OBSERVED: entire backend3O7680=7615passed/65skipped. Current ACTUAL collection7709
+  (+5); /tmp/creatorjobs-3q-collection-20260915.log. AI subset is not an entire backend rerun.
+RECONCILIATION: Prior Phase6 local-completion claim corrected. API routers/job_imports.py awaits
+  process(); job_import_sweeper explicitly calls no provider. It is recovery, NOT durable queued
+  execution. Daily quota/per-draft lease are not cross-draft user concurrency. These are READY
+  local work, not merely unavailable PostgreSQL proof. AI remains functional/draft-only.
+NEXT READY:3R provider wall-clock/lease budget, then user concurrency and durable execution.
+READ FIRST: app/services/job_import_processing_service.py; app/core/job_import_execution.py;
+  app/core/job_import_attempt_liveness.py; app/api/deps.py viable-timeout floor;
+  tests/test_job_import_timeout_policy.py. Resume from backend: APP_ENV=test .venv/bin/python -m
+  pytest -o addopts='' -q tests/test_job_import_lease_fencing.py tests/test_job_import_processing_lease.py
+SAFETY: clean explicit-path local commit; frozen refs unchanged; no push/deploy/hosted
+  Neon/Vercel/Render or production credentials. External gates unchanged; release NO-GO.
+```
 
 ## Phase 3P checkpoint — asyncpg operation deadlines (2026-09-15)
 
