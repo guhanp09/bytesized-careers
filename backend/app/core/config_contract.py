@@ -608,6 +608,12 @@ CONFIG_CONTRACT: dict[str, ConfigContract] = {
         "The window the quota counts over, capped at a week so it stays a rate "
         "limit rather than a lifetime allowance.",
     ),
+    "job_import_concurrency_limit": ConfigContract(
+        Requirement.OPTIONAL_DEVELOPMENT,
+        Enforcement.BOUNDED,
+        "Bounds live provider leases across all of one user's drafts. Admission shares the "
+        "daily-counter write transaction; discarded/deleted drafts with live leases still count.",
+    ),
     "job_import_sweeper_in_process": ConfigContract(
         Requirement.OPTIONAL_DEVELOPMENT,
         Enforcement.DEPLOYMENT_CHOICE,

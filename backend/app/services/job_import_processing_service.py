@@ -19,6 +19,7 @@ from app.core.operational_metrics import MetricOutcome, record_ai_provider_call
 from app.models import JobImportDraft
 from app.repositories.job_import_execution_repository import (
     claim_draft_for_processing,
+    count_live_owner_leases,
     schedule_retry_after_failure,
     settle_finished_attempt,
 )
@@ -195,6 +196,24 @@ class JobImportProcessingService:
                 "JOB_IMPORT_ALREADY_PROCESSING",
                 "This draft is already being prepared.",
                 status_code=409,
+            )
+
+        # The successful daily-counter UPDATE still owns this user's row lock.
+        # Claim and count use the same transaction; a second caller cannot see
+        # capacity until this admission commits or rolls back. In particular,
+        # do not move this after begin_processing (which commits the lease).
+        session = self.import_service.repository.session
+        if (
+            await count_live_owner_leases(session, owner_user_id, now=datetime.now(UTC))
+            > settings.job_import_concurrency_limit
+        ):
+            # No provider was called. Restore BOTH the tentative lease/attempt
+            # increment and daily quota charge, without manufacturing a refund.
+            await session.rollback()
+            raise JobImportError(
+                "JOB_IMPORT_CONCURRENCY_LIMIT",
+                "This account is already preparing other drafts. Try again when one finishes.",
+                status_code=429,
             )
 
         try:

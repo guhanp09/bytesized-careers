@@ -348,6 +348,9 @@ class Settings(BaseSettings):
     job_import_daily_quota: int = Field(
         default=25, alias="JOB_IMPORT_DAILY_QUOTA", ge=1
     )
+    job_import_concurrency_limit: int = Field(
+        default=2, alias="JOB_IMPORT_CONCURRENCY_LIMIT", ge=1, le=10
+    )
     job_import_quota_window_hours: int = Field(
         default=24, alias="JOB_IMPORT_QUOTA_WINDOW_HOURS", ge=1, le=168
     )

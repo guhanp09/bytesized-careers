@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external
 CURRENT PHASE: Phase 3 resumed hardening inside Phase13 certification — RATE-005 AI resource safety
-LAST COMPLETED ATOMIC SLICE: Phase3R / AI-005A — owned provider deadline; shared viable-floor/backoff/lease/liveness budget. Commit: `security(ai-import): align provider deadlines and durable leases`.
-NEXT ATOMIC SLICE: Phase3S / RATE-005 — cross-draft per-user concurrency. Existing consume_import_quota UPDATE holds the per-user row lock until begin_processing commits; use that same transaction to check active owner leases before claim, never an unlocked count-then-write. Count live leases even on discarded/deleted drafts to prevent bypass. No migration should be necessary. Keep duplicate same-draft idempotent responses and no-provider refusal/refund. Then durable enqueue/worker/poll and system-wide budget controls. Actual PostgreSQL race/recovery proof remains unavailable; do not reprobe unchanged Docker blockers.
+LAST COMPLETED ATOMIC SLICE: Phase3S local implementation — per-account cross-draft concurrency; actual PostgreSQL proof remains BLOCKED_EXTERNAL under AI-003A. Commit: `security(ai-import): limit concurrent drafts per account`.
+NEXT ATOMIC SLICE: Phase3T — add an owned-loopback PostgreSQL contention exercise and CI/local-harness wiring for the quota/claim/count transaction; test safe target refusal and local logic without reproving unavailable Docker. Also inspect simultaneous initial same-draft submissions (not only a second request after first is already processing) for stale ORM reads/idempotent outcomes. Then durable enqueue/worker/poll and system-wide budget controls remain READY local work. No new migration is expected for the contention harness.
 PHASE 11 STATUS: SEO-001/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED; SEO-002 IMPLEMENTED pending a real-backend sitemap pagination check; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
 CURRENT ALEMBIC CURRENT: disposable SQLite `.local-data/readiness-3o-backend.db` unstamped (2026-09-15); one head 0070_activity_page_indexes; no migration. Historical PostgreSQL migration proof was not rerun.
@@ -18,7 +18,7 @@ NEW ENVIRONMENT VARIABLES: `GOOGLE_PLACES_API_KEY` moved from the frontend templ
 NEW DEPENDENCIES: backend runtime adds redis-py 8.1.0 (`redis>=8.1.0,<9.0.0`); the lock also records conditional async-timeout 5.0.1 for older Python. The current-Python production install is 53 packages and the hashed export is 55 requirement rows. No frontend dependency changed.
 NEW SERVICES: no service was provisioned. Google Places is an optional fixed external provider behind the backend boundary; keep its key absent until console API restrictions, billing quotas, current provider-policy review and a live lookup/attribution/outage drill are complete. Production still concretely requires managed Redis 7.2+ for shared rate limiting, but none was contacted here. Existing local/CI audit, rotation, incident, metric, error and synthetic services remain as documented.
 OUTSTANDING EXTERNAL REQUIREMENTS: Google Places console key/API/service restriction, billing quota, current terms/policy review and live lookup/attribution/outage drill before setting `GOOGLE_PLACES_API_KEY`; a human/operator tabletop; immutable artifact rollback/traffic-shift drill; hosted database/PITR and media restore; other real provider outage/failover/revocation drills; production credential rotation; production log ingestion/retention/access; real alert-destination delivery and acknowledgement; standalone-worker absence/process-death monitoring; scheduled synthetics against isolated staging data; evidence-backed traffic/latency/capacity thresholds; authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; staging soak
-KNOWN TEST FAILURES: no Phase3R task-caused failure. Full backend candidate7669 passed/65 skips/72warnings; after final late-result rejection, all affected AI5658 passed/39 skips/10warnings. Node1298/1298; TSC/build/Ruff0; lint0errors/32warnings; browser6/6. Current collection7735 (+26). Full candidate collection7734 preceded the final extra case/guard; do not claim7735 full executions. Existing Next destination-stream-closed diagnostics remain unsuppressed. PostgreSQL query recovery/cross-worker races remain unverified.
+KNOWN TEST FAILURES: no Phase3S task-caused failure. Focus139 passed/1 existing skip; configuration157 passed/1 existing skip; all affected AI5669 passed/39 skips/10warnings; Node1298/1298; build/Ruff0; browser6/6. Current collection7747 (+12). Last full backend remains3R candidate7734=7669 passed/65 skips/72warnings; last TSC/lint3R passed with32existing warnings. No claim7747 tests all executed. Existing Next destination-stream-closed diagnostics remain unsuppressed. PostgreSQL query recovery/cross-worker races remain unverified.
 COMMANDS TO RESUME: git status --short; git branch --show-current; git rev-parse HEAD; uptime. Focus from backend: APP_ENV=test .venv/bin/python -m pytest -o addopts='' -q tests/test_job_import_provider_budget.py tests/test_job_import_quota.py tests/test_job_import_processing_lease.py tests/test_job_import_lease_fencing.py. Browser: npm run test:e2e:qa -- tests/e2e/qa/import-job-publish.spec.ts --reporter=line. Never launch competing test/build owners on shared files.
 FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase3R below; backend/app/services/job_import_processing_service.py; backend/app/repositories/job_import_quota_repository.py; backend/app/repositories/job_import_execution_repository.py; backend/tests/test_job_import_quota.py; backend/tests/test_job_import_provider_budget.py.
 RELEASE ASSESSMENT: NO-GO
@@ -28,6 +28,42 @@ IMPORTANT NEW ARCHITECTURE (Phase 3O): REQUEST_BODY_IDLE_TIMEOUT_SECONDS=10 and 
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase3S checkpoint — cross-draft user concurrency (2026-09-16)
+
+```text
+SLICE / STATUS:3S local implementation COMPLETE; AI-003A BLOCKED_EXTERNAL for PostgreSQL contention.
+HEAD BEFORE:610bbc7e29b65e22ec40504ea37a3d8d7ec3a2fd
+HEAD AFTER / COMMIT: git log -1 --format=%H --grep='security(ai-import): limit concurrent drafts per account'
+CONTRACT: consume_import_quota's UPDATE holds the per-user row lock across tentative draft claim,
+  live-lease count and begin_processing commit. Count occurs AFTER tentative claim; over-limit
+  rolls back the whole admission transaction (quota, lease, attempt), returning safe429 before
+  provider work. No filter on deleted/status: hiding a running draft cannot manufacture capacity.
+  Count helper is NOT independently safe admission; never move it outside that write transaction.
+NEW ENV:JOB_IMPORT_CONCURRENCY_LIMIT default2, range1..10. No dependency/service/migration added.
+KEY FILES: backend/app/core/{config,config_contract}.py;
+  app/repositories/job_import_execution_repository.py; app/services/job_import_processing_service.py;
+  tests/test_job_import_user_concurrency.py; backend/{.env.example,README.md}; ledger/handoff.
+FOCUS:139 passed/1 existing skip/4warnings/3.75s; config+health+new tests157 passed/1 existing skip/
+  4warnings/2.73s. JUnit /tmp/creatorjobs-3s-{concurrency,config}-20260916.xml; both exit0.
+  Six concurrent different drafts=>exactly2 calls/4 uncharged429s; refused draft attempt0/leaseNone;
+  retry after completion succeeds; independent owners; hidden/deleted/final-state live leases count;
+  expiry restores capacity. Actual transaction identities agree and provider holds no transaction.
+BROAD:AI tests5669 passed/39 existing skips/10warnings/91.14s,5708 JUnit cases,exit0;
+  /tmp/creatorjobs-3s-ai-20260916.xml. Node1298/1298; Ruff/diff-check0.
+BROWSER:canonical import QA6/6,30.4s,one worker,production build0;
+  /tmp/creatorjobs-3s-browser-20260916.log. Existing Next destination-stream-closed diagnostics.
+LAST_FULL_SUITE_OBSERVED:3R candidate7734=7669passed/65skipped before its final late-result guard.
+  Last TSC/lint3R:0errors/32existing warnings. Current7747 actually collected (+12:11 new concurrency
+  cases+1 config contract); /tmp/creatorjobs-3s-collection-20260916.log. Not a full7747 execution.
+MIGRATION:unchanged single0070_activity_page_indexes; last explicit local SQLite3R unstamped.
+BLOCKERS:SQLite concurrency is local evidence, NOT empirical PostgreSQL row-lock/multi-process
+  proof. Add an owned-loopback exercise to CI/harness next. No repeated Docker/provider probes.
+NEXT READY:3T owned PostgreSQL contention harness plus simultaneous same-draft snapshot review;
+  then real durable execution and global budget. Top summary lists files/commands.
+SAFETY:explicit-path local commit, frozen refs unchanged; no push/deploy/hosted Neon/Vercel/Render
+  or production credentials. AI retained, draft-only. Release:NO-GO.
+```
 
 ## Phase3R checkpoint — provider deadline and lease coherence (2026-09-15)
 

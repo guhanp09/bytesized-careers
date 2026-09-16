@@ -71,10 +71,19 @@ Key vars:
   backward-compatible backend-only alias)
 - `OPENAI_API_KEY` (server-side only; required only for private text job-import processing)
 - `OPENAI_MODEL` (defaults to `gpt-5.6-luna`; clients cannot override it)
-- `OPENAI_REQUEST_TIMEOUT_SECONDS` (server-only, bounded to 5–120 seconds;
-  defaults to 60 seconds for synchronous URL extraction)
+- `OPENAI_REQUEST_TIMEOUT_SECONDS` (server-only, bounded to 5–180 seconds;
+  defaults to 90 seconds with a 45-second effective viable floor)
 - `OPENAI_MAX_RETRIES`
+- `JOB_IMPORT_CONCURRENCY_LIMIT` (live provider leases per account; default 2, range 1–10)
 - `JOB_IMPORT_PROMPT_VERSION`
+
+AI admission shares one short database transaction across daily quota consumption,
+the tentative draft claim and a live-lease count. The per-user quota row serializes
+those operations; over-capacity refusal rolls back both the claim and daily charge
+before any provider call. Hidden/discarded drafts still count while their leases
+are live. Provider work starts only after commit and holds no admission transaction.
+Actual PostgreSQL cross-process contention still requires the disposable database
+harness; SQLite tests are not a substitute for that release proof.
 
 AI import wraps the complete asynchronous provider operation (including retries)
 in an owned wall-clock deadline: effective per-call timeout (minimum 45s) times

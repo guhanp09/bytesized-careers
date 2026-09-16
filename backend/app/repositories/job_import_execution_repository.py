@@ -28,7 +28,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.job_import_execution import (
@@ -166,6 +166,28 @@ async def claim_stranded_drafts(
         .execution_options(synchronize_session=False)
     )
     return list(claimed.scalars().all())
+
+
+async def count_live_owner_leases(
+    session: AsyncSession, owner_user_id: uuid.UUID, *, now: datetime
+) -> int:
+    """Count only inside the caller's quota-write/claim transaction.
+
+    This read is NOT independently safe admission. consume_import_quota's user
+    row UPDATE serializes callers until begin_processing commits. The caller
+    counts AFTER its tentative claim and rolls the entire transaction back if
+    over capacity. Neither deleted_at nor status releases running provider work:
+    hiding a draft must not create another allowance while its call is in flight.
+    """
+    return int(
+        await session.scalar(
+            select(func.count(JobImportDraft.id)).where(
+                JobImportDraft.owner_user_id == owner_user_id,
+                JobImportDraft.processing_lease_expires_at > now,
+            )
+        )
+        or 0
+    )
 
 
 async def settle_finished_attempt(
