@@ -242,6 +242,9 @@ jobs:
       - name: Database command timeout and recovery
         run: uv run python -m scripts.exercise_database_timeouts
 
+      - name: Import admission contention and fixture cleanup
+        run: uv run python -m scripts.exercise_import_admission
+
       - name: Upload PostgreSQL test results
         if: always()
         uses: actions/upload-artifact@v4

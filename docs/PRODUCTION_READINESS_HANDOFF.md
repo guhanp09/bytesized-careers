@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external
 CURRENT PHASE: Phase 3 resumed hardening inside Phase13 certification — RATE-005 AI resource safety
-LAST COMPLETED ATOMIC SLICE: Phase3T / AI-002A — current-state response after a contested import claim; commit `fix(ai-import): refresh state after contested claims`.
-NEXT ATOMIC SLICE: Phase3U — owned-loopback PostgreSQL contention exercise and CI/local-harness wiring for quota/claim/count; validate safe target refusal and local exercise logic without reproving unavailable Docker. Reuse scripts.exercise_database_timeouts.validated_test_url; accept only the owned loopback test database, never developer/hosted fallback. Only create/clean this exercise's UUID-scoped fixture rows. Then durable enqueue/worker/poll and system-wide budget remain READY local work. No migration expected for the exercise.
+LAST COMPLETED ATOMIC SLICE: Phase3U — owned-loopback import admission exercise, guarded/cleanup-tested locally and wired into CI/harness; actual PostgreSQL execution remains unverified. Commit `test(ai-import): add owned PostgreSQL admission drill`.
+NEXT ATOMIC SLICE: Phase3V — inspect/add an explicit durable import execution-intent contract, preserving the current process API until worker/poll consumers are coherent. Existing awaiting_processing drafts are NOT proof a user requested paid work; the recovery sweeper must never turn untouched drafts into provider calls. Prefer additive queue intent using existing schema only if lifecycle/query semantics genuinely fit; otherwise plan a fully tested additive migration. Global/system budget remains READY local work. No repeat Docker/provider probes.
 PHASE 11 STATUS: SEO-001/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED; SEO-002 IMPLEMENTED pending a real-backend sitemap pagination check; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
 CURRENT ALEMBIC CURRENT: disposable SQLite `.local-data/readiness-3o-backend.db` unstamped (2026-09-15); one head 0070_activity_page_indexes; no migration. Historical PostgreSQL migration proof was not rerun.
@@ -28,6 +28,37 @@ IMPORTANT NEW ARCHITECTURE (Phase 3O): REQUEST_BODY_IDLE_TIMEOUT_SECONDS=10 and 
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase3U checkpoint — owned PostgreSQL admission exercise (2026-09-16)
+
+```text
+SLICE / STATUS:3U local harness COMPLETE; AI-003B IMPLEMENTED, AI-003A still BLOCKED_EXTERNAL.
+HEAD BEFORE:caba5324a0edd2ba421821a0c7a7966e358769df
+HEAD AFTER / COMMIT:git log -1 --format=%H --grep='test(ai-import): add owned PostgreSQL admission drill'
+CONTRACT:scripts.exercise_import_admission validates the exact loopback harness URL BEFORE engine
+  import/environment rebinding. Eight independent DB sessions share the actual quota/claim/count
+  primitives; require2 admissions/6 rollback refusals, one duplicate claim, owner isolation and
+  reusable released capacity. No providers; only fresh UUID-scoped fixtures. Finally cancels/awaits
+  sibling tasks and removes/checks only owned fixture cascades, never a prefix/table-wide delete.
+KEY FILES:backend/scripts/exercise_import_admission.py; tests/test_import_admission_drill.py;
+  scripts/test_interaction_status_postgres.sh; .github/workflows/ci.yml;
+  tests/ciWorkflowContract.test.mjs; backend/README.md; ledger/handoff.
+MIGRATION / ENV / DEPENDENCIES / SERVICES:none; script reuses POSTGRES_TEST_DATABASE_URL and
+  process-local DB timeout/pool settings. No schema changes; single Alembic0070 unchanged.
+TESTS:focus57 passed/4warnings/2.86s; compatibility77 passed/7warnings/2.78s, both exit0;
+  /tmp/creatorjobs-3u-{drill,compat}-20260916.xml. Exercise on test SQLite verifies results and
+  unrelated-row preservation on success/assertion/cancellation. NOT actual PostgreSQL proof.
+  Node1299/1299; Ruff/diff-check0; YAML parsed. No product behavior changed, no browser rerun.
+LAST_FULL_SUITE_OBSERVED:3R candidate7734=7669passed/65skipped before final late-result guard.
+  Last full AI3T5672passed/39skips; last browser3T6/6/build0. Current7759 actually collected(+9),
+  /tmp/creatorjobs-3u-collection-20260916.log. No claim7759 execution.
+BLOCKERS:actual PostgreSQL exercise and query-recovery drill unrun; unchanged missing Docker/local
+  PG environment not reprobed. CI never pushed/run remotely. Hard process kill cannot execute
+  finally; any such leftovers belong only to the disposable harness, never production.
+NEXT READY:3V durable execution intent/queue; top summary warns against sweeping unrequested work.
+SAFETY:explicit-path local commit; clean tree/frozen refs unchanged; no push/deploy/hosted
+  Neon/Vercel/Render or production credentials. AI retained; release:NO-GO.
+```
 
 ## Phase3T checkpoint — fresh contested-claim state (2026-09-16)
 

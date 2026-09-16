@@ -189,6 +189,17 @@ test("CI and the local PostgreSQL harness execute the owned timeout recovery dri
   assert.ok(existsSync(join(root, "backend", "scripts", "exercise_database_timeouts.py")));
 });
 
+test("CI and local PostgreSQL harness run the owned import contention exercise", () => {
+  const yamlCode = ci.replace(/^\s*#.*$/gm, "");
+  const postgresJob = yamlCode.split("  backend-postgres:")[1]?.split("\n  browser:")[0];
+  assert.match(postgresJob, /run: uv run python -m scripts\.exercise_import_admission\s*\n/);
+  const shellCode = readFileSync(
+    join(root, "backend", "scripts", "test_interaction_status_postgres.sh"), "utf8",
+  ).replace(/^\s*#.*$/gm, "");
+  assert.match(shellCode, /"\$PYTHON_BIN" -m scripts\.exercise_import_admission\s*$/m);
+  assert.ok(existsSync(join(root, "backend", "scripts", "exercise_import_admission.py")));
+});
+
 test("no artifact upload includes secrets or databases", () => {
   for (const source of [ci, security]) {
     const uploads = [...source.matchAll(/path: \|?([\s\S]*?)(?=\n {6}[a-z-]+:|\n {4}- |\n {2}[a-z-]+:)/g)]

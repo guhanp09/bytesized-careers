@@ -84,6 +84,12 @@ before any provider call. Hidden/discarded drafts still count while their leases
 are live. Provider work starts only after commit and holds no admission transaction.
 Actual PostgreSQL cross-process contention still requires the disposable database
 harness; SQLite tests are not a substitute for that release proof.
+`python -m scripts.exercise_import_admission` is wired into the PostgreSQL harness
+and CI. It accepts only the owned loopback `POSTGRES_TEST_DATABASE_URL`, races
+eight independent sessions, checks quota rollback/account isolation/duplicate
+claims/reusable capacity, and removes only its own fresh UUID-scoped fixtures.
+It calls no provider. Local SQLite exercise tests validate the harness and cleanup,
+not PostgreSQL locking; a successful real PostgreSQL invocation is still required.
 
 AI import wraps the complete asynchronous provider operation (including retries)
 in an owned wall-clock deadline: effective per-call timeout (minimum 45s) times

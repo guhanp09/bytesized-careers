@@ -37,3 +37,4 @@ PYTHONPATH=. "$PYTHON_BIN" tests/interaction_migration_fixtures.py
 # Read-only query timeout, rollback and pooled-connection recovery. This script
 # independently refuses non-loopback/non-harness targets before engine import.
 "$PYTHON_BIN" -m scripts.exercise_database_timeouts
+"$PYTHON_BIN" -m scripts.exercise_import_admission
