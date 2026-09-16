@@ -16,6 +16,7 @@ the same matrix of row states and required to agree.
 
 from __future__ import annotations
 
+import ast
 import inspect
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -311,7 +312,10 @@ class TestSweepingTheStranded:
 
     async def test_it_respects_the_batch_limit(self, db_session, owner, source) -> None:
         for _ in range(4):
-            await _draft(db_session, owner, source)
+            await _draft(
+                db_session, owner, source, processing_status="processing",
+                processing_lease_expires_at=NOW - timedelta(seconds=1),
+            )
 
         claimed = await claim_stranded_drafts(
             db_session, worker_id="sweeper", limit=2, now=NOW
@@ -322,7 +326,10 @@ class TestSweepingTheStranded:
     async def test_two_sweeps_never_take_the_same_row(
         self, db_session, owner, source
     ) -> None:
-        await _draft(db_session, owner, source)
+        await _draft(
+            db_session, owner, source, processing_status="processing",
+            processing_lease_expires_at=NOW - timedelta(seconds=1),
+        )
 
         first = await claim_stranded_drafts(db_session, worker_id="sweeper-a", now=NOW)
         second = await claim_stranded_drafts(db_session, worker_id="sweeper-b", now=NOW)
@@ -471,19 +478,27 @@ class TestTheClaimIsOneStatement:
         assert "select(" not in source_text
 
     def test_the_predicate_is_reused_rather_than_restated(self) -> None:
-        """One predicate, used by both claims. Restating it in each is how the
-        single-row path and the sweep end up disagreeing."""
-
-        for function in (claim_draft_for_processing, claim_stranded_drafts):
-            assert "processing_eligible(now" in inspect.getsource(function)
+        """Starting work and recovering work deliberately have different eligibility."""
+        for function, predicate, count in (
+            (claim_draft_for_processing, "processing_eligible", 1),
+            (claim_stranded_drafts, "recovery_eligible", 2),
+        ):
+            tree = ast.parse(inspect.getsource(function))
+            calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                     and isinstance(node.func, ast.Name) and node.func.id == predicate]
+            assert len(calls) == count
 
     def test_the_batch_claim_rechecks_eligibility_in_the_write(self) -> None:
         """The subquery only proposes candidates. Without the second predicate
         the write would take whatever the read proposed, race and all."""
 
-        source_text = inspect.getsource(claim_stranded_drafts)
-
-        assert source_text.count("processing_eligible(now") == 2
+        tree = ast.parse(inspect.getsource(claim_stranded_drafts))
+        guarded_wheres = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                         and isinstance(node.func, ast.Attribute) and node.func.attr == "where"
+                         and node.args and isinstance(node.args[0], ast.Call)
+                         and isinstance(node.args[0].func, ast.Name)
+                         and node.args[0].func.id == "recovery_eligible"]
+        assert len(guarded_wheres) == 2
 
     def test_postgres_skips_locked_rows(self) -> None:
         source_text = inspect.getsource(claim_stranded_drafts)

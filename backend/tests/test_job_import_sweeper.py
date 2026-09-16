@@ -86,6 +86,47 @@ async def _stranded(db_session, owner, source, **overrides) -> JobImportDraft:
 
 
 class TestItSettlesWhatNobodyFinished:
+    async def test_unrequested_draft_is_not_failed_or_charged_by_recovery(
+        self, db_session, owner, source
+    ) -> None:
+        draft = await _stranded(
+            db_session, owner, source, processing_status="awaiting_processing",
+            processing_attempts=0, processing_lease_expires_at=None,
+        )
+        result = await sweep_stranded_imports_once(db_session, now=NOW)
+        await db_session.refresh(draft)
+        assert result.claimed == 0
+        assert draft.processing_status == "awaiting_processing"
+        assert draft.processing_attempts == 0
+        assert draft.processing_next_attempt_at is None
+
+    async def test_recovery_never_spends_another_attempt_or_reclaims_settled_failure(
+        self, db_session, owner, source
+    ) -> None:
+        draft = await _stranded(db_session, owner, source, processing_attempts=1)
+        first = await sweep_stranded_imports_once(db_session, now=NOW)
+        await db_session.refresh(draft)
+        assert first.settled == 1
+        assert draft.processing_attempts == 1
+        retry_at = draft.processing_next_attempt_at
+        later = await sweep_stranded_imports_once(db_session, now=NOW + timedelta(hours=1))
+        await db_session.refresh(draft)
+        assert later.claimed == 0
+        assert draft.processing_attempts == 1
+        assert draft.processing_next_attempt_at == retry_at
+
+    async def test_final_allowed_attempt_is_still_recoverable_when_its_worker_dies(
+        self, db_session, owner, source
+    ) -> None:
+        draft = await _stranded(db_session, owner, source, processing_attempts=MAX_ATTEMPTS)
+        result = await sweep_stranded_imports_once(db_session, now=NOW)
+        await db_session.refresh(draft)
+        assert result.settled == result.exhausted == 1
+        assert draft.processing_status == "processing_failed"
+        assert draft.processing_attempts == MAX_ATTEMPTS
+        assert draft.processing_next_attempt_at is None
+        assert draft.processing_lease_expires_at is None
+
     async def test_a_stranded_import_stops_claiming_to_be_in_progress(
         self, db_session, owner, source
     ) -> None:
@@ -98,6 +139,30 @@ class TestItSettlesWhatNobodyFinished:
         assert draft.processing_status == "processing_failed"
         assert draft.processing_lease_expires_at is None
         assert draft.processing_worker_id is None
+
+    @pytest.mark.parametrize("status", ["awaiting_processing", "processing_failed"])
+    async def test_expired_lease_is_recovered_across_transition_crash_windows(
+        self, db_session, owner, source, status
+    ) -> None:
+        draft = await _stranded(db_session, owner, source, processing_status=status)
+        result = await sweep_stranded_imports_once(db_session, now=NOW)
+        await db_session.refresh(draft)
+        assert result.settled == 1
+        assert draft.processing_attempts == 1
+        assert draft.processing_status == "processing_failed"
+        assert draft.processing_lease_expires_at is None
+
+    async def test_processing_without_lease_is_not_assumed_abandoned(
+        self, db_session, owner, source
+    ) -> None:
+        # Legacy rows have no lease; read-time metadata liveness owns that
+        # fallback. A sweep must not guess the age from a missing deadline.
+        draft = await _stranded(db_session, owner, source, processing_lease_expires_at=None)
+        result = await sweep_stranded_imports_once(db_session, now=NOW)
+        await db_session.refresh(draft)
+        assert result.claimed == 0
+        assert draft.processing_status == "processing"
+        assert draft.processing_attempts == 1
 
     async def test_it_says_when_the_import_may_be_tried_again(
         self, db_session, owner, source
@@ -116,7 +181,7 @@ class TestItSettlesWhatNobodyFinished:
         """The intended end. A sixth attempt fails the same way and costs again."""
 
         draft = await _stranded(
-            db_session, owner, source, processing_attempts=MAX_ATTEMPTS - 1
+            db_session, owner, source, processing_attempts=MAX_ATTEMPTS
         )
 
         result = await sweep_stranded_imports_once(db_session, now=NOW)

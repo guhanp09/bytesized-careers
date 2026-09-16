@@ -131,6 +131,20 @@ async def claim_draft_for_processing(
     return claimed.scalar_one_or_none()
 
 
+def recovery_eligible(moment: datetime):
+    """Recovery requires an actual expired lease, not merely an unclaimed draft.
+
+    A final allowed attempt must still be recoverable; recovery spends no new
+    provider attempt and never retries a failure already settled without a lease.
+    """
+    return and_(
+        JobImportDraft.deleted_at.is_(None),
+        JobImportDraft.processing_lease_expires_at.is_not(None),
+        JobImportDraft.processing_lease_expires_at <= moment,
+        JobImportDraft.processing_status.in_(tuple(STARTABLE_STATUSES | {IN_FLIGHT_STATUS})),
+    )
+
+
 async def claim_stranded_drafts(
     session: AsyncSession,
     *,
@@ -148,7 +162,7 @@ async def claim_stranded_drafts(
 
     candidates = (
         select(JobImportDraft.id)
-        .where(processing_eligible(now))
+        .where(recovery_eligible(now))
         .order_by(JobImportDraft.created_at)
         .limit(limit)
     )
@@ -160,8 +174,11 @@ async def claim_stranded_drafts(
         .where(JobImportDraft.id.in_(candidates.scalar_subquery()))
         # Re-checked inside the write. The subquery selected candidates; this is
         # what makes taking them atomic rather than merely likely.
-        .where(processing_eligible(now))
-        .values(**_claim_values(worker_id, now, lease_seconds))
+        .where(recovery_eligible(now))
+        .values(
+            processing_worker_id=worker_id,
+            processing_lease_expires_at=lease_deadline(now, seconds=lease_seconds),
+        )
         .returning(JobImportDraft)
         .execution_options(synchronize_session=False)
     )

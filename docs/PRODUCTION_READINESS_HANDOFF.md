@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external
 CURRENT PHASE: Phase 3 resumed hardening inside Phase13 certification — RATE-005 AI resource safety
-LAST COMPLETED ATOMIC SLICE: Phase3U — owned-loopback import admission exercise, guarded/cleanup-tested locally and wired into CI/harness; actual PostgreSQL execution remains unverified. Commit `test(ai-import): add owned PostgreSQL admission drill`.
-NEXT ATOMIC SLICE: Phase3V — inspect/add an explicit durable import execution-intent contract, preserving the current process API until worker/poll consumers are coherent. Existing awaiting_processing drafts are NOT proof a user requested paid work; the recovery sweeper must never turn untouched drafts into provider calls. Prefer additive queue intent using existing schema only if lifecycle/query semantics genuinely fit; otherwise plan a fully tested additive migration. Global/system budget remains READY local work. No repeat Docker/provider probes.
+LAST COMPLETED ATOMIC SLICE: Phase3V / AI-001B — recovery requires an expired actual lease, never spends provider attempts or fails unrequested drafts. Commit `fix(ai-import): recover only abandoned leased attempts`.
+NEXT ATOMIC SLICE: Phase3W / RATE-005 system-wide provider admission budget using existing atomic Redis limiter, shared across accounts and request/worker callers; no migration. Keep duplicate reads free, refused work uncharged, Redis failure closed, no invented currency prices. Queue needs explicit persisted user intent: current awaiting_processing is NOT consent, and processing_status has a DB CHECK that forbids adding queued without migration. Do not silently overload status or sweep untouched drafts. Inspect an additive queue model only when the migration can be fully validated; real PostgreSQL remains unavailable.
 PHASE 11 STATUS: SEO-001/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED; SEO-002 IMPLEMENTED pending a real-backend sitemap pagination check; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
 CURRENT ALEMBIC CURRENT: disposable SQLite `.local-data/readiness-3o-backend.db` unstamped (2026-09-15); one head 0070_activity_page_indexes; no migration. Historical PostgreSQL migration proof was not rerun.
@@ -28,6 +28,40 @@ IMPORTANT NEW ARCHITECTURE (Phase 3O): REQUEST_BODY_IDLE_TIMEOUT_SECONDS=10 and 
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase3V checkpoint — recovery is not new provider work (2026-09-16)
+
+```text
+SLICE / STATUS:3V AI-001B COMPLETE/VALIDATED. Durable execution still IN_PROGRESS.
+HEAD BEFORE:beb1b29e36d08e10089a9ac20b91e075eadf8f58
+HEAD AFTER / COMMIT:git log -1 --format=%H --grep='fix(ai-import): recover only abandoned leased attempts'
+CONTRACT:recovery_eligible requires a recorded expired lease on an eligible unfinished draft;
+  it is independent of processing_eligible (permission to START paid work). Batch selection and
+  atomic write both recheck recovery eligibility. Recovery sets its worker/lease only, never an
+  attempt increment; final exhausted attempts can settle. Already settled failures stay untouched.
+  Legacy processing rows without leases retain separate read-time metadata liveness.
+KEY FILES:backend/app/repositories/job_import_execution_repository.py;
+  tests/test_job_import_{execution_claim,sweeper}.py; backend/README.md; ledger/handoff.
+MIGRATIONS / ENV / SERVICES / DEPENDENCIES:none; Alembic0070 unchanged.
+BASELINE:3 new regressions failed onbeb1b29: untouched draft failed; recovery incremented attempts;
+  final-attempt crash not recovered. /tmp/creatorjobs-3v-sweep-before-20260916.xml,exit1.
+TEST CONTRACT CORRECTIONS:batch/exclusivity fixtures now actually have expired leases; exhausted
+  fixture usesMAX_ATTEMPTS, notMAX-1 (recovery is not another attempt). Structural assertions now
+  parse AST for distinct processing/recovery predicates and retain both batch/write guards.
+FOCUS:115 passed/4warnings/5.06s exit0; /tmp/creatorjobs-3v-sweep-final-20260916.xml.
+BROAD:AI5687 passed/39existing skips/10warnings/108.27s,5726 JUnit cases,exit0;
+  /tmp/creatorjobs-3v-ai-20260916.xml. Node1299/1299; Ruff/diff-check0.
+BROWSER:canonical import6/6,37.7s,one worker,production build0;
+  /tmp/creatorjobs-3v-browser-20260916.log. Existing Next stream-closed diagnostics unchanged.
+LAST_FULL_SUITE_OBSERVED:3R candidate7734=7669passed/65skipped before its final late-result guard.
+EXPECTED_CURRENT_COLLECTION:7765 actually collected (+6); not an entire7765-test execution.
+  /tmp/creatorjobs-3v-collection-20260916.log. Last TSC/lint3R0errors/32existing warnings.
+NEXT READY:3W global provider-attempt budget; queue CHECK constraint requires explicit migration
+  planning, not adding a schema-less queued string. PostgreSQL/infrastructure/legal/staging and
+  accessibility gates remain unverified; no repeated unchanged environment probes.
+SAFETY:explicit-path local commit; clean tree/frozen refs unchanged; no push/deploy/hosted
+  Neon/Vercel/Render or production credentials. AI retained, draft-only. Release:NO-GO.
+```
 
 ## Phase3U checkpoint — owned PostgreSQL admission exercise (2026-09-16)
 

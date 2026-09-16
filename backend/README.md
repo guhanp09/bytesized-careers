@@ -91,6 +91,13 @@ claims/reusable capacity, and removes only its own fresh UUID-scoped fixtures.
 It calls no provider. Local SQLite exercise tests validate the harness and cleanup,
 not PostgreSQL locking; a successful real PostgreSQL invocation is still required.
 
+The stranded-import sweeper is recovery only: it requires an expired recorded
+lease, never claims untouched drafts, and never increments provider attempts.
+Settled failures without leases stay settled, including after their retry date;
+the user must request new work. An abandoned final allowed attempt is still
+recoverable into an honest failed state. Legacy rows without leases retain the
+separate read-time metadata-liveness check.
+
 AI import wraps the complete asynchronous provider operation (including retries)
 in an owned wall-clock deadline: effective per-call timeout (minimum 45s) times
 attempt count, plus at most 2s per retry. Default 182s; configured maximum 726s.
