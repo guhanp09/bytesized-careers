@@ -171,7 +171,9 @@ class JobImportProcessingService:
                 self.import_service.repository.session, owner_user_id, now=quota_now
             )
             # Whatever the reason, this request must not call the provider.
-            raced = await self.import_service.get_draft(draft_id, owner_user_id=owner_user_id)
+            raced = await self.import_service.get_draft(
+                draft_id, owner_user_id=owner_user_id, refresh=True
+            )
             # The established contract answers the common cases: a draft already
             # `processing` returns `already_processing`, a finished one returns
             # `already_processed`. Both are 200, and this must not quietly become
@@ -228,6 +230,7 @@ class JobImportProcessingService:
             raced = await self.import_service.get_draft(
                 draft_id,
                 owner_user_id=owner_user_id,
+                refresh=True,
             )
             raced_outcome = self._current_outcome(raced)
             if raced_outcome is not None:

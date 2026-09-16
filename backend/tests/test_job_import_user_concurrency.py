@@ -83,6 +83,51 @@ async def test_six_different_drafts_admit_exactly_two_calls_and_refusals_spend_n
     assert retried.status_code == 200, retried.text
 
 
+async def test_simultaneous_initial_requests_for_one_draft_return_idempotent_outcomes(
+    client, provider_override, monkeypatch  # noqa: F811
+):
+    headers, owner = await _auth(client, "same-draft-snapshot")
+    _source, draft = await _source_and_draft(client, headers, "same-draft-snapshot")
+    # Both requests have read awaiting_processing before either can consume.
+    barrier = asyncio.Barrier(2)
+    original_consume = processing_module.consume_import_quota
+
+    async def synchronized_consume(*args, **kwargs):
+        await asyncio.wait_for(barrier.wait(), timeout=5)
+        return await original_consume(*args, **kwargs)
+
+    monkeypatch.setattr(processing_module, "consume_import_quota", synchronized_consume)
+    release = asyncio.Event()
+    first_response_ready = asyncio.Event()
+    finished = []
+    provider = FakeProvider(release=release)
+    provider_override(provider)
+
+    async def submit():
+        response = await client.post(
+            f"/api/v1/job-imports/drafts/{draft['id']}/process", headers=headers, json={}
+        )
+        finished.append(response)
+        first_response_ready.set()
+        return response
+
+    tasks = [asyncio.create_task(submit()) for _ in range(2)]
+    try:
+        await asyncio.wait_for(first_response_ready.wait(), timeout=10)
+        assert finished[0].status_code == 200, finished[0].text
+        assert finished[0].json()["outcome"] == "already_processing"
+    finally:
+        release.set()
+        responses = await asyncio.wait_for(asyncio.gather(*tasks), timeout=10)
+    assert provider.calls == 1
+    assert sorted(response.json()["outcome"] for response in responses) == [
+        "already_processing", "processed",
+    ]
+    async with TestSessionLocal() as session:
+        quota = await session.get(JobImportQuotaCounter, owner)
+        assert quota.used == 1
+
+
 async def test_another_account_has_independent_capacity(
     client, provider_override, monkeypatch  # noqa: F811
 ):
@@ -118,6 +163,34 @@ async def test_another_account_has_independent_capacity(
         release.set()
         responses = await asyncio.wait_for(asyncio.gather(*tasks), timeout=10)
     assert all(response.status_code == 200 for response in responses)
+
+
+async def test_refresh_is_opt_in_and_ordinary_reads_keep_pending_mutations(client):
+    headers, owner = await _auth(client, "refresh-opt-in")
+    _source, draft = await _source_and_draft(client, headers, "refresh-opt-in")
+    async with TestSessionLocal() as session:
+        repository = _service(session).repository
+        current = await repository.get_draft_for_owner(UUID(draft["id"]), owner)
+        current.processing_status = "processing_failed"
+        ordinary = await repository.get_draft_for_owner(current.id, owner)
+        assert ordinary is current
+        assert ordinary.processing_status == "processing_failed"
+        refreshed = await repository.get_draft_for_owner(current.id, owner, refresh=True)
+        assert refreshed is current
+        assert refreshed.processing_status == "awaiting_processing"
+
+
+async def test_refresh_preserves_owner_and_soft_deletion_boundaries(client):
+    headers, owner = await _auth(client, "refresh-owner")
+    _other_headers, other = await _auth(client, "refresh-foreign")
+    _source, draft = await _source_and_draft(client, headers, "refresh-owner")
+    async with TestSessionLocal() as session:
+        repository = _service(session).repository
+        current = await repository.get_draft_for_owner(UUID(draft["id"]), owner)
+        assert await repository.get_draft_for_owner(current.id, other, refresh=True) is None
+        current.deleted_at = datetime.now(UTC)
+        await session.commit()
+        assert await repository.get_draft_for_owner(current.id, owner, refresh=True) is None
 
 
 @pytest.mark.parametrize(("status", "deleted"), [

@@ -98,6 +98,7 @@ class JobImportRepository:
         *,
         include_deleted: bool = False,
         for_update: bool = False,
+        refresh: bool = False,
     ) -> JobImportDraft | None:
         query = select(JobImportDraft).where(
             JobImportDraft.id == draft_id,
@@ -107,6 +108,10 @@ class JobImportRepository:
             query = query.where(JobImportDraft.deleted_at.is_(None))
         if for_update:
             query = query.with_for_update()
+        if refresh:
+            # Opt-in for ownership races only. Ordinary repository reads must
+            # not overwrite an in-memory mutation that has not been flushed.
+            query = query.execution_options(populate_existing=True)
         return (await self.session.execute(query)).scalar_one_or_none()
 
     async def get_draft_by_request_id(

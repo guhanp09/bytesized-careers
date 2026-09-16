@@ -628,8 +628,14 @@ class JobImportService:
         draft_id: UUID,
         *,
         owner_user_id: UUID,
+        refresh: bool = False,
     ) -> JobImportDraft:
-        draft = await self.repository.get_draft_for_owner(draft_id, owner_user_id)
+        if refresh:
+            draft = await self.repository.get_draft_for_owner(
+                draft_id, owner_user_id, refresh=True
+            )
+        else:
+            draft = await self.repository.get_draft_for_owner(draft_id, owner_user_id)
         if draft is None:
             raise JobImportError(
                 "JOB_IMPORT_DRAFT_NOT_FOUND",
