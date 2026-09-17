@@ -20,10 +20,12 @@
  */
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import test from "node:test";
+import sharp from "sharp";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -33,6 +35,58 @@ const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"));
 function major(version) {
   return Number.parseInt(version.replace(/^[^0-9]*/, "").split(".")[0], 10);
 }
+
+function assertVersionFloor(version, floor, label) {
+  assert.match(version, /^\d+\.\d+\.\d+$/, `${label} must be a stable version`);
+  const parts = version.split(".").map(Number);
+  const different = parts.findIndex((part, index) => part !== floor[index]);
+  assert.ok(
+    different === -1 || parts[different] > floor[different],
+    `${label} ${version} is below the security floor ${floor.join(".")}`,
+  );
+}
+
+test("the framework lock and manifest exclude the known RCE versions", () => {
+  assertVersionFloor(lock.packages["node_modules/next"].version, [16, 3, 3], "Next.js");
+  assertVersionFloor(packageJson.dependencies.next.replace(/^[~^]/, ""), [16, 3, 3], "Next.js manifest");
+});
+
+test("the image artifact contains patched Sharp and its actual libheif binary", () => {
+  assertVersionFloor(lock.packages["node_modules/sharp"].version, [0, 35, 4], "Sharp lock");
+  assertVersionFloor(sharp.versions.sharp, [0, 35, 4], "Sharp runtime");
+  assertVersionFloor(sharp.versions.heif, [1, 23, 2], "libheif runtime");
+});
+
+test("the browser mapping lock excludes the process-exit vulnerability", () => {
+  assertVersionFloor(lock.packages["node_modules/baseline-browser-mapping"].version, [2, 11, 0], "Browser mapping");
+});
+
+test("invalid browser mapping options throw without terminating the caller", () => {
+  // A child protects the test runner against a regression to process.exit().
+  // An exit(0) is not success either: the final marker proves catch was reached.
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+    import assert from "node:assert/strict";
+    import { getCompatibleVersions } from "baseline-browser-mapping";
+    assert.throws(() => getCompatibleVersions({
+      targetYear: 2020, widelyAvailableOnDate: "2020-01-01"
+    }), Error);
+    process.stdout.write("caller-survived");
+  `], { cwd: root, encoding: "utf8", timeout: 10_000 });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, "caller-survived");
+});
+
+test("the patched image pipeline can still decode and resize a benign AVIF", async () => {
+  const input = await sharp({ create: {
+    width: 4, height: 4, channels: 3, background: { r: 20, g: 40, b: 60 },
+  } }).avif().toBuffer();
+  const { data, info } = await sharp(input).resize(2, 2).webp().toBuffer({ resolveWithObject: true });
+  assert.equal(info.format, "webp");
+  assert.equal(info.width, 2);
+  assert.equal(info.height, 2);
+  assert.ok(data.byteLength > 0);
+});
 
 test("deepmerge-ts resolves to a version without the known advisory", () => {
   // The advisory covers <8.0.0. This package reaches a production install
@@ -76,7 +130,7 @@ test("the runtime client is a production dependency", () => {
   assert.ok("@prisma/client" in (packageJson.dependencies ?? {}));
 });
 
-test("the audit allowlist claims no Prisma-chain exception", () => {
+test("the audit allowlist claims no exception for remediated dependency chains", () => {
   // These advisories were remediated, not excepted. An exception left behind
   // would be a stale permission for a finding that no longer exists — and the
   // next real advisory in that package would inherit it.
@@ -85,10 +139,10 @@ test("the audit allowlist claims no Prisma-chain exception", () => {
   );
   const packages = allowlist.advisories.map((entry) => entry.package);
 
-  for (const name of ["prisma", "@prisma/config", "deepmerge-ts"]) {
+  for (const name of ["prisma", "@prisma/config", "deepmerge-ts", "next", "sharp", "baseline-browser-mapping"]) {
     assert.ok(
       !packages.includes(name),
-      `${name} is allowlisted but the advisory was fixed by an override; ` +
+      `${name} is allowlisted but the advisory was remediated; ` +
         "a stale exception would cover the next real finding too",
     );
   }

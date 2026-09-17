@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external
 CURRENT PHASE: Phase 3 resumed hardening inside Phase13 certification — RATE-005 AI resource safety
-LAST COMPLETED ATOMIC SLICE: Phase3W / AI-004A — shared rolling30-day extraction allowance, fail-closed Redis admission, conservative reservations and local rollback; metrics fixture repaired without weakening assertions. Commit `security(ai-import): bound shared system attempt allowance`.
-NEXT ATOMIC SLICE: Phase3X / DEP-001 — fresh production audit flags Next16.3.1 critical and Sharp0.35.3 high; inspect/apply maintainer patch floors16.3.3/0.35.4, check baseline-browser-mapping2.11.0, run unit/static/build/browser/audit gates. Then resume Phase13 full browser certification (standard504; real-backendQA293). Queue still needs explicit persisted user intent: awaiting_processing is NOT consent; status CHECK forbids queued without a validated migration. Do not sweep untouched drafts or auto-retry paid work. Real PostgreSQL remains unavailable.
+LAST COMPLETED ATOMIC SLICE: Phase3X / DEP-001A — production framework/image advisory patch group validated; parent full browser certification still has3 proven baseline demo-Star failures. Commit `security(deps): patch framework and image processing advisories`.
+NEXT ATOMIC SLICE: Phase3Y / CORRECT-002A — demo Star must use liveMode, not just token presence, to decide backend resolution/write. Failures reproduced on archived5d6de8c with oldNext16.3.1. Preserve live participant-authorised persistence and rollback. Then3Z compatible developer-tooling advisory group (DEP-004), then full real-backendQA293 and remaining certification. Queue still needs explicit persisted user intent plus a validated migration; never sweep untouched drafts or auto-retry paid work. Real PostgreSQL remains unavailable.
 PHASE 11 STATUS: SEO-001/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED; SEO-002 IMPLEMENTED pending a real-backend sitemap pagination check; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
 CURRENT ALEMBIC CURRENT: disposable SQLite `.local-data/readiness-3o-backend.db` unstamped (2026-09-17); one head 0070_activity_page_indexes; no migration. Historical PostgreSQL migration proof was not rerun.
@@ -18,9 +18,9 @@ NEW ENVIRONMENT VARIABLES: `GOOGLE_PLACES_API_KEY` moved from the frontend templ
 NEW DEPENDENCIES: backend runtime adds redis-py 8.1.0 (`redis>=8.1.0,<9.0.0`); the lock also records conditional async-timeout 5.0.1 for older Python. The current-Python production install is 53 packages and the hashed export is 55 requirement rows. No frontend dependency changed.
 NEW SERVICES: no service was provisioned. Google Places is an optional fixed external provider behind the backend boundary; keep its key absent until console API restrictions, billing quotas, current provider-policy review and a live lookup/attribution/outage drill are complete. Production still concretely requires managed Redis 7.2+ for shared rate limiting, but none was contacted here. Existing local/CI audit, rotation, incident, metric, error and synthetic services remain as documented.
 OUTSTANDING EXTERNAL REQUIREMENTS: Google Places console key/API/service restriction, billing quota, current terms/policy review and live lookup/attribution/outage drill before setting `GOOGLE_PLACES_API_KEY`; a human/operator tabletop; immutable artifact rollback/traffic-shift drill; hosted database/PITR and media restore; other real provider outage/failover/revocation drills; production credential rotation; production log ingestion/retention/access; real alert-destination delivery and acknowledgement; standalone-worker absence/process-death monitoring; scheduled synthetics against isolated staging data; evidence-backed traffic/latency/capacity thresholds; authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; staging soak
-KNOWN TEST FAILURES: no remaining3W test failure. Full backend7712passed/65existing skips/72warnings,7777 JUnit cases,0failures/errors,exit0; collection7777 (+12). Focus155passed/1skip; Node1299/1299; canonical import browser6/6; TSC/build/Ruff0; lint0errors/32existing warnings. A pre-existing3S metrics fixture failed the initial aggregate and isolated f351818 reproduction; fixed and entire suite rerun. Frontend production audit FAILS Next/Sharp advisories (next3X); backend audit passes2analysed ecdsa entries/0unanalysed. Existing Next stream diagnostics and external PostgreSQL proofs remain open.
-COMMANDS TO RESUME: git status --short; git branch --show-current; git rev-parse HEAD; uptime; npm ls next sharp baseline-browser-mapping --omit=dev; npm run audit:production. Budget focus from backend: APP_ENV=test .venv/bin/python -m pytest -o addopts='' -q tests/test_job_import_system_budget.py tests/test_operational_metrics.py. Never launch competing pytest/build/browser owners on shared files.
-FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; Phase3W checkpoint below and linked maintainer advisories; package.json; package-lock.json; scripts/audit-production-dependencies.mjs; security/npm-audit-allowlist.json; backend/app/services/job_import_system_budget.py.
+KNOWN TEST FAILURES:3X standard Chromium501passed/3failed/4.6m,2workers; failures are demo Star keyboard/row/header/card, repeated serially and on unmodified5d6de8c with oldNext16.3.1. Next3Y repairs them, no assertion weakening. Real-backend focused41/41; Node1304/1304; TSC/build0; lint0errors/32existing warnings; production npm audit0 all severities, clean artifact10/10. Full developer install has5 package findings (3high/1moderate/1low), next3Z. Latest full backend remains3W7712passed/65skips/72warnings with7777 JUnit cases and matching collection. No3X backend changes. Existing Next stream diagnostics and external PostgreSQL proofs remain open.
+COMMANDS TO RESUME: git status --short; git branch --show-current; git rev-parse HEAD; uptime. npm run test:e2e -- tests/e2e/messaging-accessibility.spec.ts tests/e2e/messaging-regressions.spec.ts --grep 'keyboard alone|Star works|Star is a real' --workers=1 --reporter=line. Live: RUN_LIVE_IMPORT_SMOKE=0 OPENAI_API_KEY= npm run test:e2e:qa -- tests/e2e/qa/workspace-next-action.spec.ts --grep Star --reporter=line. Never overlap build/browser owners or pytest processes.
+FILES TO READ FIRST: Phase3X checkpoint below; docs/PRODUCTION_READINESS_EXECUTION.md; components/you/ApplicationsWorkspace.tsx toggleStar around3775; tests/e2e/messaging-{accessibility,regressions}.spec.ts; tests/e2e/qa/workspace-next-action.spec.ts; tests/productionDependencyArtifact.test.mjs.
 RELEASE ASSESSMENT: NO-GO
 IMPORTANT NEW ARCHITECTURE (Phase 3M): `YouTubeProviderClient` is the only YouTube Data API transport. `fetch_user_youtube_channels` and `fetch_youtube_video_metadata` remain compatible entrypoints. `POST /me/youtube-identity` shares the existing verified-user outbound quota. `YOUTUBE_API_KEY` is preferred; backend-only `YOUTUBE_DATA_API_KEY` is the compatibility alias; both are SecretStr, blank primary falls through. Remove keys from the frontend at eventual operator cutover; no live configuration changed. The QA harness explicitly blanks both keys. No new migration, dependency, service or AI behavior change.
 IMPORTANT NEW ARCHITECTURE (Phase 3N): Pure-ASGI HttpAdmissionMiddleware admits synchronously before await, counts until the application unwinds in finally, and rejects excess work without reading/parsing/queuing. Metrics, CORS and request ID wrap its 503. MAX_CONCURRENT_HTTP_REQUESTS is required at production boot and bounded by schema; local/test fallback is 100 for existing local concurrency harness. One additional slot is only for exact GET health liveness. Redis quotas and WebSocket lifecycle are unchanged. No migration, new dependency/service or AI behavior change.
@@ -28,6 +28,47 @@ IMPORTANT NEW ARCHITECTURE (Phase 3O): REQUEST_BODY_IDLE_TIMEOUT_SECONDS=10 and 
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase3X checkpoint — framework and native-image security patches (2026-09-17)
+
+```text
+SLICE / STATUS:3X production patch group COMPLETE; DEP-001A VALIDATED; parent aggregate still open.
+HEAD BEFORE:5d6de8c0831c19a8e5de940d8650994f4aca53e1
+HEAD AFTER / COMMIT:git log -1 --format=%H --grep='security(deps): patch framework and image processing advisories'
+CONTRACT:Next16.3.1→16.3.5; Sharp0.35.3→0.35.4 with actual libheif1.23.2/vips8.18.6;
+  baseline-browser-mapping2.10.33→2.11.24. Lock changes only these families/platform artifacts.
+  Next16.3.3 patches Windows RCE/AVIF;16.3.4 restores AVIF with patched dependency;16.3.5 adds
+  empty-image cache and CSP loading/template nonce fixes. Browser mapping throws on invalid
+  conflicting options rather than terminating its host. No feature removed or advisory waived.
+FILES:package.json; package-lock.json; tests/productionDependencyArtifact.test.mjs; ledger/handoff.
+MIGRATIONS / ENV / SERVICES:none; backend untouched; Alembic0070/current unstamped unchanged.
+TESTS:focus16/16; full Node1304/1304 (+5); TSC/build0; lint0errors/32existing warnings.
+  Real-backend CSP/personas/import41/41,2.5m,exit0,including fresh production build;
+  /tmp/creatorjobs-3x-qa-focus-20260917.log. Explicit RUN_LIVE_IMPORT_SMOKE=0 and blank paid key.
+ARTIFACT:clean npm ci --omit=dev --ignore-scripts in /tmp/creatorjobs-3x-production.sayr3B;
+ 81packages installed,82audited,0vulnerabilities; actual artifact tests10/10,exit0;
+ /tmp/creatorjobs-3x-production-artifact-verified-20260917.log. No live image/Docker claim.
+SCANS:npm production0 at ALL severities; /tmp/creatorjobs-3x-production-audit-20260917.json.
+  Full developer install remains5 affected packages: Babel low, humanfs moderate, brace-expansion/
+  browserslist/js-yaml high. /tmp/creatorjobs-3x-all-audit-20260917.json. Separate3Z, no threshold change.
+BROWSER FAILURE:standard aggregate501passed/3failed/4.6m,2workers,exit1. Exact failures:
+  messaging-accessibility.spec.ts:109 keyboard Star; messaging-regressions.spec.ts:166 row/header
+  Star; same file:197 Pipeline card Star. aria-pressed staysfalse, expectedtrue,8s assertion timeout.
+  All3 also fail isolatedserially. No test deleted/skipped/weakened. The aggregate is NOT green.
+BASELINE PROOF:git archive5d6de8c into /tmp/creatorjobs-3x-star-baseline.9Veehn; independent npm ci
+  and local Prisma generation, installed Next16.3.1 verified. Same3 unchangedtests fail serially
+  with identical aria-pressedfalse; /tmp/creatorjobs-3x-star-baseline-20260917.log. No branch/worktree
+  switched or modified, no live DB. Root cause:toggleStar checks token, not explicit liveMode,
+  and tries to resolve a nonexistent backend conversation for authenticated demo records.
+LAST_FULL_BACKEND:3W7712passed/65skips/72warnings/418.42s,7777cases0failures/errors,exit0.
+NEXT READY:3Y CORRECT-002A liveMode boundary + network-silence regression assertions and live Star
+  durability/privacy/rollback tests; rerun full standard suite, then remaining real-backend aggregate.
+  Afterwards3Z DEP-004 dev-tooling patches. Known stream-closed diagnostics remain unsuppressed.
+SAFETY:explicit-path local commit; no push/deploy/hosted Neon/Vercel/Render/paid AI/prod credentials.
+  Frozen recovery refs unchanged. AI retained and draft-only. Release:NO-GO.
+```
+
+Reviewed maintainer notes: [Next 16.3.4](https://github.com/vercel/next.js/releases/tag/v16.3.4), [Next 16.3.5](https://github.com/vercel/next.js/releases/tag/v16.3.5), [Sharp 0.35.4](https://sharp.pixelplumbing.com/changelog/v0.35.4/), [browser mapping 2.11.0](https://github.com/web-platform-dx/baseline-browser-mapping/releases/tag/v2.11.0). Advisory links are in the 3W checkpoint.
 
 ## Phase3W checkpoint — shared AI attempt allowance (2026-09-17)
 
