@@ -614,6 +614,13 @@ CONFIG_CONTRACT: dict[str, ConfigContract] = {
         "Bounds live provider leases across all of one user's drafts. Admission shares the "
         "daily-counter write transaction; discarded/deleted drafts with live leases still count.",
     ),
+    "job_import_system_attempt_limit": ConfigContract(
+        Requirement.OPTIONAL_DEVELOPMENT,
+        Enforcement.BOUNDED,
+        "Shared rolling 30-day extraction admission cap, enforced through the atomic Redis "
+        "limiter in production. Includes bounded retries per admission; not a currency budget. "
+        "Uncertain reservations are not refunded. Redis history must be preserved.",
+    ),
     "job_import_sweeper_in_process": ConfigContract(
         Requirement.OPTIONAL_DEVELOPMENT,
         Enforcement.DEPLOYMENT_CHOICE,

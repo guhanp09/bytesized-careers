@@ -34,6 +34,7 @@ from app.services.job_import_provider import (
     extract_with_budget,
 )
 from app.services.job_import_service import JobImportError, JobImportService
+from app.services.job_import_system_budget import reserve_system_import_attempt
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +218,16 @@ class JobImportProcessingService:
                 "This account is already preparing other drafts. Try again when one finishes.",
                 status_code=429,
             )
+
+        try:
+            # Duplicate reads and user-capacity refusals spend no global unit.
+            # A Redis admission cannot be atomically committed with PostgreSQL:
+            # retain uncertain reservations conservatively, but roll back the
+            # local quota/lease if the shared safeguard refuses or is cancelled.
+            await reserve_system_import_attempt()
+        except BaseException:
+            await session.rollback()
+            raise
 
         try:
             await self.import_service.begin_processing(

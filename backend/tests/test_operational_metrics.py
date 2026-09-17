@@ -443,9 +443,15 @@ async def test_ai_processing_records_provider_success_without_source_or_identity
         "claim_draft_for_processing",
         AsyncMock(return_value=initial),
     )
+    # This metrics-only fixture has no database. Admission gained a live-lease
+    # count in Phase3S; supply that repository seam just as quota/claim above.
+    # Concurrency/rollback behavior is exercised with real sessions separately.
+    live_leases = AsyncMock(return_value=1)
+    monkeypatch.setattr(processing_module, "count_live_owner_leases", live_leases)
 
     result = await service.process(draft_id, owner_user_id=owner_id)
 
+    live_leases.assert_awaited_once()
     assert result.outcome == "processed"
     assert [(event["name"], event["outcome"]) for event in events] == [
         ("ai.provider_call", "success")

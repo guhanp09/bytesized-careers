@@ -351,6 +351,11 @@ class Settings(BaseSettings):
     job_import_concurrency_limit: int = Field(
         default=2, alias="JOB_IMPORT_CONCURRENCY_LIMIT", ge=1, le=10
     )
+    # Logical extraction admissions (including bounded internal retries), not
+    # money or tokens. One shared rolling 30-day window across all accounts.
+    job_import_system_attempt_limit: int = Field(
+        default=1000, alias="JOB_IMPORT_SYSTEM_ATTEMPT_LIMIT", ge=1, le=100_000
+    )
     job_import_quota_window_hours: int = Field(
         default=24, alias="JOB_IMPORT_QUOTA_WINDOW_HOURS", ge=1, le=168
     )
