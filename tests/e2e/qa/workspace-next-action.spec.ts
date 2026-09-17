@@ -513,7 +513,13 @@ test("a failed Star write rolls back instead of showing a star the server refuse
   await page.route("**/preferences/star", (route) =>
     route.fulfill({ status: 503, contentType: "application/json", body: '{"detail":"nope"}' })
   );
+  const refused = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PUT" &&
+      /\/preferences\/star$/.test(new URL(response.url()).pathname)
+  );
   await star.click();
+  expect((await refused).status()).toBe(503);
   // Optimistically on, then rolled back to the authoritative value.
   await expect(star).toHaveAttribute("aria-pressed", "false");
   await page.unroute("**/preferences/star");

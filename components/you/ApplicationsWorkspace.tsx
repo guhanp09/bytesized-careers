@@ -3782,7 +3782,7 @@ export default function ApplicationsWorkspace({
         to a durable, participant-authorised preference row.
       */
       let conversationId = conversationIdOf(item);
-      if (backendAccessToken && !conversationId) {
+      if (liveMode && backendAccessToken && !conversationId) {
         try {
           conversationId = await resolveConversationId(item);
         } catch {
@@ -3806,12 +3806,11 @@ export default function ApplicationsWorkspace({
         },
       }));
       /*
-        Nothing to persist without a session — Mock mode has no server to hold a
-        preference, and a star that refused to move there would be one more
-        control that looks live and is not. The optimistic state is the whole
-        state in that case.
+        Explicit demo mode stays local even when the viewer has a session.
+        Its optimistic state is the whole state; only live data may resolve or
+        persist a server-owned preference.
       */
-      if (!backendAccessToken || !conversationId) return;
+      if (!liveMode || !backendAccessToken || !conversationId) return;
       try {
         const saved = await setConversationStarred(backendAccessToken, conversationId, next);
         setPreferences((current) => ({ ...current, [conversationId]: saved }));
@@ -3830,6 +3829,7 @@ export default function ApplicationsWorkspace({
       conversationIdOf,
       resolveConversationId,
       backendAccessToken,
+      liveMode,
       preferences,
     ]
   );

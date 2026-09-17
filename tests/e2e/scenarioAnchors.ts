@@ -31,6 +31,21 @@ export type ScenarioName = (typeof SCENARIOS)[number];
 
 export type Persona = "recruiter" | "talent";
 
+/** Observe the live endpoints a demo Star must never resolve or mutate. */
+export function observeStarBackendRequests(page: Page): string[] {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (
+      /\/me\/(applications|talent-interests)\/[^/]+\/conversation$/.test(path) ||
+      /\/preferences\/star$/.test(path)
+    ) {
+      requests.push(`${request.method()} ${path}`);
+    }
+  });
+  return requests;
+}
+
 type IndexEntry = {
   scenario: string;
   persona: Persona;

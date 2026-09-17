@@ -1,6 +1,6 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { encode } from "next-auth/jwt";
-import { anchor, openRecord, openWorkspace, type ScenarioName } from "./scenarioAnchors";
+import { anchor, observeStarBackendRequests, openRecord, openWorkspace, type ScenarioName } from "./scenarioAnchors";
 
 /**
  * What the redesign has to be true of for everybody, not only for a pointer at
@@ -107,6 +107,7 @@ test("everything a pointer reveals, focus reveals too", async ({ page }) => {
 });
 
 test("a row is operable and toggles by keyboard alone", async ({ page }) => {
+  const backendRequests = observeStarBackendRequests(page);
   await openWorkspace(page, { scenario: "default", mode: "recruiter", view: "inbox" });
   const record = main(page).getByTestId("interaction-row").nth(2);
   await record.focus();
@@ -121,6 +122,7 @@ test("a row is operable and toggles by keyboard alone", async ({ page }) => {
   await expect(star).toHaveAttribute("aria-pressed", "true");
   await star.press("Space");
   await expect(star).toHaveAttribute("aria-pressed", "false");
+  expect(backendRequests, "authenticated demo keyboard actions must stay local").toEqual([]);
 });
 
 test("focus is visible wherever it lands", async ({ page }) => {

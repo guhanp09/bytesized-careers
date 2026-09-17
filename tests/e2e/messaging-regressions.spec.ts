@@ -1,6 +1,6 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { encode } from "next-auth/jwt";
-import { anchor, card, openRecord, openWorkspace, row } from "./scenarioAnchors";
+import { anchor, card, observeStarBackendRequests, openRecord, openWorkspace, row } from "./scenarioAnchors";
 
 /**
  * The named fixes, re-checked after the redesign moved everything they touch.
@@ -164,6 +164,7 @@ test("every primary recommendation carries a confident action key", async ({ pag
 /* ---- the private Star ---------------------------------------------------- */
 
 test("the Star works from the row, the card and the header, and stays private", async ({ page }) => {
+  const backendRequests = observeStarBackendRequests(page);
   const target = anchor("default", "portfolio attached", { persona: "recruiter" });
 
   // Row.
@@ -192,9 +193,11 @@ test("the Star works from the row, the card and the header, and stays private", 
   // Starring must never look like, or produce, a shared lifecycle event.
   const detail = page.getByTestId("applications-detail");
   await expect(detail.getByTestId("chat-status-update").filter({ hasText: /star/i })).toHaveCount(0);
+  expect(backendRequests, "authenticated demo row/header actions must stay local").toEqual([]);
 });
 
 test("the Star is a real control on a Pipeline card too", async ({ page }) => {
+  const backendRequests = observeStarBackendRequests(page);
   await openWorkspace(page, {
     scenario: "default",
     mode: "recruiter",
@@ -212,6 +215,7 @@ test("the Star is a real control on a Pipeline card too", async ({ page }) => {
   await expect(star).toHaveAttribute("aria-pressed", "true");
   await star.click();
   await expect(star).toHaveAttribute("aria-pressed", "false");
+  expect(backendRequests, "authenticated demo Pipeline actions must stay local").toEqual([]);
 });
 
 /* ---- work categories ----------------------------------------------------- */
