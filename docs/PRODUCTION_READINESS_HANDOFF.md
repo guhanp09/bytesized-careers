@@ -4,9 +4,9 @@
 
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external
-CURRENT PHASE: Phase 3 resumed hardening inside Phase13 certification — RATE-005 AI resource safety
-LAST COMPLETED ATOMIC SLICE: Phase3Y / CORRECT-002A — authenticated demo Star stays local; live durability/privacy/rollback preserved. Standard browser504/504 with2workers; focused serial3/3 and live2/2. Commit `fix(workspace): keep authenticated demo stars local`.
-NEXT ATOMIC SLICE: Phase3Z / DEP-004 compatible developer-tooling advisory group, then full real-backendQA293 and remaining certification. Seven high-load5worker failures passed isolated7/7 and full2worker504/504 but remain recorded as intermittent certification risks. Queue still needs explicit persisted user intent plus a validated migration; never sweep untouched drafts or auto-retry paid work. Real PostgreSQL remains unavailable.
+CURRENT PHASE:Phase13 certification — dependency hardening complete locally; remaining broad browser gates.
+LAST COMPLETED ATOMIC SLICE:Phase3Z / DEP-004 — compatible developer-tooling fixes; full npm audit0, Node1315/1315, build/type/lint green, clean production artifact10/10. Commit `security(deps): patch developer tooling advisories`.
+NEXT ATOMIC SLICE:13C full real-backendQA293, then cross-engine accessibility. AI queue still needs explicit persisted intent plus a PostgreSQL-validated migration; no unattended paid retries. Real PostgreSQL remains unavailable. Seven5worker intermittent failures from3Y remain documented, not certified away.
 PHASE 11 STATUS: SEO-001/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED; SEO-002 IMPLEMENTED pending a real-backend sitemap pagination check; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
 CURRENT ALEMBIC CURRENT: disposable SQLite `.local-data/readiness-3o-backend.db` unstamped (2026-09-17); one head 0070_activity_page_indexes; no migration. Historical PostgreSQL migration proof was not rerun.
@@ -18,9 +18,9 @@ NEW ENVIRONMENT VARIABLES: `GOOGLE_PLACES_API_KEY` moved from the frontend templ
 NEW DEPENDENCIES: backend runtime adds redis-py 8.1.0 (`redis>=8.1.0,<9.0.0`); the lock also records conditional async-timeout 5.0.1 for older Python. The current-Python production install is 53 packages and the hashed export is 55 requirement rows. No frontend dependency changed.
 NEW SERVICES: no service was provisioned. Google Places is an optional fixed external provider behind the backend boundary; keep its key absent until console API restrictions, billing quotas, current provider-policy review and a live lookup/attribution/outage drill are complete. Production still concretely requires managed Redis 7.2+ for shared rate limiting, but none was contacted here. Existing local/CI audit, rotation, incident, metric, error and synthetic services remain as documented.
 OUTSTANDING EXTERNAL REQUIREMENTS: Google Places console key/API/service restriction, billing quota, current terms/policy review and live lookup/attribution/outage drill before setting `GOOGLE_PLACES_API_KEY`; a human/operator tabletop; immutable artifact rollback/traffic-shift drill; hosted database/PITR and media restore; other real provider outage/failover/revocation drills; production credential rotation; production log ingestion/retention/access; real alert-destination delivery and acknowledgement; standalone-worker absence/process-death monitoring; scheduled synthetics against isolated staging data; evidence-backed traffic/latency/capacity thresholds; authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; staging soak
-KNOWN TEST FAILURES:3Y repaired the three deterministic demo-Star failures. Standard504/504 at2workers; initial5worker run497passed/7intermittent failures, all7 passed isolated and full2worker; details/traces below. Live Star2/2, Node1304/1304, TSC/build0, lint0errors/32warnings. Production audit0; developer-tooling5affected packages await3Z. Backend remains3W7712passed/65skipped,7777collected. FullQA and cross-engine recertification pending; PostgreSQL/container/scanner and hosted gates remain.
-COMMANDS TO RESUME:git status --short; git branch --show-current; git rev-parse HEAD; uptime. Next3Z inspect npm audit --json and compatible developer-only updates; no npm audit fix or broad update. Then RUN_LIVE_IMPORT_SMOKE=0 OPENAI_API_KEY= GOOGLE_PLACES_API_KEY= npm run test:e2e:qa. Never overlap build/browser owners or pytest processes.
-FILES TO READ FIRST:Phase3Y checkpoint below; docs/PRODUCTION_READINESS_EXECUTION.md; package-lock.json; tests/productionDependencyArtifact.test.mjs; .github/workflows/security.yml. Current slice has no backend/migration changes.
+KNOWN TEST FAILURES:3Y standard504/504 at2workers and liveStar2/2; initial5worker497passed/7intermittent failures passed isolated and full2worker, traces retained.3Z Node1315/1315, security11/11, TSC/build0, lint0errors/32warnings, full and production npm audit0. Latest backend3W7712passed/65skipped,7777collected. FullQA and cross-engine recertification pending; PostgreSQL/container/scanner and hosted gates remain.
+COMMANDS TO RESUME:git status --short; git branch --show-current; git rev-parse HEAD; uptime. RUN_LIVE_IMPORT_SMOKE=0 OPENAI_API_KEY= GOOGLE_PLACES_API_KEY= npm run test:e2e:qa -- --reporter=line; then npm run test:e2e:a11y -- --workers=1 --reporter=line. Never overlap build/browser owners or pytest processes.
+FILES TO READ FIRST:Phase3Z checkpoint below; docs/PRODUCTION_READINESS_EXECUTION.md; playwright.qa.config.ts; playwright.a11y.config.ts; tests/e2e/qa/; tests/developerDependencySecurity.test.mjs.
 RELEASE ASSESSMENT: NO-GO
 IMPORTANT NEW ARCHITECTURE (Phase 3M): `YouTubeProviderClient` is the only YouTube Data API transport. `fetch_user_youtube_channels` and `fetch_youtube_video_metadata` remain compatible entrypoints. `POST /me/youtube-identity` shares the existing verified-user outbound quota. `YOUTUBE_API_KEY` is preferred; backend-only `YOUTUBE_DATA_API_KEY` is the compatibility alias; both are SecretStr, blank primary falls through. Remove keys from the frontend at eventual operator cutover; no live configuration changed. The QA harness explicitly blanks both keys. No new migration, dependency, service or AI behavior change.
 IMPORTANT NEW ARCHITECTURE (Phase 3N): Pure-ASGI HttpAdmissionMiddleware admits synchronously before await, counts until the application unwinds in finally, and rejects excess work without reading/parsing/queuing. Metrics, CORS and request ID wrap its 503. MAX_CONCURRENT_HTTP_REQUESTS is required at production boot and bounded by schema; local/test fallback is 100 for existing local concurrency harness. One additional slot is only for exact GET health liveness. Redis quotas and WebSocket lifecycle are unchanged. No migration, new dependency/service or AI behavior change.
@@ -28,6 +28,53 @@ IMPORTANT NEW ARCHITECTURE (Phase 3O): REQUEST_BODY_IDLE_TIMEOUT_SECONDS=10 and 
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase3Z checkpoint — compatible developer-tooling security updates (2026-09-19)
+
+```text
+Phase:3Z / DEP-004
+Status:COMPLETE / VALIDATED
+Initial HEAD:8a3020bc2b6eafc557ccb7d8ffe7d2677b24f48c
+Final HEAD / Commit:git log -1 --format=%H --grep='security(deps): patch developer tooling advisories'
+Files materially changed:package-lock.json; tests/developerDependencySecurity.test.mjs; ledger/handoff.
+Dependencies:Babel core7.28.6→7.29.7 (related parser/generator/traverse/types7.29.8);
+ humanfs node0.16.7→0.16.8/core0.19.2, required transitive types0.15.0;
+ brace-expansion1.1.15→1.1.21 and2.1.1→2.1.7; browserslist4.28.1→4.29.0;
+ js-yaml4.1.1→4.3.2. Browser-data dependencies follow the compatible Browserslist release.
+ Exactly27 lock entries changed in these families. Five vulnerable packages remain dev-only;
+ caniuse-lite1.0.30001766→1.0.30001810 is shared with production Next. An initial diagnostic
+ assertion that ALL changed entries were dev-only failed on caniuse-lite; classification corrected,
+ not suppressed. New clean production artifact tested below. Manifest/override unchanged.
+Behavior changes:source maps outside package root refused; humanfs copies symlinks as links;
+ expansion count/length bounded; YAML includes empty merge sources in accounting and caps sequences;
+ Browserslist prototype-safe stats/cache fixes,4.29 adds query continuations. No major upgrade.
+ Tests retain benign behavior and use tiny owned fixtures, not resource-exhaustion payloads.
+Migrations / new application environment / services:none. No application workflow/auth/AI changes.
+Tests run / exact results:focused new security11/11; full Node1315/1315 (+11); TSC/build exit0;
+ lint0errors/32existing warnings; npm full audit0 all severities (previous3high/1moderate/1low);
+ production audit gate0 analysed/0 unanalysed. No exception or threshold change.
+ Clean production artifact /tmp/creatorjobs-3z-production.ju7z5l: npm ci --omit=dev --ignore-scripts
+ installed81/audited82/0vulnerabilities; productionDependencyArtifact10/10 exit0.
+ Evidence:/tmp/creatorjobs-3z-{focus,node,tsc,lint,build,production-audit,production-install,artifact}-20260919.log;
+ /tmp/creatorjobs-3z-all-audit-20260919.json. Install began before pause in3z-install-20260917.log.
+Browser:latest3Y standard504/504(2workers); liveStar2/2. Not rerun after this tooling patch yet;
+ full real-backend293 and cross-engine aggregate are NEXT, not claimed green.
+Backend unchanged:LAST_FULL_SUITE_OBSERVED7712passed/65skipped/72warnings;
+ EXPECTED_CURRENT_COLLECTION7777; delta0. Alembic0070/current ownedSQLite unstamped unchanged.
+Security assumptions:clean macOS artifact proof is not a Linux/Docker image scan. Upstream npm
+ audit only covers published advisories. No new code uses these packages for customer input.
+Known external failures:PostgreSQL/container/scanner availability and all hosted/provider/legal gates
+ unchanged. Seven intermittent5worker browser failures from3Y retained; no false release certification.
+Next phase:13C full real-backend QA with paid/live imports explicitly off, then3engine accessibility;
+ resolve reproducible current failures in small commits; preserve original failed evidence.
+Commands:RUN_LIVE_IMPORT_SMOKE=0 OPENAI_API_KEY= GOOGLE_PLACES_API_KEY= npm run test:e2e:qa -- --reporter=line
+ npm run test:e2e:a11y -- --workers=1 --reporter=line
+ Run sequentially, no overlapping build/Playwright/pytest owners.
+Safety:explicit-path local commit, clean boundary; frozen references unchanged; no push/deploy,
+ hosted Neon/Vercel/Render/production credentials/paid provider calls. Release:NO-GO.
+```
+
+Maintainer references reviewed before updating: [Babel advisory](https://github.com/babel/babel/security/advisories/GHSA-4x5r-pxfx-6jf8), [Babel provenance patch](https://github.com/babel/babel/releases/tag/v7.29.7), [humanfs changelog](https://raw.githubusercontent.com/humanwhocodes/humanfs/main/packages/node/CHANGELOG.md), [brace-expansion advisory](https://github.com/juliangruber/brace-expansion/security/advisories/GHSA-rgw5-rvv9-x895), [Browserslist security patch](https://github.com/browserslist/browserslist/releases/tag/4.28.7), [Browserslist4.29](https://github.com/browserslist/browserslist/releases/tag/4.29.0), [YAML4 changelog](https://raw.githubusercontent.com/nodeca/js-yaml/v4/CHANGELOG.md).
 
 ## Phase3Y checkpoint — authenticated demo Star boundary (2026-09-17)
 
