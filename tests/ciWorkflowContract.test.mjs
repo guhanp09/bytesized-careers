@@ -16,6 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import test from "node:test";
+import ts from "typescript";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -26,6 +27,31 @@ const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
 function code(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
+
+test("paid live import smoke requires the exact explicit opt-in value", () => {
+  const source = ts.createSourceFile(
+    "import-live-smoke.spec.ts",
+    readFileSync(join(root, "tests/e2e/qa/import-live-smoke.spec.ts"), "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const guards = [];
+  function visit(node) {
+    if (ts.isCallExpression(node) && node.expression.getText(source) === "test.skip") {
+      guards.push(node.arguments[0].getText(source));
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  assert.equal(guards.length, 1, "the live smoke must have one explicit skip gate");
+  // Evaluate the actual AST argument, not a matching comment or unrelated string.
+  const skips = new Function("process", `return (${guards[0]});`);
+  for (const value of [undefined, "", "0", "false", "true", "yes", "01", " 1", "1 "]) {
+    const env = value === undefined ? {} : { RUN_LIVE_IMPORT_SMOKE: value };
+    assert.equal(skips({ env }), true, `must not opt in with ${JSON.stringify(value)}`);
+  }
+  assert.equal(skips({ env: { RUN_LIVE_IMPORT_SMOKE: "1" } }), false);
+});
 
 test("every npm script the workflows call exists", () => {
   const called = new Set();

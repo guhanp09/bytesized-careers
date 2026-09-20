@@ -48,7 +48,7 @@ async function loginController(page: Page) {
 
 test.describe("a real page, imported for real", () => {
   test.skip(
-    !process.env.RUN_LIVE_IMPORT_SMOKE,
+    process.env.RUN_LIVE_IMPORT_SMOKE !== "1",
     "live smoke: set RUN_LIVE_IMPORT_SMOKE=1 to run"
   );
 
