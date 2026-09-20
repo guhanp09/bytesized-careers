@@ -5,9 +5,9 @@
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external
 CURRENT PHASE:Phase13 certification — real-backend and cross-engine aggregates passed; remaining local behavioral proof and external gates.
-LAST COMPLETED ATOMIC SLICE:13C / CERT-001A — real-backend293/293 and accessibility87/87; repaired live-test string0 opt-in bug, with actual disabled1skip and AST regression. Read evidence correction below. Commit `test(certification): enforce explicit live import opt-in`.
-NEXT ATOMIC SLICE:13D / SEO-002 real-backend sitemap pagination/lastmod/outage behavior. AI queue still requires explicit persisted intent plus a PostgreSQL-validated migration; no unattended paid retries. PostgreSQL remains unavailable.
-PHASE 11 STATUS: SEO-001/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED; SEO-002 IMPLEMENTED pending a real-backend sitemap pagination check; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
+LAST COMPLETED ATOMIC SLICE:13D / SEO-002 — real-backend sitemap pagination/timestamps/draft exclusion/refresh and owned backend-outage proof complete. Commit `test(seo): verify sitemap against real backend`.
+NEXT ATOMIC SLICE:13E — bounded inventory of unresolved Phase4 trust/metrics rows against accepted code and tests; repair only demonstrated unverified live claims. AI queue still requires explicit persisted intent plus a PostgreSQL-validated migration; no unattended paid retries. PostgreSQL remains unavailable.
+PHASE 11 STATUS: SEO-001/002/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED locally; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
 CURRENT ALEMBIC CURRENT: disposable SQLite `.local-data/readiness-3o-backend.db` unstamped (2026-09-17); one head 0070_activity_page_indexes; no migration. Historical PostgreSQL migration proof was not rerun.
 IMPORTANT NEW ARCHITECTURE (RATE-003B / OF-105): `app.services.google_places_service.GooglePlacesService` is a fixed-destination provider adapter, not an arbitrary-URL fetcher. It owns the backend-only Places key, disables redirects/environment proxies/cookies, streams decoded JSON under 128 KiB, applies four-second operation and six-second whole-attempt deadlines, and returns only bounded normalized dataclasses. `GET /me/location/autocomplete` and `/details` are authenticated and share `LOCATION_LOOKUP_LIMIT` (120/minute/user) through the existing Redis fail-closed boundary. The Next routes perform same-origin/session enforcement, own no provider key or network client, preserve local-catalogue fallback only for an explicit missing-provider code, and proxy bounded numeric retry guidance. `LocationAutocompleteField` attributes only provider-backed results with exact non-translated `Google Maps` text in the same visual container but outside the ARIA listbox. IMPORTANT NEW ARCHITECTURE (RATE-003A): `app.core.rate_limit.enforce_rate_limit` is the only HTTP allow/reject/fail-closed path. `rate_limit` supplies a trusted `ip:<address>` key before authentication; `authenticated_rate_limit` supplies `user:<verified UUID>` after the normal durable-session/strong-auth dependency. The namespace prevents a textual IP/user collision and user buckets follow the account across devices and NAT changes. Each dependency carries a `RateLimitPolicy`, so structural tests inventory the actual FastAPI graph rather than grepping source. One shared outbound category (30/10m/user) prevents endpoint-switch evasion; media is 20/hour/user, public deep search 120/min/IP, marketplace/messaging actions 120/5m/user, admin/support 300/5m/user, refresh 120/5m/IP and verification 60/10m/IP. Admin allowance is consumed only after permission succeeds. Anonymous reports remain IP-scoped. Logout/logout-all are explicit recovery exemptions.
@@ -19,8 +19,8 @@ NEW DEPENDENCIES:latest3X/3Z lock updates documented below (Next16.3.5, Sharp0.3
 NEW SERVICES: no service was provisioned. Google Places is an optional fixed external provider behind the backend boundary; keep its key absent until console API restrictions, billing quotas, current provider-policy review and a live lookup/attribution/outage drill are complete. Production still concretely requires managed Redis 7.2+ for shared rate limiting, but none was contacted here. Existing local/CI audit, rotation, incident, metric, error and synthetic services remain as documented.
 OUTSTANDING EXTERNAL REQUIREMENTS: Google Places console key/API/service restriction, billing quota, current terms/policy review and live lookup/attribution/outage drill before setting `GOOGLE_PLACES_API_KEY`; a human/operator tabletop; immutable artifact rollback/traffic-shift drill; hosted database/PITR and media restore; other real provider outage/failover/revocation drills; production credential rotation; production log ingestion/retention/access; real alert-destination delivery and acknowledgement; standalone-worker absence/process-death monitoring; scheduled synthetics against isolated staging data; evidence-backed traffic/latency/capacity thresholds; authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; staging soak
 KNOWN TEST FAILURES:13C corrected the live-smoke gate (string0 was truthy). FullQA293/293 included unintended live URL submission with blank key/recoverable failure, NOT live-provider certification. Actual fixed0selection now1skipped. Cross-engine87/87; Node1316/1316; type/build0; lint32warnings.3Y seven5worker intermittent failures remain documented despite isolated7/7 and full2worker504/504. Existing stream diagnostics persist. Backend latest7712passed/65skipped,7777cases; external gates remain.
-COMMANDS TO RESUME:git status --short; git branch --show-current; git rev-parse HEAD; uptime. Read13C checkpoint and prepare isolated real-backend sitemap proof. RUN_LIVE_IMPORT_SMOKE=0 now genuinely disables live smoke. Never overlap build/browser owners or pytest processes.
-FILES TO READ FIRST:13C checkpoint; docs/PRODUCTION_READINESS_EXECUTION.md; app/sitemap.ts; tests/sitemapCoverage.test.mjs; backend/scripts/start_qa_test_server.py; tests/e2e/qa/brand-about-helpers.ts.
+COMMANDS TO RESUME:git status --short; git branch --show-current; git rev-parse HEAD; uptime. Read13D checkpoint and Phase4 trust rows before a bounded live-claims inventory. RUN_LIVE_IMPORT_SMOKE=0 genuinely disables live smoke. Never overlap build/browser owners or pytest processes.
+FILES TO READ FIRST:13D checkpoint; docs/PRODUCTION_READINESS_EXECUTION.md Phase4; components/job-details/JobActionsPanel.tsx; tests/e2e/phase3b-detail-post.spec.ts. No application behavior changed in13D.
 RELEASE ASSESSMENT: NO-GO
 IMPORTANT NEW ARCHITECTURE (Phase 3M): `YouTubeProviderClient` is the only YouTube Data API transport. `fetch_user_youtube_channels` and `fetch_youtube_video_metadata` remain compatible entrypoints. `POST /me/youtube-identity` shares the existing verified-user outbound quota. `YOUTUBE_API_KEY` is preferred; backend-only `YOUTUBE_DATA_API_KEY` is the compatibility alias; both are SecretStr, blank primary falls through. Remove keys from the frontend at eventual operator cutover; no live configuration changed. The QA harness explicitly blanks both keys. No new migration, dependency, service or AI behavior change.
 IMPORTANT NEW ARCHITECTURE (Phase 3N): Pure-ASGI HttpAdmissionMiddleware admits synchronously before await, counts until the application unwinds in finally, and rejects excess work without reading/parsing/queuing. Metrics, CORS and request ID wrap its 503. MAX_CONCURRENT_HTTP_REQUESTS is required at production boot and bounded by schema; local/test fallback is 100 for existing local concurrency harness. One additional slot is only for exact GET health liveness. Redis quotas and WebSocket lifecycle are unchanged. No migration, new dependency/service or AI behavior change.
@@ -28,6 +28,63 @@ IMPORTANT NEW ARCHITECTURE (Phase 3O): REQUEST_BODY_IDLE_TIMEOUT_SECONDS=10 and 
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase13D checkpoint — real-backend sitemap behavior (2026-09-20)
+
+```text
+Phase:13D / SEO-002
+Status:COMPLETE; SEO-002 VALIDATED locally. Overall CERT-001 remains IN_PROGRESS.
+Initial HEAD:32cde8ee02aaf381ffd69a6810fab51753982eb8
+Final HEAD / Commit:git log -1 --format=%H --grep='test(seo): verify sitemap against real backend'
+Files materially changed:backend/scripts/qa_sitemap_fixtures.py;
+ tests/e2e/qa/sitemap.spec.ts; ledger/handoff.
+Behavior changed:TEST HARNESS ONLY. No application behavior changed.
+Contract:clone existing canonical public job/talent templates into105 published+1 draft per
+ family, under a random UUID namespace, only inside the explicit APP_ENV=test harness-owned
+ SQLite QA database. Reject all other environments/URLs, missing files and symlinks; SQL-bound
+ values and atomic transactions. Never reset the corpus; finally remove only the212 owned IDs.
+ Browser reads actual Next sitemap and real backend lists, proving >100-record pagination for
+ both families, all210 public fixtures, draft exclusion, duplicate absence, true lastmod,
+ dynamic timestamp refresh, exact cleanup and preservation of original templates.
+ Timestamp comparisons intentionally use list GETs: talent detail GET increments views and
+ updated_at. The strengthened test first failed because it mutated its own comparison target;
+ corrected to compare the same non-mutating representation used by sitemap, not looser bounds.
+Tests / exact results:real-backend sitemap2/2,14.8s,1worker,exit0; fresh QA production build0.
+ Full frontend Node1316/1316,0skips/failures,exit0; existing sitemap unit12/12; TSC0;
+ changed-file ESLint0 and Python Ruff0; git diff --check clean.
+ Owned outage drill:backend8100 confirmed ECONNREFUSED, standalone Next3307 /faq200,
+ /sitemap.xml500 and no fabricated successful urlset. Same real QA production artifact.
+ Owned3307 server stopped after drill (SIGINT130 expected); no listener remains.
+Evidence:/tmp/creatorjobs-13d-sitemap-final-20260920.log;
+ /tmp/creatorjobs-13d-{outage,node,unit,tsc-final,lint}-20260920.log.
+ Initial strengthened-test failure:1pass/1fail, timestamp expected1789903242000 vs1767292200000
+ in /tmp/creatorjobs-13d-sitemap-verified-20260920.log. Test-owned GET side effect, not baseline
+ application regression. Final corrected2/2 recorded above.
+Security assumptions:fixture helper is test-only, loopback backend, exact disposable database;
+ no production credentials/providers or hosted data. Outage is a real stopped backend, not
+ route interception. No paid AI calls; RUN_LIVE_IMPORT_SMOKE=0 with blank provider keys.
+Migrations / dependency changes / new environment / services:none.
+Current Alembic head:0070_activity_page_indexes, single; latest recorded disposable SQLite
+ current unstamped (Sept17), not a PostgreSQL proof. No migration changes since that check.
+LAST_FULL_SUITE_OBSERVED:Node1316/1316 current; realQA13C293/293 includes292 deterministic
+ and one unintended live smoke before its gate repair (see13C correction); a11y87/87.
+ Standard3Y504/504 at2workers precedes3Z tool/data update. Backend3W7712passed+65skipped
+ =7777JUnit cases, exit0, independent collection7777; backend application unchanged since.
+EXPECTED_CURRENT_COLLECTION:Node1316; realQA295 (+2 new sitemap tests); backend7777 unchanged.
+Known external failures / remaining risks:all provider/infra/legal/manual gates remain.
+ No full aggregate rerun claimed from this focused suite. Static protocol ceiling behavior
+ is not a >50,000-record empirical proof. Existing load-related browser intermittency remains.
+Next phase:13E bounded inventory of still-open Phase4 trust rows, without reopening resolved
+ deterministic workflows. Repair only concrete unsafe/fabricated live behavior.
+Important commands:
+ RUN_LIVE_IMPORT_SMOKE=0 OPENAI_API_KEY= GOOGLE_PLACES_API_KEY= npm run test:e2e:qa -- tests/e2e/qa/sitemap.spec.ts --workers=1
+ node --test tests/sitemapCoverage.test.mjs
+ npx tsc --noEmit
+ backend/.venv/bin/python -m ruff check backend/scripts/qa_sitemap_fixtures.py
+Frozen refs:all five exact hashes unchanged; integration branch preserved.
+Working tree:explicit four-file commit; verify clean after commit. No push/deploy/hosted
+ Neon/Vercel/Render access. AI retained and unchanged. Release assessment:NO-GO.
+```
 
 ## Phase13C checkpoint — real-backend/cross-engine evidence and live-test opt-in (2026-09-20)
 
