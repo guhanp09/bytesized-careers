@@ -152,16 +152,6 @@ _EVENTS: tuple[NotificationEvent, ...] = (
         priority=PRIORITY_LOW,
         notes="Self-confirmation. Source: marketplace.create_talent_listing.",
     ),
-    NotificationEvent(
-        key="launch_free_checkout_completed",
-        category=CATEGORY_TRANSACTIONAL,
-        recipient="User (self)",
-        actor=None,
-        channels=(CHANNEL_IN_APP,),
-        default_channels=(CHANNEL_IN_APP,),
-        priority=PRIORITY_LOW,
-        notes="Free-during-launch confirmation. Source: marketplace.complete_launch_free_checkout.",
-    ),
     # ---- Messaging ----
     NotificationEvent(
         key="message_received",

@@ -28,7 +28,7 @@ import {
 
 /**
  * Platform section (docs/ADMIN_PANEL_PLAN.md §7.7): send platform notices
- * through the real notification pipeline, manage launch-free entitlements,
+ * through the real notification pipeline, inspect legacy entitlement records,
  * and inspect the notification registry + mocked email outbox.
  */
 
@@ -184,7 +184,7 @@ export default function AdminPlatformClient({ accessToken }: { accessToken: stri
         ) : entitlements.state === "error" ? (
           <AdminError onRetry={entitlements.reload} />
         ) : !entitlements.data || entitlements.data.items.length === 0 ? (
-          <AdminEmpty title="No entitlements yet." hint="Launch-free checkout grants land here." />
+          <AdminEmpty title="No legacy entitlement records." hint="Free beta publishing does not create a grant." />
         ) : (
           <>
             <AdminTable

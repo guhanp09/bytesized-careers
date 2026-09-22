@@ -13,7 +13,6 @@ import {
   BackendRole,
   BackendMeYouTubeChannel,
   checkMyHiringIdentityVerification,
-  completeLaunchFreeCheckout,
   createMyHiringIdentity,
   createJob,
   deleteMyHiringIdentity,
@@ -3119,7 +3118,6 @@ export default function PostJobPage() {
     setIsSubmitting(true);
     try {
       const created = await withFreshBackendToken(async (token) => {
-        await completeLaunchFreeCheckout(token, { kind: "job_post", target_type: "job" });
         const existingTargetId = draftId || partialImportTargetJobRef.current;
         const saved = existingTargetId
           ? updateJob(token, existingTargetId, backendPayload)

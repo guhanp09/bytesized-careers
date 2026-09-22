@@ -250,15 +250,10 @@ test("job alerts stay unavailable until subscription and delivery are durable", 
   expect(response.status()).toBe(404);
 });
 
-test("beta checkout renders only the approved zero-cost terms", async ({ page, context }) => {
-  await signInAsCandidate(context);
-  await page.goto("/pricing/checkout?kind=talent_listing");
+test("free beta exposes no pretend checkout", async ({ page }) => {
+  const response = await page.goto("/pricing/checkout?kind=talent_listing");
 
-  await expect(page.getByRole("heading", { name: "Talent listing" })).toBeVisible();
-  await expect(page.getByText("Beta access", { exact: true })).toBeVisible();
-  await expect(page.getByText("Payment method", { exact: true })).toBeVisible();
-  await expect(page.getByText("Not required", { exact: true })).toBeVisible();
-  await expect(page.getByText("Total due now", { exact: true })).toBeVisible();
+  expect(response?.status()).toBe(404);
   await expect(page.locator("body")).not.toContainText(/Standard price|Launch beta adjustment|₹4,999|₹499|₹7,499|₹999/);
 });
 

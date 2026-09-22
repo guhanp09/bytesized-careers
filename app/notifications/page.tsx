@@ -39,7 +39,7 @@ export default async function NotificationsPage() {
       <section className="mx-auto max-w-4xl space-y-7">
         <PageHeader
           title="Notifications"
-          description="Applications, invites, checkout confirmations, and profile reminders."
+          description="Applications, invites, listing updates, and profile reminders."
         />
         {loadState.kind === "auth" ? (
           <div data-testid="notifications-auth-expired">

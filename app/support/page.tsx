@@ -13,7 +13,7 @@ const topics = [
   "Account access, verification, or password reset issues",
   "Unsafe, misleading, or abusive listings",
   "Problems applying to jobs or contacting talent",
-  "Questions about launch-free beta posting",
+  "Questions about free beta posting",
 ];
 
 export default function SupportPage() {

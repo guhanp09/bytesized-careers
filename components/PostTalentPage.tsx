@@ -6,7 +6,6 @@ import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  completeLaunchFreeCheckout,
   createTalentListing,
   listMyTalentListings,
   listMyPortfolio,
@@ -1177,13 +1176,6 @@ export default function PostTalentPage() {
     setBusy(true);
     setError(null);
     try {
-      if (publishStatus === "published") {
-        await completeLaunchFreeCheckout(token, {
-          kind: "talent_listing",
-          target_type: "talent_listing",
-          checkout_intent_id: `launch_talent_listing_${Date.now()}`,
-        });
-      }
       const saved = draftId
         ? await updateTalentListing(token, draftId, payload(publishStatus))
         : await createTalentListing(token, payload(publishStatus));

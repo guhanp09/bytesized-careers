@@ -32,7 +32,6 @@ from app.core.rate_limit import (
     AUTH_REFRESH_LIMIT,
     AUTH_REGISTER_LIMIT,
     AUTH_VERIFY_LIMIT,
-    CHECKOUT_LIMIT,
     LOCATION_LOOKUP_LIMIT,
     MARKETPLACE_ACTION_LIMIT,
     MEDIA_UPLOAD_LIMIT,
@@ -271,9 +270,9 @@ def test_existing_authenticated_marketplace_policies_no_longer_share_ip_buckets(
         for router in routers
         for route in _routes(router)
         for policy in _policies(route)
-        if policy.rule in {MARKETPLACE_ACTION_LIMIT, CHECKOUT_LIMIT}
+        if policy.rule == MARKETPLACE_ACTION_LIMIT
     ]
-    assert len(policies) == 41
+    assert len(policies) == 40
     assert all(policy.identity_scope == "user" for policy in policies)
 
     _assert_policy(marketplace.router, "POST", "/reports", REPORT_LIMIT, "ip")

@@ -38,7 +38,60 @@ async def _register_verified_login(
     return login.json()["access_token"]
 
 
-async def test_saved_jobs_applications_notifications_reports_and_launch_entitlement(client: AsyncClient) -> None:
+async def test_free_beta_publishing_has_no_client_entitlement_mint(client: AsyncClient) -> None:
+    token = await _register_verified_login(
+        client,
+        email="free-beta-policy@example.com",
+        username="free_beta_policy",
+    )
+
+    # A browser must not be able to manufacture access for an arbitrary kind or
+    # target. Free beta publication is the server's product policy, not a fake
+    # payment event supplied by the caller.
+    mint = await client.post(
+        "/api/v1/checkout/launch-free",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "kind": "featured_job",
+            "target_type": "job",
+            "target_id": "someone-elses-record",
+            "checkout_intent_id": "browser-chosen-proof",
+        },
+    )
+    assert mint.status_code == 404
+
+    published = await create_valid_published_job(
+        client,
+        token,
+        title="Free beta policy job",
+    )
+    assert published.status_code == 201
+
+    talent_listing = await client.post(
+        "/api/v1/talent-listings",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "Free beta policy talent listing",
+            "roles": ["Video editor"],
+            "formats": ["Long-form"],
+            "platforms": ["YouTube"],
+            "tools": ["DaVinci Resolve"],
+            "work_mode": "remote",
+            "availability_status": "available",
+            "status": "published",
+        },
+    )
+    assert talent_listing.status_code == 201
+
+    entitlements = await client.get(
+        "/api/v1/me/entitlements",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert entitlements.status_code == 200
+    assert entitlements.json() == []
+
+
+async def test_saved_jobs_applications_notifications_and_reports(client: AsyncClient) -> None:
     owner_token = await _register_verified_login(client, email="owner@example.com", username="job_owner")
     applicant_token = await _register_verified_login(client, email="applicant@example.com", username="applicant")
 
@@ -49,14 +102,6 @@ async def test_saved_jobs_applications_notifications_reports_and_launch_entitlem
     )
     assert job_response.status_code == 201
     job_id = job_response.json()["id"]
-
-    checkout = await client.post(
-        "/api/v1/checkout/launch-free",
-        headers={"Authorization": f"Bearer {owner_token}"},
-        json={"kind": "job_post", "target_type": "job", "target_id": job_id},
-    )
-    assert checkout.status_code == 201
-    assert checkout.json()["source"] == "free_launch"
 
     save = await client.post(
         f"/api/v1/jobs/{job_id}/save",

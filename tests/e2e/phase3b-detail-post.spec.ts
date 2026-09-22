@@ -288,8 +288,9 @@ test.describe("phase 3b detail and post surface polish", () => {
     await expect(page.locator("body")).not.toContainText(/Proof|Post availability|Enlist as talent|USD|\$[0-9]/);
   });
 
-  test("checkout remains a protected free-beta flow", async ({ page }) => {
-    await page.goto("/pricing/checkout?kind=talent_listing");
-    await expect(page).toHaveURL(/\/auth\?mode=login/);
+  test("free beta does not expose a pretend checkout route", async ({ page }) => {
+    const response = await page.goto("/pricing/checkout?kind=talent_listing");
+    expect(response?.status()).toBe(404);
+    await expect(page.locator("body")).not.toContainText(/standard price|launch beta adjustment/i);
   });
 });

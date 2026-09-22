@@ -141,7 +141,7 @@ export function NotificationList({
           icon="bell"
           align="center"
           title="No notifications yet."
-          description="Applications, invites, saves, and launch-free confirmations will appear here."
+          description="Applications, invites, saves, and listing updates will appear here."
         />
       ) : visibleItems.length === 0 ? (
         <StateCard

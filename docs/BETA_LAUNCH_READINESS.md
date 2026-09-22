@@ -47,14 +47,14 @@ Date: 2026-06-02
 - Invite/contact talent.
 - Save, unsave, and share a talent listing.
 - Report a talent listing.
-- Post a job, save draft, resume draft, and publish through launch-free checkout.
-- Create a talent listing, save draft, resume draft, and publish through launch-free checkout.
+- Post a job, save draft, resume draft, and publish under the free-beta policy without a checkout.
+- Create a talent listing, save draft, resume draft, and publish under the free-beta policy without a checkout.
 - Verify Activity tabs show applications, interests, drafts, and updates.
 - Verify Saved Jobs and Saved Talent tabs.
 - Verify Search empty, results, and no-results states.
 - Verify Notifications empty, read/unread, and mark-read behavior.
 - Verify owner controls appear only for owned jobs/listings.
-- Verify mobile layouts for home, jobs, job detail, talent, talent detail, post flows, saved, activity, search, notifications, profile, auth, and checkout.
+- Verify mobile layouts for home, jobs, job detail, talent, talent detail, post flows, saved, activity, search, notifications, profile, and auth.
 - Verify backend-down states do not show fake production data.
 - Verify production boot fails with placeholder secrets.
 
@@ -70,7 +70,7 @@ Date: 2026-06-02
 - Remove or archive unsafe/misleading listings.
 - Seed initial staging/demo inventory only outside production.
 - Monitor frontend and backend health checks.
-- Monitor auth, email, invite/contact, report, and checkout/free-beta errors.
+- Monitor auth, email, invite/contact, report, posting, and free-beta errors.
 - Keep a daily note of user friction, broken links, confusing copy, and support themes.
 
 ## Beta Readiness Verdict

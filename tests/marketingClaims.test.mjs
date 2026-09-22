@@ -98,10 +98,12 @@ test("job alerts stay off the beta surface until durable delivery exists", () =>
   }
 });
 
-test("beta checkout does not invent unapproved list prices or discounts", () => {
-  const checkout = read("components/marketplace/CheckoutPanel.tsx");
-  assert.match(checkout, /Free during beta/);
-  assert.match(checkout, /Payment method/);
-  assert.match(checkout, /Not required/);
-  assert.doesNotMatch(checkout, /Standard price|Launch beta adjustment|₹(?:4,999|499|7,499|999)/i);
+test("beta pricing copy does not invent unapproved list prices or discounts", () => {
+  const betaCopy = [
+    read("components/marketplace/HomeBetaBanner.tsx"),
+    read("components/marketplace/HomeWhySection.tsx"),
+  ].join("\n");
+  assert.match(betaCopy, /Free during beta/);
+  assert.match(betaCopy, /No payment method is required/);
+  assert.doesNotMatch(betaCopy, /Standard price|Launch beta adjustment|₹(?:4,999|499|7,499|999)/i);
 });

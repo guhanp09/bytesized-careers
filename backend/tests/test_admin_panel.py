@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from conftest import create_valid_published_job, valid_published_job_payload
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models import Entitlement, User
 from app.services import auth_service
 
 PERSONAS_URL = "/api/v1/dev/personas"
@@ -667,16 +670,28 @@ async def test_platform_notices_registry_and_outbox(client: AsyncClient) -> None
     assert outbox.status_code == 200
 
 
-async def test_entitlements_list_and_revoke(client: AsyncClient) -> None:
+async def test_legacy_entitlements_list_and_revoke(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
     admin = await _admin_token(client)
-    token = await _register_verified_login(client, email="adm_entitle@example.com", username="adm_entitle")
-    checkout = await client.post(
-        "/api/v1/checkout/launch-free",
-        headers=_auth(token),
-        json={"kind": "job_post"},
+    email = "adm_entitle@example.com"
+    await _register_verified_login(client, email=email, username="adm_entitle")
+    user = (
+        await db_session.execute(select(User).where(User.email == email))
+    ).scalar_one()
+    entitlement = Entitlement(
+        user_id=user.id,
+        kind="job_post",
+        source="legacy_free_launch",
+        status="active",
+        metadata_json={"legacy": True},
+        checkout_intent_id="legacy-admin-revoke-fixture",
     )
-    assert checkout.status_code == 201
-    entitlement_id = checkout.json()["id"]
+    db_session.add(entitlement)
+    await db_session.commit()
+    await db_session.refresh(entitlement)
+    entitlement_id = str(entitlement.id)
 
     listing = await client.get("/api/v1/admin/entitlements?status=active", headers=_auth(admin))
     assert any(item["id"] == entitlement_id for item in listing.json()["items"])

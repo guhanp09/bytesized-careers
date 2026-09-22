@@ -195,10 +195,6 @@ export const ROUTE_INDEXING: Record<string, RouteContract> = {
     indexing: "PRIVATE_NOINDEX",
     why: "The talent-listing composer, mirroring /post-job.",
   },
-  "/pricing/checkout": {
-    indexing: "PRIVATE_NOINDEX",
-    why: "A checkout step. Indexing it would advertise a purchase flow that beta does not offer.",
-  },
   "/admin": {
     indexing: "PRIVATE_NOINDEX",
     why: "Administration. Gated server-side; a listing of its URLs is still an inventory of the surface worth attacking.",

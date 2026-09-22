@@ -4339,23 +4339,3 @@ export async function getAdminAuditLog(
 ): Promise<AdminPageMeta & { items: AdminAuditLogItem[] }> {
   return requestJson(`/admin/audit-log${adminQuery(params)}`, { accessToken });
 }
-
-export async function completeLaunchFreeCheckout(
-  accessToken: string,
-  payload: {
-    kind: BackendEntitlement["kind"];
-    target_type?: string | null;
-    target_id?: string | null;
-    checkout_intent_id?: string | null;
-  }
-): Promise<BackendEntitlement> {
-  return requestJson<BackendEntitlement>("/checkout/launch-free", {
-    method: "POST",
-    body: JSON.stringify(payload),
-    accessToken,
-  });
-}
-
-export async function listMyEntitlements(accessToken: string): Promise<BackendEntitlement[]> {
-  return requestJson<BackendEntitlement[]>("/me/entitlements", { accessToken });
-}

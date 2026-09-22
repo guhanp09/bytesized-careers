@@ -20,7 +20,7 @@ from app.api.deps import (
     get_optional_current_user,
 )
 from app.core.account_state import account_is_blocked
-from app.core.rate_limit import CHECKOUT_LIMIT, MARKETPLACE_ACTION_LIMIT, REPORT_LIMIT, rate_limit
+from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, REPORT_LIMIT, rate_limit
 from app.models import (
     Conversation,
     Engagement,
@@ -54,7 +54,6 @@ from app.schemas.marketplace import (
     JobApplicationCreate,
     JobApplicationRead,
     JobApplicationStatusUpdate,
-    LaunchCheckoutRequest,
     ManagerNoteUpdate,
     NotificationListResponse,
     NotificationRead,
@@ -3210,40 +3209,9 @@ async def list_my_jobs(
 # audit-log writes live there.
 
 
-@router.post("/checkout/launch-free", response_model=EntitlementRead, status_code=status.HTTP_201_CREATED)
-async def complete_launch_free_checkout(
-    payload: LaunchCheckoutRequest,
-    _limit: None = authenticated_rate_limit(CHECKOUT_LIMIT),
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db),
-) -> EntitlementRead:
-    entitlement = Entitlement(
-        user_id=current_user.id,
-        kind=payload.kind,
-        target_type=payload.target_type,
-        target_id=payload.target_id,
-        source="free_launch",
-        status="active",
-        metadata_json={"price": 0, "currency": "INR", "launch_free": True},
-        checkout_intent_id=payload.checkout_intent_id,
-    )
-    session.add(entitlement)
-    await _create_notification(
-        session,
-        user_id=current_user.id,
-        type_="launch_free_checkout_completed",
-        title="Launch-free access confirmed",
-        body="This marketplace action is free during launch.",
-        category="checkout",
-        resource_type=payload.target_type,
-        resource_id=payload.target_id,
-        action_url=_target_action_url(payload.target_type, payload.target_id),
-    )
-    await session.commit()
-    await session.refresh(entitlement)
-    return EntitlementRead.model_validate(entitlement)
-
-
+# Historical rows remain readable by their owner, but free-beta publishing does
+# not create or consult them. A future paid launch must grant access from a
+# provider-verified server event, never from a browser-authored checkout claim.
 @router.get("/me/entitlements", response_model=list[EntitlementRead])
 async def list_my_entitlements(
     current_user: User = Depends(get_current_user),

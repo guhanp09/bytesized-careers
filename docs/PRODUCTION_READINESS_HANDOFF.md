@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external
 CURRENT PHASE:Phase13 certification — real-backend and cross-engine aggregates passed; remaining local behavioral proof and external gates.
-LAST COMPLETED ATOMIC SLICE:13H / TRUST-002 + PRODUCT-001 — quantitative homepage claims now travel with visible exact sources; unsupported outcome/review/speed/payment/competitor/demand claims are gone; the non-durable job-alert UI/API is absent during beta; invented checkout list prices/discounts are removed. Commit `fix(trust): remove unsupported launch claims`.
-NEXT ATOMIC SLICE:13I / PRODUCT-002 — inspect the complete free-beta entitlement creation/authorization contract. Keep the approved zero-cost copy, but prove a browser cannot mint arbitrary entitlements and define server-owned beta policy, expiry and revocation before validating the row.
+LAST COMPLETED ATOMIC SLICE:13I / PRODUCT-002 — free beta now publishes directly under the existing authenticated server authorization and creates no payment/access grant; the client-controlled entitlement mint, pretend checkout page and pre-publication mint calls are gone; historical entitlement rows are explicitly audit-only. Commit `fix(beta): remove client-created entitlements`.
+NEXT ATOMIC SLICE:13J / PRODUCT-003 — inventory every customer-visible connect/disconnect or incomplete-integration control, remove unsupported affordances, and prove each retained path against its real server contract. Do not attempt the externally blocked live Google consent drill in this local slice.
 PHASE 11 STATUS: SEO-001/002/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED locally; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
 CURRENT ALEMBIC CURRENT: disposable SQLite `.local-data/readiness-3o-backend.db` unstamped (2026-09-17); one head 0070_activity_page_indexes; no migration. Historical PostgreSQL migration proof was not rerun.
@@ -18,9 +18,9 @@ NEW ENVIRONMENT VARIABLES: `GOOGLE_PLACES_API_KEY` moved from the frontend templ
 NEW DEPENDENCIES:latest3X/3Z lock updates documented below (Next16.3.5, Sharp0.35.4, mapping2.11.24; compatible developer-tooling group). No13C dependency change. Backend redis-py8.1.0 from3J; locked production53packages/55hashed requirement rows.
 NEW SERVICES: no service was provisioned. Google Places is an optional fixed external provider behind the backend boundary; keep its key absent until console API restrictions, billing quotas, current provider-policy review and a live lookup/attribution/outage drill are complete. Production still concretely requires managed Redis 7.2+ for shared rate limiting, but none was contacted here. Existing local/CI audit, rotation, incident, metric, error and synthetic services remain as documented.
 OUTSTANDING EXTERNAL REQUIREMENTS: Google Places console key/API/service restriction, billing quota, current terms/policy review and live lookup/attribution/outage drill before setting `GOOGLE_PLACES_API_KEY`; a human/operator tabletop; immutable artifact rollback/traffic-shift drill; hosted database/PITR and media restore; other real provider outage/failover/revocation drills; production credential rotation; production log ingestion/retention/access; real alert-destination delivery and acknowledgement; standalone-worker absence/process-death monitoring; scheduled synthetics against isolated staging data; evidence-backed traffic/latency/capacity thresholds; authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; staging soak
-KNOWN TEST FAILURES:13G final Node1337/1337, focused51/51, TSC0, changed lint/Ruff0, backend marketplace29/29, realQA candidate surface11/11 and relevant standard browser117/117. No task-caused failure remains. 13E standard504/504 remains latest full standard; current fullQA expected299 but was not rerun. Last aggregate13C293/293 included unintended live smoke (see correction). Backend last full3W7712passed+65skipped=7777. Known popup/load intermittency and all external gates remain; NO-GO.
-COMMANDS TO RESUME:git status --short; git branch --show-current; git rev-parse HEAD; uptime. Read13G checkpoint and execution-ledger TRUST-002. Inventory rendered public copy with `rg` before changing any claim; preserve factual product descriptions and require repository-owned evidence for quantitative/outcome claims.
-FILES TO READ FIRST:13G checkpoint; execution ledger TRUST-002; public homepage/about/FAQ/marketing components and metadata; existing copy/claim tests. Do not edit unrelated IDE PHP file.
+KNOWN TEST FAILURES:13I final Node1347/1347, focused20/20, TSC0, changed lint0 errors/2 pre-existing PostJob warnings, Ruff0, affected backend files83/83 independently, final backend policy3/3, fresh production build and serial browser41/41. One combined marketplace+admin+rate pytest invocation exposed an order-sensitive `test_conversations_metadata_and_abuse_signals` top-N tie after earlier fixtures populated the database; its exact isolated rerun and every affected file passed, and no production code in that path changed. It was not baseline-reproduced and remains test-isolation debt, not a hidden green claim. No task-caused failure remains. 13E standard504/504 remains the latest full standard; current fullQA expected299 but was not rerun. Last aggregate13C293/293 included unintended live smoke (see correction). Backend last full3W7712passed+65skipped=7777. Known popup/load intermittency and all external gates remain; NO-GO.
+COMMANDS TO RESUME:git status --short; git branch --show-current; git rev-parse HEAD; verify frozen refs. Read13I checkpoint and execution-ledger PRODUCT-003. Inventory customer-visible integration controls and their callers/routes with `rg`; retain only paths backed by an authenticated server contract and deterministic tests. Keep provider keys blank and do not perform a live Google consent drill.
+FILES TO READ FIRST:13I checkpoint; execution ledger PRODUCT-003 and AUTH-009; account/profile integration settings; YouTube connect/disconnect components, Next routes, backend OAuth grant routes and existing integration tests. Do not edit unrelated IDE PHP file.
 RELEASE ASSESSMENT: NO-GO
 IMPORTANT NEW ARCHITECTURE (Phase 3M): `YouTubeProviderClient` is the only YouTube Data API transport. `fetch_user_youtube_channels` and `fetch_youtube_video_metadata` remain compatible entrypoints. `POST /me/youtube-identity` shares the existing verified-user outbound quota. `YOUTUBE_API_KEY` is preferred; backend-only `YOUTUBE_DATA_API_KEY` is the compatibility alias; both are SecretStr, blank primary falls through. Remove keys from the frontend at eventual operator cutover; no live configuration changed. The QA harness explicitly blanks both keys. No new migration, dependency, service or AI behavior change.
 IMPORTANT NEW ARCHITECTURE (Phase 3N): Pure-ASGI HttpAdmissionMiddleware admits synchronously before await, counts until the application unwinds in finally, and rejects excess work without reading/parsing/queuing. Metrics, CORS and request ID wrap its 503. MAX_CONCURRENT_HTTP_REQUESTS is required at production boot and bounded by schema; local/test fallback is 100 for existing local concurrency harness. One additional slot is only for exact GET health liveness. Redis quotas and WebSocket lifecycle are unchanged. No migration, new dependency/service or AI behavior change.
@@ -28,6 +28,64 @@ IMPORTANT NEW ARCHITECTURE (Phase 3O): REQUEST_BODY_IDLE_TIMEOUT_SECONDS=10 and 
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase13I checkpoint — enforce honest free-beta access (2026-09-22)
+
+```text
+Phase:13I / PRODUCT-002
+Status:COMPLETE / VALIDATED
+Initial HEAD:48fe66a68df5066cc7b2b59f66cc0666a195ec7e
+Final HEAD / Commit:git log -1 --format=%H --grep='fix(beta): remove client-created entitlements'
+Files materially changed:the pricing checkout page and CheckoutPanel were deleted; PostJobPage,
+ PostTalentPage and backendClient no longer mint an entitlement; the marketplace router/schema,
+ rate-limit inventory and notification registry no longer expose the mint; admin entitlement copy and
+ tests now identify historical rows accurately; beta/readiness/roadmap copy, SEO inventory, unit and
+ browser tests now enforce the free-beta contract.
+Migrations:none. Existing entitlement rows and schema are preserved for audit/recovery compatibility;
+ Alembic remains one head at0070_activity_page_indexes. No hosted database was contacted.
+Behavior changed:authenticated users publish jobs and talent listings directly through their existing
+ server-authorized create/update routes. Free beta creates no checkout intent, payment fact or access
+ grant. `/pricing/checkout` and `POST /api/v1/checkout/launch-free` are absent/404. The owner may still
+ read a historical entitlement row and an administrator may revoke it, but no publication or access
+ decision consults that row. Notification/support/admin copy no longer suggests a confirmation exists.
+Security assumptions:free beta itself is the current server product policy. Authorization remains on
+ each actual listing mutation; removing the caller-authored preflight does not weaken those checks.
+ There is no beta grant to expire or revoke. Historical rows are non-authoritative records, and revoke
+ changes only their recorded status. A future paid launch must define expiry/refund/revocation and
+ idempotency around a provider-verified server event; it must never reuse a browser assertion as proof.
+Baseline / non-vacuity:the new frontend policy suite passed only1/3 against48fe66a because the page,
+ client helper and publication mint calls existed. The new backend policy request returned201 and
+ created caller-selected arbitrary target/kind access. After the change those guards pass, the same
+ request returns404, both authenticated publication types return201, and `/me/entitlements` is empty.
+Tests run / exact results:`node --test tests/freeBetaPolicy.test.mjs
+ tests/marketingClaims.test.mjs tests/routeIndexing.test.mjs`20/20; full
+ `node --test tests/*.test.mjs`1347/1347 in3.46s; `npx tsc --noEmit` exit0 after current Next route
+ type generation; changed-file ESLint exit0 with only two pre-existing PostJobPage warnings; changed
+ backend Ruff `All checks passed!`; backend marketplace30/30, admin16/16, endpoint-rate8/8 and
+ notifications29/29 when run independently (83/83); final targeted policy/admin/rate rerun3/3;
+ fresh production build plus serial smoke/detail-post browser run41/41. `git diff --check` clean.
+Known intermediate failure:a combined marketplace+admin+endpoint-rate pytest command produced one
+ order-sensitive failure in `test_conversations_metadata_and_abuse_signals`: previous test users with
+ equal report counts displaced its applicant from a top-N assertion. The exact isolated rerun passed,
+ and marketplace30/30, admin16/16 and endpoint-rate8/8 each passed independently. The failing path and
+ query were not changed in13I; baseline was not checked. It remains test-isolation debt with no known
+ runtime regression, rather than being skipped, weakened or reported as passing in that combination.
+Dependencies / environment / services / AI:none changed. No service was contacted or provisioned.
+ AI Import remains available behind its existing safety controls, draft-only, and unchanged.
+Known external failures / remaining risks:a future paid pricing/provider/entitlement design is
+ deliberately post-beta and unimplemented. Every managed-provider, hosted-infrastructure, legal,
+ manual-accessibility, restore and staging-soak gate remains. Queue-backed paid AI execution remains
+ unresolved. Release assessment:NO-GO.
+Next phase:13J / PRODUCT-003. Inventory all visible integration affordances and trace each retained
+ connect/disconnect path through the authenticated Next/backend boundary. Remove unsupported controls
+ and add deterministic contract/browser proof. Treat AUTH-009's live Google consent/reconnect/refresh/
+ revoke/outage exercise as external; do not manufacture a local success claim.
+Important commands:git status --short; verify branch/head/frozen refs; `rg -n
+ "connect|disconnect|integration|calendar|drive|slack|youtube" app components lib backend/app tests`;
+ read existing YouTube/OAuth boundary tests before editing. Keep all provider keys blank.
+Frozen refs:verify all five exact baseline hashes after commit. No push/deployment; hosted
+ Neon/Vercel/Render untouched.
+```
 
 ## Phase13H checkpoint — remove unsupported launch claims (2026-09-22)
 

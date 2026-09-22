@@ -96,7 +96,7 @@ export default function AdminOverviewClient({ accessToken }: { accessToken: stri
             </p>
             <p className="text-muted">Messages</p>
             <p className="text-right tabular-nums text-white/85">{data.messages_total}</p>
-            <p className="text-muted">Active entitlements</p>
+            <p className="text-muted">Legacy entitlement records (active)</p>
             <p className="text-right tabular-nums text-white/85">{data.entitlements_active}</p>
           </div>
         </AdminCard>

@@ -367,5 +367,4 @@ MEDIA_UPLOAD_LIMIT = RateLimitRule("media_upload", limit=20, window_seconds=3600
 PUBLIC_SEARCH_LIMIT = RateLimitRule("public_search", limit=120, window_seconds=60)
 ADMIN_REQUEST_LIMIT = RateLimitRule("admin_request", limit=300, window_seconds=300)
 REPORT_LIMIT = RateLimitRule("report", limit=30, window_seconds=600)
-CHECKOUT_LIMIT = RateLimitRule("checkout", limit=30, window_seconds=600)
 CLIENT_ERROR_LIMIT = RateLimitRule("client_error", limit=30, window_seconds=300)

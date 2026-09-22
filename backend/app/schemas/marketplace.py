@@ -31,7 +31,6 @@ ReportCategory = Literal[
     "suspicious",
     "other",
 ]
-EntitlementKind = Literal["job_post", "talent_listing", "featured_job", "featured_talent_listing"]
 
 
 class SaveJobRequest(BaseModel):
@@ -435,13 +434,6 @@ class ReportRead(BaseModel):
 
 # Admin resolution schemas live in app/schemas/admin.py (AdminReportResolveRequest,
 # enum-enforced actions); the old free-string ReportAdminUpdate is retired.
-
-
-class LaunchCheckoutRequest(BaseModel):
-    kind: EntitlementKind
-    target_type: str | None = Field(default=None, max_length=64)
-    target_id: str | None = Field(default=None, max_length=64)
-    checkout_intent_id: str | None = Field(default=None, max_length=128)
 
 
 class EntitlementRead(BaseModel):
