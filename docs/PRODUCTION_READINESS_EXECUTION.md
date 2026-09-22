@@ -87,7 +87,7 @@ Phase3X security patch group (2026-09-17): package-lock changes are limited to N
 
 | ID | Severity | Subsystem | Dependencies | Status | Tests required | Migration | Infra | Blocks beta | Blocks unrestricted | Resolving commit |
 |---|---|---|---|---|---|---|---|---|---|---|
-| CORRECT-001 | HIGH | Public profiles | WEB-006 | NOT_STARTED | Recruiter/agency routes and entry-link browser tests | NO | NO | Yes | Yes | — |
+| CORRECT-001 | HIGH | Public profiles | WEB-006 | VALIDATED | Direct recruiter and represented-agency identities serialize through the live backend contract; public agency rail includes verified channels only. Real-backend QA creates both job types, verifies public profiles, card/detail links, nested-link navigation, then checks the candidate's Inbox and Pipeline agency counterparty and profile link. Standard profile browser 15/15, affected workspace browser 61/61, real-backend QA 1/1, full Node 1362/1362, TypeScript and changed lint pass. Backend affected suite 68/68 and Ruff pass; repeat seeding repairs only legacy persona enum spellings while preserving edits and verification state | NO | NO | Yes | Yes | `fix(profiles): connect recruiter and agency entry links`; `fix(seed): reconcile legacy persona identity enums` |
 | CORRECT-002 | HIGH | Pipeline/messaging | AUTH-005 | NOT_STARTED | Pipeline-to-dock, lifecycle, two-persona and duplicate-delivery tests | POSSIBLE | NO | Yes | Yes | — |
 | CORRECT-003 | HIGH | Search | BASE-003 | NOT_STARTED | Result, empty, error, filter and route-state browser tests | NO | NO | Yes | Yes | — |
 | CORRECT-004 | CRITICAL | Applications | AUTH-005, WEB-006 | NOT_STARTED | Internal/external/expired/closed/idempotent cross-persona tests | POSSIBLE | NO | Yes | Yes | — |
