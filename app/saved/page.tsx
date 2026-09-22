@@ -23,6 +23,8 @@ import {
   listMySavedTalent,
   type BackendTalentListing,
 } from "../../lib/backendClient";
+import { compensationForJob, formatJobCompensation } from "../../lib/jobPresentation";
+import { formatTalentRate } from "../../lib/talentListing";
 import type { Job } from "../../lib/types";
 
 export const dynamic = "force-dynamic";
@@ -46,15 +48,42 @@ const snapshotTags = (snapshot: Record<string, unknown> | undefined) => {
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 };
 
-const formatInr = (amount: number) => `₹${new Intl.NumberFormat("en-IN").format(amount)}`;
+const snapshotNumber = (snapshot: Record<string, unknown> | undefined, keys: string[]) => {
+  for (const key of keys) {
+    const value = snapshot?.[key];
+    const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+};
 
 const talentRate = (item: BackendTalentListing | null, snapshot?: Record<string, unknown>) => {
-  if (item?.rate_note) return item.rate_note;
-  if (item?.rate_min != null && item.rate_max != null) {
-    return `${formatInr(Number(item.rate_min))}-${formatInr(Number(item.rate_max))}`;
-  }
-  if (item?.rate_min != null) return `${formatInr(Number(item.rate_min))}+`;
-  return snapshotString(snapshot, ["rate", "rate_note"], "Rate flexible");
+  if (item) return formatTalentRate(item);
+  return formatTalentRate({
+    rate_min: snapshotNumber(snapshot, ["rate_min"]),
+    rate_max: snapshotNumber(snapshot, ["rate_max"]),
+    rate_currency: snapshotString(snapshot, ["rate_currency"], "") || null,
+    rate_note: snapshotString(snapshot, ["rate_note", "rate"], "") || null,
+  });
+};
+
+const compactCompensation = (presentation: ReturnType<typeof formatJobCompensation>) =>
+  presentation.headline === "Compensation not specified" && presentation.note
+    ? presentation.note
+    : presentation.headline;
+
+const jobCompensation = (job: Job | null, snapshot?: Record<string, unknown>) => {
+  if (job) return compactCompensation(compensationForJob(job));
+  return compactCompensation(formatJobCompensation({
+    mode: snapshotString(snapshot, ["compensation_mode"], "") || null,
+    minimum: snapshotNumber(snapshot, ["budget_amount", "budget_min"]),
+    maximum: snapshotNumber(snapshot, ["budget_max"]),
+    currency: snapshotString(snapshot, ["budget_currency"], "") || null,
+    unit: snapshotString(snapshot, ["budget_unit"], "") || null,
+    customUnit: snapshotString(snapshot, ["budget_unit_custom"], "") || null,
+    note: snapshotString(snapshot, ["budget_note"], "") || null,
+    legacyDisplay: snapshotString(snapshot, ["budget"], "") || null,
+  }));
 };
 
 const talentName = (item: BackendTalentListing | null, snapshot?: Record<string, unknown>) =>
@@ -81,7 +110,7 @@ const savedJobView = (savedId: string, savedJobId: string, job: Job | null, snap
   jobId: job?.id || savedJobId,
   title: job?.title || snapshotString(snapshot, ["title"], "Saved job"),
   identity: job?.channel.name || snapshotString(snapshot, ["channel_name", "identity"], "Hiring team"),
-  budget: job?.budget || snapshotString(snapshot, ["budget"], "Budget flexible"),
+  budget: jobCompensation(job, snapshot),
   location: job?.location || snapshotString(snapshot, ["location"], "Remote"),
   tags: job?.tags?.length ? job.tags : snapshotTags(snapshot),
 });

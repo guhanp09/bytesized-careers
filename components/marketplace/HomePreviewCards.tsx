@@ -7,7 +7,8 @@ import type { Job } from "../../lib/types";
 import { BackendTalentListing, saveJob, saveTalentListing } from "../../lib/backendClient";
 import { formatListingTitle } from "../../lib/displayText";
 import { jobDisplayChips } from "../../lib/jobCreatorContext";
-import { formatTalentListingExperience } from "../../lib/talentListing";
+import { compensationForJob } from "../../lib/jobPresentation";
+import { formatTalentListingExperience, formatTalentRate } from "../../lib/talentListing";
 import { Icon } from "../Icons";
 import { CardActionFeedback, copyTextToClipboard, IconFact, useTransientCardFeedback } from "../ui";
 
@@ -18,42 +19,6 @@ const initials = (value: string) =>
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
-
-const formatInr = (amount: number) => `₹${new Intl.NumberFormat("en-IN").format(amount)}`;
-
-const roleBasedRateLabel = (item: BackendTalentListing) => {
-  const text = [item.primary_role, item.title, ...item.roles, item.niche].filter(Boolean).join(" ").toLowerCase();
-  if (text.includes("thumbnail")) return "₹1,500 per thumbnail";
-  if (text.includes("short")) return "₹3,000 per short";
-  if (text.includes("script")) return "₹8,000 per script";
-  if (text.includes("motion")) return "₹12,000 per project";
-  if (text.includes("podcast")) return "₹18,000 per episode";
-  if (text.includes("channel manager")) return "₹80,000 monthly";
-  if (text.includes("strategist")) return "₹1,000/hr";
-  if (text.includes("ugc")) return "₹15,000 per video";
-  if (text.includes("retention analyst")) return "₹25,000 per project";
-  if (text.includes("faceless")) return "₹18,000 per video";
-  if (text.includes("editor")) return "₹20,000 per long-form video";
-  return "Rate flexible";
-};
-
-const talentRateLabel = (item: BackendTalentListing) => {
-  const note = item.rate_note?.trim();
-  const currency = item.rate_currency?.toUpperCase();
-  const legacyCurrencyCode = ["U", "S", "D"].join("");
-  const legacyCurrencyPattern = new RegExp(legacyCurrencyCode, "i");
-  const noteLooksUsd = note ? /[$]/.test(note) || legacyCurrencyPattern.test(note) : false;
-
-  if (currency === "INR") {
-    if (note && !noteLooksUsd) return note;
-    if (item.rate_min != null && item.rate_max != null) return `${formatInr(item.rate_min)}-${formatInr(item.rate_max)}`;
-    if (item.rate_min != null) return `${formatInr(item.rate_min)}+`;
-  }
-
-  if (note && !noteLooksUsd && currency !== legacyCurrencyCode) return note;
-  if (currency === legacyCurrencyCode || noteLooksUsd) return roleBasedRateLabel(item);
-  return "Rate flexible";
-};
 
 const displayName = (item: BackendTalentListing) =>
   item.owner_display_name ||
@@ -138,7 +103,12 @@ export function HomeJobPreviewCard({ job }: { job: Job }) {
   const { feedback, showFeedback } = useTransientCardFeedback();
   const href = `/jobs/${encodeURIComponent(String(job.id))}`;
   const displayTitle = formatListingTitle(job.title);
-  const meta = [job.budget, job.location, job.experience || job.contractType].filter(Boolean).join(" · ");
+  const compensation = compensationForJob(job);
+  const compensationLabel =
+    compensation.headline === "Compensation not specified" && compensation.note
+      ? compensation.note
+      : compensation.headline;
+  const meta = [compensationLabel, job.location, job.experience || job.contractType].filter(Boolean).join(" · ");
   const tags = jobDisplayChips(job).slice(0, 2).join(" · ");
 
   const open = () => {
@@ -254,7 +224,7 @@ export function HomeTalentPreviewCard({ item }: { item: BackendTalentListing }) 
   const tags = uniq([item.niche, ...item.platforms, ...item.tools]).slice(0, 3).join(" · ");
   const experience = formatTalentListingExperience(item);
   const detailFacts = [
-    { icon: "cash-stack" as const, label: "Rate", value: talentRateLabel(item) },
+    { icon: "cash-stack" as const, label: "Rate", value: formatTalentRate(item) },
     experience ? { icon: "cap" as const, label: "Experience", value: experience } : null,
     titleCase(item.work_mode) ? { icon: "pin" as const, label: "Work mode", value: titleCase(item.work_mode) } : null,
   ].filter(Boolean) as Array<{ icon: "cash-stack" | "cap" | "pin"; label: string; value: string }>;

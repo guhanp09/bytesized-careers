@@ -27,10 +27,10 @@ const BACKEND = "http://127.0.0.1:8100/api/v1";
 const execute = promisify(execFile);
 const QA_DATABASE = "sqlite+aiosqlite:///./.local-data/qa-playwright.db";
 
-async function cleanPortfolioNamespace(namespace: string, env = {}) {
-  return execute(resolve("backend/.venv/bin/python"), [
-    "scripts/qa_talent_portfolio_cleanup.py", namespace,
-  ], {
+async function cleanPortfolioNamespace(namespace: string, env = {}, scenario: "portfolio" | "compensation" = "portfolio") {
+  const args = ["scripts/qa_talent_portfolio_cleanup.py", namespace];
+  if (scenario !== "portfolio") args.push("--scenario", scenario);
+  return execute(resolve("backend/.venv/bin/python"), args, {
     cwd: resolve("backend"),
     env: { ...process.env, APP_ENV: "test", DATABASE_URL: QA_DATABASE, ...env },
     timeout: 10_000,
@@ -159,6 +159,67 @@ test("real talent cards and action panels omit unverified activity metrics witho
   await expect(actions.getByTestId("talent-hire-button")).toBeVisible();
   await expect(actions.getByRole("button", { name: "Save", exact: true })).toBeVisible();
   await expect(actions.getByRole("button", { name: "Share", exact: true })).toBeVisible();
+});
+
+test("foreign talent rates stay truthful on cards, details, and an edit round trip", async ({ page, browser }) => {
+  await login(page);
+  const headers = { Authorization: `Bearer ${await backendToken(page)}` };
+  const namespace = randomUUID();
+  const title = `USD compensation truth ${namespace}`;
+  let listingId: string | undefined;
+  const visitor = await browser.newContext({ baseURL: new URL(page.url()).origin });
+  try {
+    const created = await page.request.post(`${BACKEND}/talent-listings`, {
+      headers,
+      data: {
+        title,
+        primary_role: "Video editor",
+        roles: ["Video editor"],
+        work_mode: "remote",
+        rate_min: 25,
+        rate_max: 45,
+        rate_currency: "USD",
+        status: "published",
+      },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    listingId = (await created.json()).id;
+
+    const publicPage = await visitor.newPage();
+    await publicPage.goto("/talent");
+    const card = publicPage.getByRole("link", { name: `Open talent listing: ${title}` });
+    await expect(card).toBeVisible();
+    await expect(card).toContainText("$25–$45");
+    await expect(card).not.toContainText(/₹|20,000 per long-form video/);
+
+    await publicPage.goto(`/talent/${listingId}`);
+    await expect(publicPage.getByRole("heading", { name: title, exact: true })).toBeVisible();
+    const detailRates = publicPage.getByText("$25–$45", { exact: true });
+    await expect(detailRates.first()).toBeVisible();
+    for (const rate of await detailRates.all()) await expect(rate).toHaveText("$25–$45");
+    // Inspect the whole DOM so any hidden responsive copy carrying the old
+    // fabricated INR value still fails the test.
+    await expect(publicPage.locator("body")).not.toContainText("₹20,000 per long-form video");
+
+    await page.goto(`/post-talent?draftId=${listingId}`);
+    const rateControls = page.locator('[data-quality-target="talent-rate"]');
+    await expect(rateControls).toContainText("USD");
+    await expect(page.getByPlaceholder("Min")).toHaveValue("25");
+    await page.getByPlaceholder("Min").fill("30");
+    await page.getByRole("button", { name: "SAVE DRAFT", exact: true }).click();
+    await expect(page).toHaveURL(/\/drafts\?saved=1&type=talent/);
+
+    const mine = await page.request.get(`${BACKEND}/me/talent-listings`, { headers });
+    expect(mine.ok(), await mine.text()).toBeTruthy();
+    const saved = (await mine.json()).find((item: { id: string }) => item.id === listingId);
+    expect(saved).toMatchObject({ rate_min: 30, rate_max: 45, rate_currency: "USD", status: "draft" });
+  } finally {
+    await visitor.close();
+    if (listingId) expect((await page.request.delete(`${BACKEND}/talent-listings/${listingId}`, { headers })).ok()).toBeTruthy();
+    const cleanup = JSON.parse((await cleanPortfolioNamespace(namespace, {}, "compensation")).stdout);
+    expect(cleanup.notifications).toBe(1);
+    expect(cleanup.talent_listings).toBe(1);
+  }
 });
 
 test("backend talent portfolios show only real selected work without a developer cookie", async ({ page, browser }) => {

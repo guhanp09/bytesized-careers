@@ -81,7 +81,7 @@ test("formatTalentRate falls back gracefully when nothing usable is present", ()
     roles: [],
     niche: null,
   });
-  assert.equal(rate, "Rate flexible");
+  assert.equal(rate, "Rate not specified");
   // Never a broken/empty/undefined range.
   assert.doesNotMatch(rate, /undefined|null|NaN/);
 });
@@ -208,7 +208,7 @@ test("rendered talent snapshots use exact-year experience, not ranges or level l
     );
   }
   // And a rate, where the listing has one, reads as money rather than a label.
-  const rated = cards.filter((talent) => talent.rate && talent.rate !== "Rate flexible");
+  const rated = cards.filter((talent) => talent.rate && talent.rate !== "Rate not specified");
   assert.ok(rated.length > 0, "no talent card carried a rate at all");
 
   assert.doesNotMatch(interactionsSrc, /experience: "(Senior|Junior|Mid-level|Intermediate|Expert)"/);

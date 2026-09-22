@@ -22,7 +22,7 @@ import { MOCK_TALENT_LISTINGS } from "../../../lib/mockTalentListings";
 import { publicProfileFallbackSlug } from "../../../lib/profileSlug";
 import { buildProfileReviewsHref, profileRatingSummaryFromProfile } from "../../../lib/profileRating";
 import { getSeoFilterRoute, isSeoRouteIndexApproved } from "../../../lib/seoFilterRoutes";
-import { formatTalentListingExperience } from "../../../lib/talentListing";
+import { formatTalentListingExperience, formatTalentRate } from "../../../lib/talentListing";
 import { serializeJsonLd } from "../../../lib/jsonLd";
 import { talentListingVisibility } from "../../../lib/seo/jobPostingLifecycle";
 
@@ -68,47 +68,6 @@ const uniq = (values: Array<string | null | undefined>) => {
       seen.add(key);
       return true;
     });
-};
-
-const formatInr = (amount: number) => `₹${new Intl.NumberFormat("en-IN").format(amount)}`;
-
-const roleBasedRateLabel = (listing: BackendTalentListing) => {
-  const text = [listing.primary_role, listing.title, ...listing.roles, listing.niche]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  if (text.includes("thumbnail")) return "₹1,500 per thumbnail";
-  if (text.includes("short")) return "₹3,000 per short";
-  if (text.includes("script")) return "₹8,000 per script";
-  if (text.includes("motion")) return "₹12,000 per project";
-  if (text.includes("podcast")) return "₹18,000 per episode";
-  if (text.includes("channel manager")) return "₹80,000 monthly";
-  if (text.includes("strategist")) return "₹1,000/hr";
-  if (text.includes("ugc")) return "₹15,000 per video";
-  if (text.includes("retention analyst")) return "₹25,000 per project";
-  if (text.includes("faceless")) return "₹18,000 per video";
-  if (text.includes("editor")) return "₹20,000 per long-form video";
-  return "Rate flexible";
-};
-
-const rateLabel = (listing: BackendTalentListing) => {
-  const note = listing.rate_note?.trim();
-  const currency = listing.rate_currency?.toUpperCase();
-  const legacyCurrencyCode = ["U", "S", "D"].join("");
-  const legacyCurrencyPattern = new RegExp(legacyCurrencyCode, "i");
-  const noteLooksUsd = note ? /[$]/.test(note) || legacyCurrencyPattern.test(note) : false;
-
-  if (currency === "INR") {
-    if (note && !noteLooksUsd) return note;
-    if (listing.rate_min != null && listing.rate_max != null) {
-      return `${formatInr(Number(listing.rate_min))}-${formatInr(Number(listing.rate_max))}`;
-    }
-    if (listing.rate_min != null) return `${formatInr(Number(listing.rate_min))}+`;
-  }
-
-  if (note && !noteLooksUsd && currency !== legacyCurrencyCode) return note;
-  if (currency === legacyCurrencyCode || noteLooksUsd) return roleBasedRateLabel(listing);
-  return "Rate flexible";
 };
 
 const displayName = (listing: BackendTalentListing) =>
@@ -376,7 +335,7 @@ export async function generateMetadata({
   const dataSource = await getMarketplaceDataSourceState();
   const listing = await getListing(String(id), dataSource);
   if (!listing) return { title: "Talent listing not found", robots: { index: false, follow: false } };
-  const description = [displayName(listing), listing.primary_role || listing.roles[0], listing.location, rateLabel(listing)]
+  const description = [displayName(listing), listing.primary_role || listing.roles[0], listing.location, formatTalentRate(listing)]
     .filter(Boolean)
     .join(" · ");
   const image = listing.owner_avatar_url || undefined;
@@ -469,7 +428,7 @@ export default async function TalentListingPage({
   const rows = collaborationRows(listing);
   const isOwner = Boolean(session?.backendUserId && listing.owner_user_id === session.backendUserId);
   const topStats = [
-    { icon: "cash-stack" as const, label: "Rate", value: rateLabel(listing) },
+    { icon: "cash-stack" as const, label: "Rate", value: formatTalentRate(listing) },
     { icon: "cap" as const, label: "Experience", value: formatTalentListingExperience(listing) || "Not specified" },
     { icon: "pin" as const, label: "Location", value: listing.location || titleCase(listing.work_mode) || "Remote" },
   ];

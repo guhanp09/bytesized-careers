@@ -7,47 +7,11 @@ import { useSession } from "next-auth/react";
 import { BackendTalentListing, saveTalentListing } from "../lib/backendClient";
 import { formatListingTitle } from "../lib/displayText";
 import { publicProfileFallbackSlug } from "../lib/profileSlug";
-import { formatTalentListingExperience } from "../lib/talentListing";
+import { formatTalentListingExperience, formatTalentRate } from "../lib/talentListing";
 import { useCardSheen } from "../lib/useCardSheen";
 import { Icon } from "./Icons";
 import SearchMatchReasons from "./search/SearchMatchReasons";
 import { CardActionFeedback, copyTextToClipboard, MetaRow, TagPill, useTransientCardFeedback } from "./ui";
-
-const formatInr = (amount: number) => `₹${new Intl.NumberFormat("en-IN").format(amount)}`;
-
-const roleBasedRateLabel = (item: BackendTalentListing) => {
-  const text = [item.primary_role, item.title, ...item.roles, item.niche].filter(Boolean).join(" ").toLowerCase();
-  if (text.includes("thumbnail")) return "₹1,500 per thumbnail";
-  if (text.includes("short")) return "₹3,000 per short";
-  if (text.includes("script")) return "₹8,000 per script";
-  if (text.includes("motion")) return "₹12,000 per project";
-  if (text.includes("podcast")) return "₹18,000 per episode";
-  if (text.includes("channel manager")) return "₹80,000 monthly";
-  if (text.includes("strategist")) return "₹1,000/hr";
-  if (text.includes("ugc")) return "₹15,000 per video";
-  if (text.includes("retention analyst")) return "₹25,000 per project";
-  if (text.includes("faceless")) return "₹18,000 per video";
-  if (text.includes("editor")) return "₹20,000 per long-form video";
-  return "Rate flexible";
-};
-
-const rateLabel = (item: BackendTalentListing) => {
-  const note = item.rate_note?.trim();
-  const currency = item.rate_currency?.toUpperCase();
-  const legacyCurrencyCode = ["U", "S", "D"].join("");
-  const legacyCurrencyPattern = new RegExp(legacyCurrencyCode, "i");
-  const noteLooksUsd = note ? /[$]/.test(note) || legacyCurrencyPattern.test(note) : false;
-
-  if (currency === "INR") {
-    if (note && !noteLooksUsd) return note;
-    if (item.rate_min != null && item.rate_max != null) return `${formatInr(item.rate_min)}-${formatInr(item.rate_max)}`;
-    if (item.rate_min != null) return `${formatInr(item.rate_min)}+`;
-  }
-
-  if (note && !noteLooksUsd && currency !== legacyCurrencyCode) return note;
-  if (currency === legacyCurrencyCode || noteLooksUsd) return roleBasedRateLabel(item);
-  return "Rate flexible";
-};
 
 const displayName = (item: BackendTalentListing) =>
   item.owner_display_name ||
@@ -273,7 +237,7 @@ export default function TalentCard({
         </h2>
 
         <div className="mt-4 space-y-2">
-          <MetaRow icon="cash-stack" text={rateLabel(item)} />
+          <MetaRow icon="cash-stack" text={formatTalentRate(item)} />
           <MetaRow icon="cap" text={`Experience: ${experience}`} />
           <MetaRow icon="pin" text={modeOrLocation} />
         </div>

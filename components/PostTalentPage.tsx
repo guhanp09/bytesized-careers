@@ -19,6 +19,7 @@ import {
   TALENT_EXPERIENCE_MIN_YEARS,
   TALENT_LISTING_DEFAULT_AVAILABILITY,
   formatTalentExperienceYears,
+  formatTalentRate,
   talentExperienceYears,
 } from "../lib/talentListing";
 import {
@@ -154,11 +155,6 @@ const parseMoney = (value: string) => {
   if (!trimmed) return null;
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : NaN;
-};
-
-const formatInr = (amount: string) => {
-  const parsed = Number(amount);
-  return Number.isFinite(parsed) ? `₹${new Intl.NumberFormat("en-IN").format(parsed)}` : amount;
 };
 
 const initials = (value: string) =>
@@ -622,17 +618,14 @@ function TalentPreview({
   const min = rateMin.trim();
   const max = rateMax.trim();
   const currency = rateCurrency.trim().toUpperCase() || "INR";
-  const rate =
-    rateNote.trim() ||
-    (min && max
-      ? currency === "INR"
-        ? `${formatInr(min)}-${formatInr(max)}`
-        : `${currency} ${min}-${max}`
-      : min
-        ? currency === "INR"
-          ? `${formatInr(min)}+`
-          : `${currency} ${min}+`
-        : "Rate not set");
+  const parsedMin = parseMoney(min);
+  const parsedMax = parseMoney(max);
+  const rate = formatTalentRate({
+    rate_min: typeof parsedMin === "number" && Number.isFinite(parsedMin) ? parsedMin : null,
+    rate_max: typeof parsedMax === "number" && Number.isFinite(parsedMax) ? parsedMax : null,
+    rate_currency: currency,
+    rate_note: rateNote.trim() || null,
+  });
   const experienceValue = experience.trim() || "Not specified";
   const modeOrLocation = titleCase(workMode || "Remote");
   const tags = uniq([...formats, ...contentNiches, ...contentGenres, ...tools, ...platforms, niche]);
@@ -785,6 +778,7 @@ export default function PostTalentPage() {
   const [turnaround, setTurnaround] = useState("");
   const [rateMin, setRateMin] = useState("");
   const [rateMax, setRateMax] = useState("");
+  const [rateCurrency, setRateCurrency] = useState("INR");
   const [rateNote, setRateNote] = useState("");
   const [description, setDescription] = useState("");
   const [portfolioItems, setPortfolioItems] = useState<BackendPortfolioItem[]>([]);
@@ -823,6 +817,9 @@ export default function PostTalentPage() {
   const rateNoteIntent = rateNote.trim();
   const explicitRateNote = rateIntent === "contact" ? "Contact for pricing" : rateIntent === "flexible" ? "Flexible" : "";
   const effectiveRateNote = rateNoteIntent || explicitRateNote;
+  const normalizedRateCurrency = rateCurrency.trim().toUpperCase() || "INR";
+  const rateCurrencyMark = normalizedRateCurrency === "INR" ? "₹" : normalizedRateCurrency;
+  const rateInputPadding = normalizedRateCurrency === "INR" ? "pl-8" : "pl-14";
 
   const rateError = useMemo(() => {
     const min = parseMoney(rateMin);
@@ -869,6 +866,7 @@ export default function PostTalentPage() {
       setTurnaround(listing.turnaround || "");
       setRateMin(listing.rate_min != null ? String(listing.rate_min) : "");
       setRateMax(listing.rate_max != null ? String(listing.rate_max) : "");
+      setRateCurrency(listing.rate_currency?.trim().toUpperCase() || "INR");
       const nextRateNote = listing.rate_note || "";
       const normalizedRateNote = nextRateNote.trim().toLowerCase();
       setRateNote(nextRateNote);
@@ -939,6 +937,7 @@ export default function PostTalentPage() {
     work_mode: workMode,
     rate_min: rateMin.trim() ? Number(rateMin) : null,
     rate_max: rateMax.trim() ? Number(rateMax) : null,
+    rate_currency: normalizedRateCurrency,
     rate_note: effectiveRateNote || null,
     niche,
     content_niches: contentNichesList,
@@ -1151,7 +1150,7 @@ export default function PostTalentPage() {
     availability_status: availabilityStatus || TALENT_LISTING_DEFAULT_AVAILABILITY,
     rate_min: rateMin.trim() ? Number(rateMin) : null,
     rate_max: rateMax.trim() ? Number(rateMax) : null,
-    rate_currency: "INR",
+    rate_currency: normalizedRateCurrency,
     rate_note: effectiveRateNote || null,
     open_slots: null,
     turnaround: turnaround.trim() || null,
@@ -1432,7 +1431,7 @@ export default function PostTalentPage() {
             </Field>
             <Field
               label={
-                <LabelWithIcon icon="indian-rupee">
+                <LabelWithIcon icon="cash-stack">
                   Rate <span className="text-muted">*</span>
                 </LabelWithIcon>
               }
@@ -1444,14 +1443,14 @@ export default function PostTalentPage() {
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
                   <div className="relative">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-white/55">
-                      ₹
+                      {rateCurrencyMark}
                     </span>
                     <input
                       type="number"
                       min="0"
                       aria-required="true"
                       aria-invalid={Boolean(fieldErrors.rateRange)}
-                      className={[inputBase, "pl-8", fieldErrors.rateRange ? invalidClass : ""].join(" ")}
+                      className={[inputBase, rateInputPadding, fieldErrors.rateRange ? invalidClass : ""].join(" ")}
                       value={rateMin}
                       onChange={(event) => {
                         setRateMin(event.target.value);
@@ -1466,14 +1465,14 @@ export default function PostTalentPage() {
                   <span className="hidden text-base text-muted select-none sm:inline-flex">–</span>
                   <div className="relative">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-white/55">
-                      ₹
+                      {rateCurrencyMark}
                     </span>
                     <input
                       type="number"
                       min="0"
                       aria-required="true"
                       aria-invalid={Boolean(fieldErrors.rateRange)}
-                      className={[inputBase, "pl-8", fieldErrors.rateRange ? invalidClass : ""].join(" ")}
+                      className={[inputBase, rateInputPadding, fieldErrors.rateRange ? invalidClass : ""].join(" ")}
                       value={rateMax}
                       onChange={(event) => {
                         setRateMax(event.target.value);
@@ -1762,7 +1761,7 @@ export default function PostTalentPage() {
             rateNote={effectiveRateNote}
             rateMin={rateMin}
             rateMax={rateMax}
-            rateCurrency="INR"
+            rateCurrency={rateCurrency}
           />
         </aside>
       </div>

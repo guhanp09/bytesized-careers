@@ -2,62 +2,66 @@ import type { BackendTalentListing } from "./backendClient";
 
 export const TALENT_LISTING_DEFAULT_AVAILABILITY = "available" as const;
 
-const formatInr = (amount: number) => `₹${new Intl.NumberFormat("en-IN").format(amount)}`;
+type TalentRateSource = Pick<
+  BackendTalentListing,
+  "rate_min" | "rate_max" | "rate_currency" | "rate_note"
+>;
 
-/**
- * A sensible per-role rate when a listing carries a foreign/legacy currency we
- * can't render natively. Mirrors the same fallback the public TalentCard uses so
- * the inbox context card shows the same figure as the marketplace card.
- */
-const roleBasedRateLabel = (listing: Pick<BackendTalentListing, "primary_role" | "title" | "roles" | "niche">) => {
-  const text = [listing.primary_role, listing.title, ...(listing.roles || []), listing.niche]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  if (text.includes("thumbnail")) return "₹1,500 per thumbnail";
-  if (text.includes("short")) return "₹3,000 per short";
-  if (text.includes("script")) return "₹8,000 per script";
-  if (text.includes("motion")) return "₹12,000 per project";
-  if (text.includes("podcast")) return "₹18,000 per episode";
-  if (text.includes("channel manager")) return "₹80,000 monthly";
-  if (text.includes("strategist")) return "₹1,000/hr";
-  if (text.includes("ugc")) return "₹15,000 per video";
-  if (text.includes("retention analyst")) return "₹25,000 per project";
-  if (text.includes("faceless")) return "₹18,000 per video";
-  if (text.includes("editor")) return "₹20,000 per long-form video";
-  return "Rate flexible";
+const finiteRate = (value?: number | null) =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+const formatRateNumber = (amount: number) =>
+  new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+  }).format(amount);
+
+const formatTalentMoney = (amount: number, currency?: string | null) => {
+  const code = currency?.trim().toUpperCase() || "";
+  if (!code) return formatRateNumber(amount);
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+    }).format(amount);
+  } catch {
+    // Preserve an unsupported legacy code verbatim. Guessing a known currency
+    // or silently changing it to INR would be a materially different price.
+    return `${code} ${formatRateNumber(amount)}`;
+  }
 };
 
 /**
- * The single, human rate label for a talent listing — the same logic the public
- * TalentCard renders, centralised so the inbox context card stays in step. Prefers
- * an INR note, then a formatted INR min/max range, then the note, then a per-role
- * fallback for foreign/legacy currencies. Never returns raw min/max numbers or a
- * broken range. Returns "Rate flexible" when nothing usable is present.
+ * The single human rate label for a talent listing. Notes are the creator's
+ * explicit pricing intent (including "Flexible", "Contact for pricing" and
+ * "Unpaid") and therefore remain verbatim. Numeric rates retain their stored
+ * currency; missing currency is disclosed instead of being silently treated as
+ * INR. An absent rate is unknown, not flexible.
  */
-export function formatTalentRate(
-  listing: Pick<
-    BackendTalentListing,
-    "rate_min" | "rate_max" | "rate_currency" | "rate_note" | "primary_role" | "title" | "roles" | "niche"
-  >
-): string {
+export function formatTalentRate(listing: TalentRateSource): string {
   const note = listing.rate_note?.trim();
-  const currency = listing.rate_currency?.toUpperCase();
-  const legacyCurrencyCode = ["U", "S", "D"].join("");
-  const legacyCurrencyPattern = new RegExp(legacyCurrencyCode, "i");
-  const noteLooksUsd = note ? /[$]/.test(note) || legacyCurrencyPattern.test(note) : false;
+  if (note) return note;
 
-  if (currency === "INR") {
-    if (note && !noteLooksUsd) return note;
-    if (listing.rate_min != null && listing.rate_max != null) {
-      return `${formatInr(Number(listing.rate_min))}-${formatInr(Number(listing.rate_max))}`;
+  const minimum = finiteRate(listing.rate_min);
+  const maximum = finiteRate(listing.rate_max);
+  if (minimum === null && maximum === null) return "Rate not specified";
+
+  const suffix = listing.rate_currency?.trim() ? "" : " (currency not specified)";
+  if (minimum !== null && maximum !== null) {
+    if (minimum === maximum) return `${formatTalentMoney(minimum, listing.rate_currency)}${suffix}`;
+    if (minimum > maximum) {
+      return `${formatTalentMoney(minimum, listing.rate_currency)} minimum · ${formatTalentMoney(
+        maximum,
+        listing.rate_currency,
+      )} maximum${suffix}`;
     }
-    if (listing.rate_min != null) return `${formatInr(Number(listing.rate_min))}+`;
+    return `${formatTalentMoney(minimum, listing.rate_currency)}–${formatTalentMoney(
+      maximum,
+      listing.rate_currency,
+    )}${suffix}`;
   }
-
-  if (note && !noteLooksUsd && currency !== legacyCurrencyCode) return note;
-  if (currency === legacyCurrencyCode || noteLooksUsd) return roleBasedRateLabel(listing);
-  return "Rate flexible";
+  if (minimum !== null) return `${formatTalentMoney(minimum, listing.rate_currency)}+${suffix}`;
+  return `Up to ${formatTalentMoney(maximum as number, listing.rate_currency)}${suffix}`;
 }
 
 // ── Exact talent experience years ────────────────────────────────────────────

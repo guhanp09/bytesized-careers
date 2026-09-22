@@ -1,6 +1,8 @@
 import type { BackendTalentListing } from "./backendClient";
 import { creatorContextFieldCount, isCreatorContextComplete } from "./jobCreatorContext.ts";
+import { compensationForJob } from "./jobPresentation.ts";
 import type { DraftItem } from "./ownerDrafts";
+import { formatTalentRate } from "./talentListing.ts";
 import type { Job } from "./types";
 
 /**
@@ -105,9 +107,17 @@ function hasActualTitle(value?: string | null, metaValue?: boolean): boolean {
 function hasActualBudget(job: Partial<Job>): boolean {
   if (job.draftCompletion?.hasBudget === false) return false;
   if (job.draftCompletion?.hasBudget === true) return true;
-  const budget = normalized(job.budget);
-  if (!budget || budget === "flexible") return false;
-  return true;
+  const hasStructuredCompensation = Boolean(
+    job.compensationMode ||
+      job.budgetAmount != null ||
+      job.budgetMax != null ||
+      normalized(job.budgetNote),
+  );
+  // A retired display-only "Flexible" value never recorded whether the author
+  // chose negotiable compensation or simply skipped the field. Only the
+  // structured negotiable mode is publish evidence.
+  if (!hasStructuredCompensation && normalized(job.budget) === "flexible") return false;
+  return compensationForJob(job as Job).disclosed;
 }
 
 function hasActualPlatform(job: Partial<Job>): boolean {
@@ -296,6 +306,12 @@ export function getJobDraftCompletion(job: Partial<Job>): DraftCompletion {
     job.draftCompletion?.hasExperience === true ||
     isSpecificExperience(job.experience) ||
     isSpecificExperience((job as Partial<Job> & { experience_level?: string | null }).experience_level);
+  const compensation = compensationForJob(job as Job);
+  const compensationValue =
+    compensation.headline === "Compensation not specified" && compensation.note
+      ? compensation.note
+      : compensation.headline;
+  const hasBudget = hasActualBudget(job);
 
   const G = {
     basics: { key: "basics", label: "Basics" },
@@ -332,7 +348,7 @@ export function getJobDraftCompletion(job: Partial<Job>): DraftCompletion {
     {
       key: "budget",
       label: "Add budget",
-      done: hasActualBudget(job),
+      done: hasBudget,
       required: true,
       jump: "budget",
       group: G.budget.key,
@@ -487,7 +503,7 @@ export function getJobDraftCompletion(job: Partial<Job>): DraftCompletion {
   const keyFacts: KeyFact[] = [
     { key: "type", label: "Type", value: "Job listing", jump: null },
     { key: "workMode", label: "Work mode", value: job.workMode || null, jump: "basics" },
-    { key: "budget", label: "Compensation", value: truthy(job.budget) ? (job.budget as string) : null, jump: "budget" },
+    { key: "budget", label: "Compensation", value: hasBudget ? compensationValue : null, jump: "budget" },
     { key: "tools", label: "Tools", value: tools.length ? tools.slice(0, 3).join(", ") : null, jump: "tools" },
     {
       key: "creatorContext",
@@ -645,11 +661,7 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
 
   const groups = [G.basics, G.services, G.creatorContext, G.toolsPortfolio];
 
-  const rateValue = hasRate
-    ? truthy(listing.rate_note)
-      ? (listing.rate_note as string)
-      : [listing.rate_min, listing.rate_max].filter((v) => v != null).join("–") || "Provided"
-    : null;
+  const rateValue = hasRate ? formatTalentRate(listing) : null;
 
   const keyFacts: KeyFact[] = [
     { key: "type", label: "Type", value: "Talent listing", jump: null },

@@ -64,6 +64,13 @@ async def test_saved_jobs_applications_notifications_reports_and_launch_entitlem
         json={"note": "Looks relevant"},
     )
     assert save.status_code == 200
+    job_snapshot = save.json()["job_snapshot"]
+    assert job_snapshot["compensation_mode"] == "range"
+    assert job_snapshot["budget_amount"] == "1000.00"
+    assert job_snapshot["budget_max"] == "1500.00"
+    assert job_snapshot["budget_currency"] == "USD"
+    assert job_snapshot["budget_unit"] == "per video"
+    assert job_snapshot["budget_unit_custom"] is None
     saved = await client.get("/api/v1/me/saved-jobs", headers={"Authorization": f"Bearer {applicant_token}"})
     assert saved.status_code == 200
     assert saved.json()[0]["job_id"] == job_id
@@ -192,6 +199,7 @@ async def test_talent_listing_save_interest_and_notifications(client: AsyncClien
         json={"note": "Good fit"},
     )
     assert save.status_code == 200
+    assert save.json()["talent_snapshot"]["rate_note"] == "Contact for pricing"
 
     saved_summary = await client.get(
         "/api/v1/me/saved/summary",

@@ -1,5 +1,6 @@
 import type { BackendCreateJobPayload, BackendTalentListing, BackendTalentListingPayload } from "./backendClient";
 import { getJobDraftCompletion, getTalentDraftCompletion, isFallbackDraftTitle, type DraftCompletion } from "./draftCompletion";
+import { compensationForJob } from "./jobPresentation";
 import { serializeReferenceVideo } from "./referenceVideos";
 import type { Job } from "./types";
 
@@ -58,14 +59,6 @@ const splitLines = (value?: string | null) =>
     .map((line) => line.trim())
     .filter(Boolean);
 
-const parseBudgetNumbers = (value?: string | null) => {
-  const numbers = (value || "").match(/\d[\d,]*/g)?.map((part) => Number(part.replace(/,/g, ""))) || [];
-  return {
-    min: Number.isFinite(numbers[0]) ? numbers[0] : null,
-    max: Number.isFinite(numbers[1]) ? numbers[1] : null,
-  };
-};
-
 const duplicateTitle = (item: DraftItem) => {
   if (item.untitled || isFallbackDraftTitle(item.title)) {
     return item.kind === "job" ? "Untitled job draft copy" : "Untitled talent draft copy";
@@ -76,21 +69,23 @@ const duplicateTitle = (item: DraftItem) => {
 export function buildDuplicateJobPayload(item: DraftItem): BackendCreateJobPayload | null {
   const job = item.sourceJob;
   if (!job) return null;
-  const budget = parseBudgetNumbers(job.budget);
-  const budgetUnit = (job.budget || "").toLowerCase().includes("month") ? "per month" : "per project";
   return {
     title: duplicateTitle(item),
     category: job.category || "Editing",
     location: job.location || null,
-    budget_amount: budget.min,
-    budget_max: budget.max,
-    budget_currency: "INR",
-    budget_unit: budgetUnit,
+    budget_amount: job.budgetAmount ?? null,
+    budget_max: job.budgetMax ?? null,
+    budget_currency: job.budgetCurrency || null,
+    budget_unit: (job.budgetUnit as BackendCreateJobPayload["budget_unit"]) || null,
+    budget_unit_custom: job.budgetUnitCustom || null,
+    budget_note: job.budgetNote || null,
+    compensation_mode: (job.compensationMode as BackendCreateJobPayload["compensation_mode"]) || null,
     experience_level: job.experience && job.experience.toLowerCase() !== "any" ? job.experience : null,
     platforms: job.platform ? [job.platform] : [],
     start_timeframe: job.startTimeframe || null,
     work_mode: job.workMode || null,
-    contract_type: job.contractType || (budgetUnit === "per month" ? "Monthly" : "Project-based"),
+    contract_type: job.contractType || null,
+    engagement_type: (job.engagementType as BackendCreateJobPayload["engagement_type"]) || null,
     timezone_overlap: job.timezoneOverlap || null,
     weekly_hours: job.weeklyHours || null,
     application_mode: job.applicationMode === "external" ? "external" : "internal",
@@ -217,9 +212,14 @@ export function jobToDraft(job: Job): DraftItem {
     else if (verification) verificationLabel = "Pending";
   }
 
+  const compensation = compensationForJob(job);
+  const compensationLabel =
+    compensation.headline === "Compensation not specified" && compensation.note
+      ? compensation.note
+      : compensation.headline;
   const hasBudgetMeta =
     job.draftCompletion?.hasBudget === true ||
-    (job.draftCompletion?.hasBudget !== false && Boolean(job.budget && job.budget.trim().toLowerCase() !== "flexible"));
+    (job.draftCompletion?.hasBudget !== false && compensation.disclosed);
   const hasLocationMeta = job.draftCompletion?.hasWorkMode !== false && Boolean(job.location);
   const missingFields: string[] = [];
   if (!actualTitle) missingFields.push("Title");
@@ -254,7 +254,7 @@ export function jobToDraft(job: Job): DraftItem {
     statusLabel,
     statusKind,
     channelName: job.channel?.name || job.hiringDisplayName || null,
-    meta: [hasBudgetMeta ? job.budget : null, job.category, hasLocationMeta ? job.location : null].filter(
+    meta: [hasBudgetMeta ? compensationLabel : null, job.category, hasLocationMeta ? job.location : null].filter(
       (v): v is string => Boolean(v)
     ),
     missingFields,
@@ -277,7 +277,7 @@ export function talentToDraft(listing: BackendTalentListing): DraftItem {
 
   const missingFields: string[] = [];
   if (untitled) missingFields.push("Title");
-  if (listing.rate_min == null && listing.rate_max == null) missingFields.push("Rate");
+  if (listing.rate_min == null && listing.rate_max == null && !listing.rate_note?.trim()) missingFields.push("Rate");
   if (!listing.portfolio_item_ids || listing.portfolio_item_ids.length === 0) missingFields.push("Portfolio sample");
   if (!listing.description) missingFields.push("Description");
 

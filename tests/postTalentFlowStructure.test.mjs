@@ -37,7 +37,7 @@ test("post-talent uses the six-step structural flow", () => {
   }
 });
 
-test("post-talent basics contains core facts and fixed INR rate controls", () => {
+test("post-talent basics contains core facts and preserves an existing listing's currency", () => {
   const page = read("components/PostTalentPage.tsx");
   const basics = extractBranch(page, "basics", "details");
 
@@ -52,11 +52,16 @@ test("post-talent basics contains core facts and fixed INR rate controls", () =>
     assert.match(basics, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
 
-  assert.match(basics, /₹/);
+  // New listings still default to INR, but an existing USD/EUR listing must
+  // keep and display its stored currency when edited. The old fixed-INR
+  // assertion encoded the data-loss bug this contract now prevents.
+  assert.match(basics, /rateCurrencyMark/);
   assert.match(basics, /Contact for pricing/);
   assert.match(basics, /Flexible/);
   assert.doesNotMatch(basics, /Rate intent/);
-  assert.match(page, /rate_currency:\s*"INR"/);
+  assert.match(page, /useState\("INR"\)/);
+  assert.match(page, /setRateCurrency\(listing\.rate_currency/);
+  assert.match(page, /rate_currency:\s*normalizedRateCurrency/);
   assert.doesNotMatch(page, /label="Currency"|>\s*Currency\s*</);
   assert.doesNotMatch(basics, /Timezone|Turnaround|ToolPicker|RequirementSelector/);
 });
