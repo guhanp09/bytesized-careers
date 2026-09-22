@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 import { Icon } from "../Icons";
 import { completeLaunchFreeCheckout, type BackendEntitlement } from "../../lib/backendClient";
 
-const PRICE_COPY: Record<BackendEntitlement["kind"], { title: string; standard: string }> = {
-  job_post: { title: "Standard job post", standard: "₹4,999" },
-  talent_listing: { title: "Standard talent listing", standard: "₹499" },
-  featured_job: { title: "Featured job", standard: "₹7,499" },
-  featured_talent_listing: { title: "Featured talent listing", standard: "₹999" },
+const CHECKOUT_COPY: Record<BackendEntitlement["kind"], { title: string }> = {
+  job_post: { title: "Job post" },
+  talent_listing: { title: "Talent listing" },
+  featured_job: { title: "Featured job" },
+  featured_talent_listing: { title: "Featured talent listing" },
 };
 
 export function CheckoutPanel({
@@ -27,7 +27,7 @@ export function CheckoutPanel({
 }) {
   const router = useRouter();
   const [status, setStatus] = useState<"idle" | "working" | "done" | "error">("idle");
-  const copy = PRICE_COPY[kind];
+  const copy = CHECKOUT_COPY[kind];
   const returnHref = nextUrl || "/drafts";
 
   return (
@@ -47,8 +47,8 @@ export function CheckoutPanel({
       </div>
 
       <div className="mt-7 divide-y divide-white/10 rounded-2xl border border-white/10">
-        <Row label="Standard price" value={copy.standard} />
-        <Row label="Launch beta adjustment" value={`-${copy.standard}`} />
+        <Row label="Beta access" value="Free" />
+        <Row label="Payment method" value="Not required" />
         <Row label="Total due now" value="₹0" strong />
       </div>
 

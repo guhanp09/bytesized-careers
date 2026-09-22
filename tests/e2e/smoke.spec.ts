@@ -108,6 +108,10 @@ test("homepage hero stat block cycles through stats with a progress indicator", 
 
   const label = page.getByTestId("hero-stat-label");
   await expect(label).toBeVisible();
+  await expect(page.getByTestId("hero-stat-source")).toHaveAttribute(
+    "href",
+    "https://www.bcg.com/publications/2025/india-from-content-to-commerce-mapping-indias-creator-economy"
+  );
   // The progress bar under the stat acts as the rotation indicator.
   await expect(page.getByTestId("hero-stat-progress")).toBeVisible();
 
@@ -209,22 +213,16 @@ test("homepage Browse by category section sits between How it works and Recent j
   expect(order).toBe(true);
 });
 
-test("homepage comparison section sits before FAQ, uses safe labels, names no competitors", async ({ page }) => {
+test("homepage capability section sits before FAQ and states implemented behavior", async ({ page }) => {
   await page.goto("/");
 
   const section = page.getByTestId("home-comparison");
-  await expect(section.getByRole("heading", { name: "Built for creator hiring, not generic freelancing" })).toBeVisible();
-  await expect(section.getByText("Comparison", { exact: true })).toBeVisible();
-
-  // Columns use only the two approved labels.
-  await expect(section.getByText("CreatorJobs", { exact: true }).first()).toBeVisible();
-  await expect(section.getByText("General Freelance Platforms", { exact: true }).first()).toBeVisible();
-  await expect(section.getByText("Feature / Benefit", { exact: true })).toBeVisible();
-  await expect(section.getByText("UPI payments", { exact: true })).toBeVisible();
-  await expect(section.getByText("Portfolio-driven talent profiles", { exact: true })).toBeVisible();
-
-  // No competitor brand names anywhere in the section.
-  await expect(section.getByText(/fiverr|upwork/i)).toHaveCount(0);
+  await expect(section.getByRole("heading", { name: "Creator hiring in one workspace" })).toBeVisible();
+  await expect(section.getByText("Product capabilities", { exact: true })).toBeVisible();
+  await expect(section.getByText("Available in CreatorJobs beta", { exact: true })).toBeVisible();
+  await expect(section.getByText("Applications and hiring requests", { exact: true })).toBeVisible();
+  await expect(section.getByText("Portfolio-based public profiles", { exact: true })).toBeVisible();
+  await expect(section).not.toContainText(/UPI payments|unlimited free|freelance platforms|fiverr|upwork/i);
 
   // Ordering: comparison appears before the FAQ.
   const order = await page.evaluate(() => {
@@ -236,79 +234,32 @@ test("homepage comparison section sits before FAQ, uses safe labels, names no co
   expect(order).toBe(true);
 });
 
-test("homepage job-alerts signup sits before FAQ, validates, and confirms on success", async ({ page }) => {
+test("job alerts stay unavailable until subscription and delivery are durable", async ({ page, request }) => {
   await page.goto("/");
 
-  const section = page.getByTestId("home-job-alerts");
-  await expect(section.getByRole("heading", { name: "Get job alerts in your inbox" })).toBeVisible();
-  const input = section.getByPlaceholder("your@email.com");
-  await expect(input).toBeVisible();
-  const subscribe = section.getByRole("button", { name: "Subscribe" });
-  await expect(subscribe).toBeVisible();
+  await expect(page.getByTestId("home-job-alerts")).toHaveCount(0);
+  await expect(page.getByTestId("job-alerts-popup")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(/job alerts|delivered to your inbox|get first pick/i);
 
-  // No fake subscriber count / social proof.
-  await expect(section.getByText(/\d[\d,]*\+?\s*creators already subscribed/i)).toHaveCount(0);
-  await expect(page.locator("body")).not.toContainText("Join 4,200+");
+  await page.evaluate(() => window.dispatchEvent(new Event("cj:job-alerts")));
+  await expect(page.getByTestId("job-alerts-popup")).toHaveCount(0);
 
-  // Invalid email shows a validation error and does not submit.
-  await input.fill("not-an-email");
-  await subscribe.click();
-  await expect(section.getByText("Enter a valid email address.")).toBeVisible();
-
-  // Valid email submits to the real handler and shows the success state.
-  await input.fill("creator@example.com");
-  await subscribe.click();
-  await expect(section.getByTestId("job-alerts-success")).toBeVisible();
-
-  // Placement: appears before the FAQ.
-  const order = await page.evaluate(() => {
-    const alerts = document.querySelector("[data-testid='home-job-alerts']");
-    const faq = Array.from(document.querySelectorAll("h2")).find((h) => h.textContent?.trim() === "Questions we get a lot");
-    if (!alerts || !faq) return false;
-    return Boolean(alerts.compareDocumentPosition(faq) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const response = await request.post("/api/job-alerts", {
+    data: { email: "creator@example.com" },
   });
-  expect(order).toBe(true);
+  expect(response.status()).toBe(404);
 });
 
-test("home job-alerts popup is gentle: hidden on load, opens on a trigger, remembers dismissal", async ({ page }) => {
-  await page.goto("/");
-  // Not aggressive: it never interrupts on arrival.
-  await expect(page.getByTestId("job-alerts-popup")).toHaveCount(0);
+test("beta checkout renders only the approved zero-cost terms", async ({ page, context }) => {
+  await signInAsCandidate(context);
+  await page.goto("/pricing/checkout?kind=talent_listing");
 
-  // A trigger (exit-intent / delay / programmatic) opens it while eligible.
-  await page.evaluate(() => window.dispatchEvent(new Event("cj:job-alerts")));
-  const popup = page.getByTestId("job-alerts-popup");
-  await expect(popup).toBeVisible();
-  await expect(popup.getByRole("heading", { name: "Get first pick of creator jobs" })).toBeVisible();
-  // Honest copy — no fabricated subscriber counts / social proof.
-  await expect(popup).not.toContainText(/creators (already )?subscribed|Join \d/i);
-
-  // Invalid email validates without submitting.
-  await popup.getByPlaceholder("your@email.com").fill("nope");
-  await popup.getByRole("button", { name: "Get job alerts" }).click();
-  await expect(popup.getByText("Enter a valid email address.")).toBeVisible();
-
-  // Dismiss, then confirm a fresh trigger no longer opens it (capped).
-  await popup.getByTestId("job-alerts-popup-close").click();
-  await expect(page.getByTestId("job-alerts-popup")).toHaveCount(0);
-  await page.evaluate(() => window.dispatchEvent(new Event("cj:job-alerts")));
-  await expect(page.getByTestId("job-alerts-popup")).toHaveCount(0);
-});
-
-test("home job-alerts popup subscribes, then stops appearing for that visitor", async ({ page }) => {
-  await page.goto("/");
-  await page.evaluate(() => window.dispatchEvent(new Event("cj:job-alerts")));
-  const popup = page.getByTestId("job-alerts-popup");
-  await expect(popup).toBeVisible();
-
-  await popup.getByPlaceholder("your@email.com").fill("creator@example.com");
-  await popup.getByRole("button", { name: "Get job alerts" }).click();
-  await expect(popup.getByTestId("job-alerts-popup-success")).toBeVisible();
-
-  // A subscribed visitor never sees it again, even after a reload + trigger.
-  await page.reload();
-  await page.evaluate(() => window.dispatchEvent(new Event("cj:job-alerts")));
-  await expect(page.getByTestId("job-alerts-popup")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Talent listing" })).toBeVisible();
+  await expect(page.getByText("Beta access", { exact: true })).toBeVisible();
+  await expect(page.getByText("Payment method", { exact: true })).toBeVisible();
+  await expect(page.getByText("Not required", { exact: true })).toBeVisible();
+  await expect(page.getByText("Total due now", { exact: true })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText(/Standard price|Launch beta adjustment|₹4,999|₹499|₹7,499|₹999/);
 });
 
 test("homepage shows the honest beta banner, value, how-it-works, and FAQ sections without overflow", async ({
@@ -320,14 +271,14 @@ test("homepage shows the honest beta banner, value, how-it-works, and FAQ sectio
   await expect(page.getByText("Free during beta", { exact: false }).first()).toBeVisible();
   await expect(page.getByText(/why creatorjobs/i).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Everything creator work needs" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Get hired in three steps" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Use CreatorJobs as talent" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Questions we get a lot" })).toBeVisible();
 
-  // Why CreatorJobs benefit cards communicate the four reasons (trust, growth, speed, free/direct).
-  await expect(page.getByText("Creator-verified profiles")).toBeVisible();
-  await expect(page.getByText("Built to grow audiences")).toBeVisible();
-  await expect(page.getByText("Hire in 24 hours")).toBeVisible();
-  await expect(page.getByText("Free to apply & connect")).toBeVisible();
+  // Why CreatorJobs cards describe implemented context/workflows, not unsupported outcomes.
+  await expect(page.getByText("Profile context in one place")).toBeVisible();
+  await expect(page.getByText("Creator-native role details")).toBeVisible();
+  await expect(page.getByText("Applications and requests together")).toBeVisible();
+  await expect(page.getByText("Free during beta", { exact: true }).last()).toBeVisible();
 
   // How-it-works toggle swaps the steps + CTA between Talent and Recruiter.
   const howPanel = page.getByTestId("howitworks-panel");
@@ -339,16 +290,16 @@ test("homepage shows the honest beta banner, value, how-it-works, and FAQ sectio
   await expect(page.getByTestId("howitworks-branches").locator("[data-testid^='howitworks-branch-']")).toHaveCount(2);
   await expect(howPanel.getByText("Browse jobs")).toBeVisible();
   await expect(howPanel.getByText("Publish a talent listing")).toBeVisible();
-  await expect(page.getByTestId("howitworks-step-end")).toContainText("Get hired");
+  await expect(page.getByTestId("howitworks-step-end")).toContainText("Apply or respond");
   await expect(howCta).toHaveText(/Create your free profile/);
   await expect(howCta).toHaveAttribute("href", "/you");
   await page.getByTestId("howitworks-tab-recruiter").click();
-  await expect(page.getByRole("heading", { name: "Hire in three steps" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Use CreatorJobs for hiring" })).toBeVisible();
   await expect(page.getByTestId("howitworks-step-start")).toContainText("Create your hiring profile");
   await expect(page.getByTestId("howitworks-branches").locator("[data-testid^='howitworks-branch-']")).toHaveCount(2);
   await expect(howPanel.getByText("Browse talent")).toBeVisible();
   await expect(howPanel.getByText("Publish a job listing")).toBeVisible();
-  await expect(page.getByTestId("howitworks-step-end")).toContainText("Hire the right candidate");
+  await expect(page.getByTestId("howitworks-step-end")).toContainText("Review and decide");
   await expect(howCta).toHaveText(/Create your hiring profile/);
   await expect(howCta).toHaveAttribute("href", "/you");
 

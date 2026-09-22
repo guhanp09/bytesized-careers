@@ -33,7 +33,7 @@ const TABS: Tab[] = [
   {
     key: "talent",
     label: "For Talent",
-    title: "Get hired in three steps",
+    title: "Use CreatorJobs as talent",
     cta: { label: "Create your free profile", href: "/you" },
     start: {
       id: "start",
@@ -62,14 +62,14 @@ const TABS: Tab[] = [
       id: "end",
       label: "Step 3",
       icon: "check",
-      title: "Get hired",
-      body: "Apply, connect, and land creator-native work.",
+      title: "Apply or respond",
+      body: "Send an application, or review a hiring request in your workspace.",
     },
   },
   {
     key: "recruiter",
     label: "For Recruiters",
-    title: "Hire in three steps",
+    title: "Use CreatorJobs for hiring",
     cta: { label: "Create your hiring profile", href: "/you" },
     start: {
       id: "start",
@@ -98,8 +98,8 @@ const TABS: Tab[] = [
       id: "end",
       label: "Step 3",
       icon: "check",
-      title: "Hire the right candidate",
-      body: "Connect, review, and hire the right creator-native fit.",
+      title: "Review and decide",
+      body: "Compare responses, message participants, and record the next step.",
     },
   },
 ];

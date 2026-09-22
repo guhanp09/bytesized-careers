@@ -6,23 +6,23 @@ type IconName = Parameters<typeof Icon>[0]["name"];
 const items: Array<{ icon: IconName; title: string; body: string }> = [
   {
     icon: "shield",
-    title: "Creator-verified profiles",
-    body: "Every profile is reviewed so teams meet real creator-native talent, not bots or fake accounts.",
+    title: "Profile context in one place",
+    body: "Profiles can show roles, tools, availability, and selected work samples before a conversation starts.",
   },
   {
     icon: "trending-up",
-    title: "Built to grow audiences",
-    body: "Find editors, writers, strategists, and operators who understand YouTube subscribers, Instagram followers, and creator-led growth.",
+    title: "Creator-native role details",
+    body: "Browse editors, writers, strategists, and operators with channel, format, and workflow context.",
   },
   {
     icon: "clock",
-    title: "Hire in 24 hours",
-    body: "Post today and start receiving applications. Most recruiters hire within 24 hours.",
+    title: "Applications and requests together",
+    body: "Send applications or hiring requests, then review messages and next steps in one workspace.",
   },
   {
     icon: "bolt",
-    title: "Free to apply & connect",
-    body: "No application fees. Apply to jobs free — and recruiters browse and hire listed talent directly.",
+    title: "Free during beta",
+    body: "No payment method is required to apply, post jobs, or publish talent listings during the beta.",
   },
 ];
 

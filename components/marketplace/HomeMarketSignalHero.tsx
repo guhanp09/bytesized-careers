@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { Fragment, useEffect, useRef, useState } from "react";
 
+import { HOME_MARKET_SIGNALS } from "../../lib/marketingClaims";
+
 const homepageHeadlines = [
   "Behind every content creator business is a growing team.",
   "Creator-led media is becoming a real industry.",
@@ -18,51 +20,6 @@ const HEADLINE_STORAGE_KEYS = {
 } as const;
 
 const HEADLINE_FRESHNESS_MS = 6 * 60 * 60 * 1000;
-
-const heroStats = [
-  {
-    value: "2-2.5M",
-    label: "monetized content creators in India",
-    caption: "A professional layer is forming around creator-led media.",
-    sourceNote: "BCG, From Content to Commerce: Mapping India's Creator Economy, 2025",
-  },
-  {
-    value: "₹5,000 Cr",
-    label: "Indian influencer marketing market",
-    caption: "Projected by 2027.",
-    sourceNote: "IBEF citing WPP/Kantar India Influencer Marketing Report, 2025",
-  },
-  {
-    value: "25%",
-    label: "projected influencer marketing growth in 2025",
-    caption: "Brands are moving from experiments to content creator teams.",
-    sourceNote: "IBEF citing WPP/Kantar India Influencer Marketing Report, 2025",
-  },
-  {
-    value: "2-sided",
-    label: "jobs and talent in one market",
-    caption: "Creator-led teams need hiring and discovery to live together.",
-    sourceNote: "Conceptual CreatorJobs market scene",
-  },
-  {
-    value: "5 core roles",
-    label: "editors · designers · writers · strategists · operators",
-    caption: "Content creator teams are becoming multidisciplinary.",
-    sourceNote: "Conceptual CreatorJobs market scene",
-  },
-  {
-    value: "1M+",
-    label: "content creators entering structured programs",
-    caption: "The ecosystem is getting organized.",
-    sourceNote: "Conceptual CreatorJobs market scene",
-  },
-  {
-    value: "24/7",
-    label: "global content operations",
-    caption: "Distributed teams now run channels across time zones.",
-    sourceNote: "Conceptual CreatorJobs market scene",
-  },
-] as const;
 
 // Steady cadence for the bottom-right stat carousel (within the 4–6s target). A fixed
 // interval keeps cycling continuous and keeps the progress bar in sync with each change.
@@ -189,7 +146,7 @@ export function HomeMarketSignalHero() {
   const orbitOneRef = useRef<HTMLDivElement | null>(null);
   const orbitTwoRef = useRef<HTMLDivElement | null>(null);
   const activeSceneIndex = reducedMotion ? 0 : activeIndex;
-  const activeStat = heroStats[activeSceneIndex];
+  const activeStat = HOME_MARKET_SIGNALS[activeSceneIndex];
 
   useEffect(() => {
     const applyStoredHeadline = () => setHeadline(resolveStoredHeadline());
@@ -203,7 +160,7 @@ export function HomeMarketSignalHero() {
     // means cycling never stalls — unlike a self-rescheduling timeout whose delay can
     // settle to a constant and stop re-triggering its effect.
     const interval = window.setInterval(() => {
-      setActiveIndex((current) => (current + 1) % heroStats.length);
+      setActiveIndex((current) => (current + 1) % HOME_MARKET_SIGNALS.length);
       setTransitionCount((current) => current + 1);
     }, STAT_ROTATION_MS);
 
@@ -372,6 +329,17 @@ export function HomeMarketSignalHero() {
               <div className="mt-4 max-w-xl lg:ml-auto lg:text-right">
                 <p data-testid="hero-stat-label" className="text-sm font-semibold uppercase tracking-[0.14em] text-white/72">{activeStat.label}</p>
                 <p className="mt-2 text-sm leading-6 text-muted">{activeStat.caption}</p>
+                {activeStat.source ? (
+                  <a
+                    href={activeStat.source.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-testid="hero-stat-source"
+                    className="mt-2 inline-flex text-xs leading-5 text-white/45 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                  >
+                    Source: {activeStat.source.label}
+                  </a>
+                ) : null}
                 {!reducedMotion ? (
                   <div
                     className="market-signal-progress-track mt-4 lg:ml-auto"

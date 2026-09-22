@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external
 CURRENT PHASE:Phase13 certification — real-backend and cross-engine aggregates passed; remaining local behavioral proof and external gates.
-LAST COMPLETED ATOMIC SLICE:13G / TRUST-001 — all customer-facing talent rate sinks use one source-faithful formatter; compact/saved/draft/duplicate job compensation paths retain structured fields; foreign-currency talent edits no longer save as INR. Commit `fix(trust): preserve source compensation`.
-NEXT ATOMIC SLICE:13H / TRUST-002 — inventory public marketing claims and remove or substantiate only claims that lack repository-owned evidence. Do not invent evidence or legal approval.
+LAST COMPLETED ATOMIC SLICE:13H / TRUST-002 + PRODUCT-001 — quantitative homepage claims now travel with visible exact sources; unsupported outcome/review/speed/payment/competitor/demand claims are gone; the non-durable job-alert UI/API is absent during beta; invented checkout list prices/discounts are removed. Commit `fix(trust): remove unsupported launch claims`.
+NEXT ATOMIC SLICE:13I / PRODUCT-002 — inspect the complete free-beta entitlement creation/authorization contract. Keep the approved zero-cost copy, but prove a browser cannot mint arbitrary entitlements and define server-owned beta policy, expiry and revocation before validating the row.
 PHASE 11 STATUS: SEO-001/002/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED locally; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
 CURRENT ALEMBIC CURRENT: disposable SQLite `.local-data/readiness-3o-backend.db` unstamped (2026-09-17); one head 0070_activity_page_indexes; no migration. Historical PostgreSQL migration proof was not rerun.
@@ -28,6 +28,80 @@ IMPORTANT NEW ARCHITECTURE (Phase 3O): REQUEST_BODY_IDLE_TIMEOUT_SECONDS=10 and 
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase13H checkpoint — remove unsupported launch claims (2026-09-22)
+
+```text
+Phase:13H / TRUST-002 + PRODUCT-001; PRODUCT-002 truthful-copy subpart
+Status:COMPLETE / TRUST-002 and PRODUCT-001 VALIDATED; PRODUCT-002 remains IN_PROGRESS
+Initial HEAD:23c347152d27d4f45fd4b266a4fb69c8b6303bf8
+Final HEAD / Commit:git log -1 --format=%H --grep='fix(trust): remove unsupported launch claims'
+Files materially changed:homepage market-signal registry/hero, Why/How/roles/capability sections;
+ home page; CheckoutPanel; removal of HomeJobAlerts/HomeJobAlertsPopup/useJobAlerts,
+ jobAlertsPopup and the filesystem-backed route; marketing source guards; smoke/a11y tests;
+ execution ledger and handoff.
+Migrations:none. Alembic head remains0070_activity_page_indexes; current-state claim unchanged.
+Behavior changed:the homepage retains only two quantitative market signals and shows a visible
+ exact source link beside each: BCG's 2025 estimate of2–2.5M monetized Indian creators and IBEF's
+ report coverage of projected25% 2025 influencer-marketing growth. Neither is described as
+ CreatorJobs performance. Remaining carousel scenes describe implemented product behavior with
+ words, not invented adoption numbers. Universal profile review, 24-hour hiring, UPI payments,
+ unlimited use and unsupported generic-competitor claims are removed. How It Works describes
+ actions rather than promising hiring outcomes. The role marquee is curated in seed order and no
+ longer exposes a popularity/demand ranking. The former comparison is a finite implemented-
+ capability list. Checkout shows only approved free-beta terms (₹0, no payment method) and no
+ invented list price or launch discount.
+Job-alert decision:the prior endpoint only appended addresses to a process-local filesystem JSON
+ file and no scheduler/delivery/unsubscribe/suppression lifecycle existed. The homepage inline
+ capture, popup, hook/storage helper and API route are removed for beta, as required by PRODUCT-001.
+ Browser proof asserts no surface appears after the old event and POST /api/job-alerts returns404.
+ Source guards require all five unsupported implementation paths to remain absent. Re-enabling
+ alerts requires durable subscription and delivery architecture plus lifecycle tests; no address
+ was migrated or claimed delivered.
+Evidence provenance:https://www.bcg.com/publications/2025/india-from-content-to-commerce-mapping-indias-creator-economy
+ and https://www.ibef.org/news/india-s-influencer-marketing-industry-to-grow-by-25-in-2025-report.
+ Both links are registry-owned HTTPS metadata and rendered by the hero when their claim is active.
+Baseline / non-vacuity:all five initial marketing guards failed on23c3471 before implementation.
+ They caught inline unsourced/fabricated figures, outcome promises, popularity sorting and the
+ false feature comparison. Expanded alert/checkout guards then enforce the final beta boundary.
+Tests run / exact results:marketing claims7/7; full frontend Node1344/1344 in4.9s; npx tsc
+ --noEmit exit0 after a one-time stale ignored `.next/dev` route manifest was regenerated;
+ changed-file ESLint exit0; fresh production build exit0 through Playwright webServer; final
+ Chromium smoke34/34 serial, including exact source href, UI/API alert absence and authenticated
+ checkout copy; focused home accessibility9/9 serial across Chromium, Firefox and WebKit
+ (whole-document axe,320px operation,reduced motion). git diff --check clean before docs/commit.
+Known intermediate failures:the first accessibility attempt was Chromium3/3 while Firefox/WebKit
+ six tests could not launch because the exact Playwright1.60 binaries were not installed. The
+ lock-matched browsers were installed locally without repository/package changes; rerun9/9.
+ The first expanded smoke run was33/34: product copy rendered correctly, but getByText('Payment
+ method') matched both its label and explanatory sentence. Exact-label locators resolved the
+ test ambiguity; final34/34. No sleep, skip, timeout or product assertion was weakened.
+Security assumptions:standard browser harness uses local mocks, loopback and a signed disposable
+ test session only. RUN_LIVE_IMPORT_SMOKE=0; OPENAI_API_KEY and GOOGLE_PLACES_API_KEY blank. No
+ customer address is accepted or written. No production credentials, provider call or hosted data.
+Dependencies / environment variables / services:none. Firefox/WebKit browser executables were
+ added only to the user's Playwright cache; package and lock files are unchanged. AI behavior is
+ unchanged, retained, draft-only and not disabled.
+Backend tests:not run because no backend code/schema changed. Latest full remains3W with7712
+ passed+65 skipped=7777 JUnit cases; 13G marketplace focus29/29 remains the latest focused result.
+LAST_FULL_SUITE_OBSERVED:Node1344 current; final focused smoke34/34; focused cross-engine home
+ a11y9/9. Full standard13E504/504 and full a11y13C87/87 remain latest complete aggregates.
+ FullQA13C293/293 includes292 deterministic plus the unintended live smoke corrected in13C;
+ expected current fullQA299. No new backend cases.
+Known external failures / remaining risks:PRODUCT-002 still needs the complete entitlement-policy
+ audit and server-owned authorization proof. Every managed-provider, hosted-infrastructure, legal,
+ manual-accessibility, restore and staging-soak gate remains. Queue-backed paid AI execution remains
+ unresolved; AI stays draft-only. Release assessment:NO-GO.
+Next phase:13I / PRODUCT-002. Trace every caller and backend route behind
+ completeLaunchFreeCheckout, prove target ownership/kind binding/idempotency and determine whether
+ the browser can mint arbitrary entitlements. Implement only the smallest coherent server-owned
+ free-beta policy, with authorization/revocation/expiry tests as the current schema supports.
+Important commands:git status --short; inspect CheckoutPanel, pricing/checkout page,
+ completeLaunchFreeCheckout and backend entitlement models/routes/tests before editing. Run focused
+ entitlement tests and authenticated browser proof. Keep provider keys blank and live smoke exact0.
+Frozen refs:verify all five exact baseline hashes after commit. No push/deployment; hosted
+ Neon/Vercel/Render untouched.
+```
 
 ## Phase13G checkpoint — preserve source compensation (2026-09-22)
 

@@ -176,21 +176,6 @@ test.describe("whole-document WCAG A/AA route sweep", () => {
 });
 
 test.describe("interactive customer states", () => {
-  test("home alert dialog", async ({ page }, testInfo) => {
-    await openRoute(page, PUBLIC_ROUTES[0]);
-    // Hydration and the effect that owns this reusable trigger can complete in
-    // either order on different engines. Re-emit until the listener is armed;
-    // the popup itself is one-shot, so this cannot open duplicate dialogs.
-    await expect
-      .poll(async () => {
-        await page.evaluate(() => window.dispatchEvent(new Event("cj:job-alerts")));
-        return page.getByTestId("job-alerts-popup").count();
-      })
-      .toBe(1);
-    await expect(page.getByTestId("job-alerts-popup")).toBeVisible();
-    await expectAxeClean(page, `home alert dialog (${testInfo.project.name})`);
-  });
-
   test("talent portfolio details dialog", async ({ page }, testInfo) => {
     await openRoute(page, PUBLIC_ROUTES.find((route) => route.label === "talent detail")!);
     await page
