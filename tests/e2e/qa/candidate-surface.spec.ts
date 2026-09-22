@@ -1,4 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
+import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { resolve } from "node:path";
+import { promisify } from "node:util";
+import { backendToken } from "./brand-about-helpers";
 
 /**
  * The candidate-facing job surface, reached through the real product path.
@@ -19,6 +24,18 @@ import { expect, test, type Page } from "@playwright/test";
 
 const SHOTS = "/tmp/creatorjobs-candidate-surface";
 const BACKEND = "http://127.0.0.1:8100/api/v1";
+const execute = promisify(execFile);
+const QA_DATABASE = "sqlite+aiosqlite:///./.local-data/qa-playwright.db";
+
+async function cleanPortfolioNamespace(namespace: string, env = {}) {
+  return execute(resolve("backend/.venv/bin/python"), [
+    "scripts/qa_talent_portfolio_cleanup.py", namespace,
+  ], {
+    cwd: resolve("backend"),
+    env: { ...process.env, APP_ENV: "test", DATABASE_URL: QA_DATABASE, ...env },
+    timeout: 10_000,
+  });
+}
 
 const WIDTHS = [
   { name: "mobile-390", width: 390, height: 844 },
@@ -142,6 +159,65 @@ test("real talent cards and action panels omit unverified activity metrics witho
   await expect(actions.getByTestId("talent-hire-button")).toBeVisible();
   await expect(actions.getByRole("button", { name: "Save", exact: true })).toBeVisible();
   await expect(actions.getByRole("button", { name: "Share", exact: true })).toBeVisible();
+});
+
+test("backend talent portfolios show only real selected work without a developer cookie", async ({ page, browser }) => {
+  await login(page);
+  const headers = { Authorization: `Bearer ${await backendToken(page)}` };
+  const namespace = randomUUID();
+  const titles = [`Selected owned work ${namespace}`, `Unselected owned work ${namespace}`];
+  const itemIds: string[] = [];
+  let listingId: string | undefined;
+  const visitor = await browser.newContext({ baseURL: new URL(page.url()).origin });
+  try {
+    for (const title of titles) {
+      const created = await page.request.post(`${BACKEND}/portfolio/items`, {
+        headers,
+        data: {
+          title, source_type: "custom", source_url: "https://example.com/owned-qa-work",
+          thumbnail_url: new URL("/brand/logo-mark.png", page.url()).href,
+          role_name: "Video Editor", contribution_summary: "Owned test contribution, never a synthetic platform claim.",
+          visibility: "public", publish_status: "published",
+        },
+      });
+      expect(created.status(), await created.text()).toBe(201);
+      itemIds.push((await created.json()).id);
+    }
+    const created = await page.request.post(`${BACKEND}/talent-listings`, {
+      headers,
+      data: { title: `Portfolio provenance ${namespace}`, status: "published", portfolio_item_ids: [itemIds[0]] },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    listingId = (await created.json()).id;
+    const publicPage = await visitor.newPage();
+    await publicPage.goto(`/talent/${listingId}`);
+    await expect(publicPage.getByRole("heading", { name: /Portfolio provenance/i })).toBeVisible();
+    await expect(publicPage.getByText(titles[0], { exact: true })).toBeVisible();
+    await expect(publicPage.getByText(titles[1], { exact: true })).toHaveCount(0);
+    expect((await visitor.cookies()).some((cookie) => cookie.name === "cj_data_source")).toBe(false);
+    await expect(publicPage.locator("body")).not.toContainText(/18K views|Opening hook|Creator talent sample/);
+  } finally {
+    await visitor.close();
+    if (listingId) expect((await page.request.delete(`${BACKEND}/talent-listings/${listingId}`, { headers })).ok()).toBeTruthy();
+    for (const id of itemIds) expect((await page.request.delete(`${BACKEND}/portfolio/items/${id}`, { headers })).ok()).toBeTruthy();
+    const cleanup = JSON.parse((await cleanPortfolioNamespace(namespace)).stdout);
+    expect(cleanup.notifications).toBe(1);
+    expect(cleanup.talent_listings).toBe(1);
+    expect(cleanup.portfolio_items).toBe(0);
+  }
+});
+
+test("portfolio QA cleanup refuses every database except the owned test file", async () => {
+  const namespace = randomUUID();
+  for (const env of [
+    { APP_ENV: "production" },
+    { DATABASE_URL: "sqlite+aiosqlite:///./dev.db" },
+    { DATABASE_URL: "postgresql://invalid.example/never-contact" },
+  ]) {
+    await expect(cleanPortfolioNamespace(namespace, env)).rejects.toThrow(
+      "Refusing anything except the explicit disposable QA database",
+    );
+  }
 });
 
 for (const vp of WIDTHS) {

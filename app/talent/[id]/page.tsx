@@ -170,7 +170,7 @@ async function getRelevantPortfolioItems(
   listing: BackendTalentListing,
   dataSource: MarketplaceDataSourceState
 ): Promise<BackendPortfolioItem[]> {
-  if (dataSource.source === "mock" || dataSource.overrideSource !== "backend") {
+  if (dataSource.source === "mock") {
     return mockPortfolioItemsFor(listing);
   }
 

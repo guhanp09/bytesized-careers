@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import ts from "typescript";
 
 import {
   MARKETPLACE_DATA_SOURCE_COOKIE,
@@ -118,4 +119,79 @@ test("the dev API route and header switch use the shared cookie/source contract"
   assert.match(switcher, /\/api\/dev\/data-source/);
   assert.match(switcher, /if \(!CLIENT_SWITCH_ENABLED\) return/);
   assert.match(switcher, /router\.refresh\(\)/);
+});
+
+// Execute the actual page loader with controlled I/O. This tests the source
+// branch and filtering together without importing a Next server or a second
+// implementation of its decision. Comments cannot satisfy this boundary.
+function portfolioLoader({ items = [], fail = false } = {}) {
+  const source = ts.createSourceFile(
+    "page.tsx", readFileSync("app/talent/[id]/page.tsx", "utf8"),
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX,
+  );
+  const declaration = source.statements.find(
+    (node) => ts.isFunctionDeclaration(node) && node.name?.text === "getRelevantPortfolioItems",
+  );
+  assert.ok(declaration, "actual talent page loader must exist");
+  const code = ts.transpileModule(declaration.getText(source), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const reads = [];
+  let mocks = 0;
+  const load = new Function("mockPortfolioItemsFor", "listPortfolioByUserId", `${code}; return getRelevantPortfolioItems;`)(
+    () => { mocks++; return [{ id: "explicit-demo" }]; },
+    async (owner) => {
+      reads.push(owner);
+      if (fail) throw new Error("owned test backend unavailable");
+      return { items };
+    },
+  );
+  return { load, reads, mockCalls: () => mocks };
+}
+
+for (const [name, env, cookieValue] of [
+  ["production without a cookie", { APP_ENV: "production", NEXT_PUBLIC_USE_LOCAL_MOCKS: "false" }],
+  ["production ignores a mock cookie", { APP_ENV: "production", NEXT_PUBLIC_USE_LOCAL_MOCKS: "false" }, "mock"],
+  ["development defaults to backend", { APP_ENV: "development" }],
+  ["explicit backend override", { APP_ENV: "test", NEXT_PUBLIC_USE_LOCAL_MOCKS: "true" }, "backend"],
+]) {
+  test(`talent portfolio uses real selected public work: ${name}`, async () => {
+    const first = { id: "first", is_public: true, publish_status: "published" };
+    const second = { id: "second", is_public: true, publish_status: "published" };
+    const loader = portfolioLoader({ items: [
+      first, second,
+      { id: "private", is_public: false, publish_status: "published" },
+      { id: "draft", is_public: true, publish_status: "draft" },
+      { id: "unselected", is_public: true, publish_status: "published" },
+    ] });
+    const state = resolveMarketplaceDataSource({ env, cookieValue });
+    const result = await loader.load({
+      owner_user_id: "real-owner",
+      portfolio_item_ids: ["second", "private", "missing", "first", "draft"],
+    }, state);
+    assert.deepEqual(result, [second, first]);
+    assert.deepEqual(loader.reads, ["real-owner"]);
+    assert.equal(loader.mockCalls(), 0);
+  });
+}
+
+test("backend portfolio absence or outage never fabricates samples", async () => {
+  const state = resolveMarketplaceDataSource({ env: { APP_ENV: "production" } });
+  for (const options of [{ items: [] }, { fail: true }]) {
+    const loader = portfolioLoader(options);
+    assert.deepEqual(await loader.load({ owner_user_id: "real-owner", portfolio_item_ids: ["missing"] }, state), []);
+    assert.equal(loader.mockCalls(), 0);
+  }
+});
+
+test("an explicit demo source retains its portfolio samples without backend reads", async () => {
+  for (const state of [
+    resolveMarketplaceDataSource({ env: { APP_ENV: "test", NEXT_PUBLIC_USE_LOCAL_MOCKS: "true" } }),
+    resolveMarketplaceDataSource({ env: { APP_ENV: "test" }, cookieValue: "mock" }),
+  ]) {
+    const loader = portfolioLoader({ fail: true });
+    assert.deepEqual(await loader.load({ owner_user_id: "demo-owner", portfolio_item_ids: ["demo"] }, state), [{ id: "explicit-demo" }]);
+    assert.equal(loader.mockCalls(), 1);
+    assert.deepEqual(loader.reads, []);
+  }
 });

@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external
 CURRENT PHASE:Phase13 certification — real-backend and cross-engine aggregates passed; remaining local behavioral proof and external gates.
-LAST COMPLETED ATOMIC SLICE:13E / TRUST-003A — unverified marketplace activity metrics hidden; Node1322/1322, realQA8/8, focused browsers19/19+talent8/8, full standard504/504. Commit `fix(trust): hide unverified marketplace activity metrics`.
-NEXT ATOMIC SLICE:13F / PRODUCT-004A — fix reproduced production talent-portfolio demo leakage: getRelevantPortfolioItems selects mock samples when overrideSource is null despite source=backend. Then TRUST-001 role-based invented rupee substitution for real USD talent rates. AI queue remains PostgreSQL-migration dependent; no unattended paid retries.
+LAST COMPLETED ATOMIC SLICE:13F / PRODUCT-004A — backend-mode talent pages use real selected portfolio work; synthetic samples remain explicit-demo-only. Also fixed `/talent/None` creation notifications. Commit `fix(talent): keep backend portfolios grounded`.
+NEXT ATOMIC SLICE:13G / TRUST-001 — preserve source compensation. Talent cards/detail currently replace stored USD/dollar rates with invented role-based INR amounts; inspect every job/talent compensation sink and fix only reproduced transformations.
 PHASE 11 STATUS: SEO-001/002/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED locally; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
 CURRENT ALEMBIC CURRENT: disposable SQLite `.local-data/readiness-3o-backend.db` unstamped (2026-09-17); one head 0070_activity_page_indexes; no migration. Historical PostgreSQL migration proof was not rerun.
@@ -18,9 +18,9 @@ NEW ENVIRONMENT VARIABLES: `GOOGLE_PLACES_API_KEY` moved from the frontend templ
 NEW DEPENDENCIES:latest3X/3Z lock updates documented below (Next16.3.5, Sharp0.35.4, mapping2.11.24; compatible developer-tooling group). No13C dependency change. Backend redis-py8.1.0 from3J; locked production53packages/55hashed requirement rows.
 NEW SERVICES: no service was provisioned. Google Places is an optional fixed external provider behind the backend boundary; keep its key absent until console API restrictions, billing quotas, current provider-policy review and a live lookup/attribution/outage drill are complete. Production still concretely requires managed Redis 7.2+ for shared rate limiting, but none was contacted here. Existing local/CI audit, rotation, incident, metric, error and synthetic services remain as documented.
 OUTSTANDING EXTERNAL REQUIREMENTS: Google Places console key/API/service restriction, billing quota, current terms/policy review and live lookup/attribution/outage drill before setting `GOOGLE_PLACES_API_KEY`; a human/operator tabletop; immutable artifact rollback/traffic-shift drill; hosted database/PITR and media restore; other real provider outage/failover/revocation drills; production credential rotation; production log ingestion/retention/access; real alert-destination delivery and acknowledgement; standalone-worker absence/process-death monitoring; scheduled synthetics against isolated staging data; evidence-backed traffic/latency/capacity thresholds; authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; staging soak
-KNOWN TEST FAILURES:13E final Node1322/1322, standard504/504, focused realQA8/8, TSC/build0, lint32warnings. First standard502/2 included one now-corrected stale metrics assertion and the known popup bottom734.824>720 intermittent; unchanged popup passes isolated8/8 and full504/504, not claimed fixed. Missing Chromium cache restored. Prior13C fullQA293/293 included unintended live smoke (see correction); current fullQA not rerun (expected296). Backend latest7712passed+65skipped=7777. Remaining local/external gates mean NO-GO.
-COMMANDS TO RESUME:git status --short; git branch --show-current; git rev-parse HEAD; uptime. Read13E checkpoint and /tmp/creatorjobs-13f-portfolio-baseline-20260922.log. No overlapping build/browser owners or pytest. RUN_LIVE_IMPORT_SMOKE=0 and blank provider keys.
-FILES TO READ FIRST:13E checkpoint; execution ledger Phase4; app/talent/[id]/page.tsx getRelevantPortfolioItems; lib/devDataSource.ts; tests/devDataSource.test.mjs. Do not edit unrelated IDE PHP file.
+KNOWN TEST FAILURES:13F final Node1328/1328, realQA10/10, TSC/build0, changed lint/Ruff pass; selected marketplace/notification backend suite exit0. Baseline notification regression failed exactly on resource_id None. 13E standard504/504 remains latest full standard. Current fullQA expected298 but not rerun; last aggregate13C293/293 included unintended live smoke (see correction). Backend last full3W7712passed+65skipped=7777. Known popup/load intermittency and all external gates remain; NO-GO.
+COMMANDS TO RESUME:git status --short; git branch --show-current; git rev-parse HEAD; uptime. Read13F checkpoint, then inspect TalentCard/app talent rateLabel plus every job/talent compensation renderer. Start with a behavioral/source transformation matrix before editing.
+FILES TO READ FIRST:13F checkpoint; execution ledger TRUST-001; components/TalentCard.tsx; app/talent/[id]/page.tsx; lib/jobPresentation.ts; lib/backendClient.ts mappings; existing compensation tests. Do not edit unrelated IDE PHP file.
 RELEASE ASSESSMENT: NO-GO
 IMPORTANT NEW ARCHITECTURE (Phase 3M): `YouTubeProviderClient` is the only YouTube Data API transport. `fetch_user_youtube_channels` and `fetch_youtube_video_metadata` remain compatible entrypoints. `POST /me/youtube-identity` shares the existing verified-user outbound quota. `YOUTUBE_API_KEY` is preferred; backend-only `YOUTUBE_DATA_API_KEY` is the compatibility alias; both are SecretStr, blank primary falls through. Remove keys from the frontend at eventual operator cutover; no live configuration changed. The QA harness explicitly blanks both keys. No new migration, dependency, service or AI behavior change.
 IMPORTANT NEW ARCHITECTURE (Phase 3N): Pure-ASGI HttpAdmissionMiddleware admits synchronously before await, counts until the application unwinds in finally, and rejects excess work without reading/parsing/queuing. Metrics, CORS and request ID wrap its 503. MAX_CONCURRENT_HTTP_REQUESTS is required at production boot and bounded by schema; local/test fallback is 100 for existing local concurrency harness. One additional slot is only for exact GET health liveness. Redis quotas and WebSocket lifecycle are unchanged. No migration, new dependency/service or AI behavior change.
@@ -28,6 +28,66 @@ IMPORTANT NEW ARCHITECTURE (Phase 3O): REQUEST_BODY_IDLE_TIMEOUT_SECONDS=10 and 
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase13F checkpoint — backend portfolios stay real (2026-09-22)
+
+```text
+Phase:13F / PRODUCT-004A (plus notification deep-link defect found by validation)
+Status:COMPLETE atomic slice; PRODUCT-004 remains IN_PROGRESS for the wider seed/demo inventory.
+Initial HEAD:796b2de96e2132f0bdb41dcc6312f8913f8e06be
+Final HEAD / Commit:git log -1 --format=%H --grep='fix(talent): keep backend portfolios grounded'
+Files materially changed:app/talent/[id]/page.tsx; backend marketplace create route;
+ backend/scripts/qa_talent_portfolio_cleanup.py; existing devDataSource unit,
+ candidate-surface real-backend QA and marketplace core test; ledger/handoff.
+Behavior changed:the talent detail portfolio loader now chooses synthetic work only when
+ MarketplaceDataSourceState.source is mock. Production/default backend mode with no override
+ cookie reads the owner's real public, published portfolio and keeps only IDs selected by the
+ listing, in listing order. Backend absence/outage returns no portfolio rather than fake work.
+ Explicit local mock mode and a valid test mock-cookie override retain canonical demo samples.
+A defect found during real QA is fixed in the same listing transaction: create_talent_listing
+ flushes the new row before dispatching its creation notification, so resource_id/action_url use
+ the assigned UUID instead of the persisted strings None and /talent/None.
+Baseline / non-vacuity:read-only execution of the actual loader on796b2de with production
+ source=backend,overrideSource=null returned [{id:synthetic}] and made zero backend reads
+ (/tmp/creatorjobs-13f-portfolio-baseline-20260922.log). Added unit set initially9pass/4fail.
+ The extended existing backend test initially fails resource_id 'None' != listing UUID
+ (/tmp/creatorjobs-13f-notification-baseline-20260922.log).
+Test harness:realQA creates two real public portfolio rows and one published talent listing via
+ authenticated APIs, views it anonymously with no cj_data_source cookie, proves only the selected
+ owned title appears and known synthetic copy does not, then exercises normal API deletion.
+ A guarded helper opens only APP_ENV=test plus the exact disposable SQLite URL in read/write-
+ existing mode, refuses symlinks/other URLs/environments, and hard-removes only the random UUID
+ namespace plus its notification. It never resets the corpus. Final database check:0 owned
+ portfolio rows,0 owned listing rows,0 invalid /talent/None notifications.
+Tests / exact results:devDataSource13/13; full Node1328/1328; TSC0; changed ESLint0;
+ changed backend Ruff0; focused backend notification1/1 after baseline1/1 failure; selected
+ marketplace/notification backend files exit0 (no exact count claimed without JUnit+collection);
+ final realQA candidate surface10/10,28.7s,1worker, fresh production build0.
+ Initial realQA8pass/1fail correctly enforced the existing published-portfolio cover requirement;
+ fixture added its local owned cover and then9/9. Final guard/cleanup additions produce10/10.
+Evidence:/tmp/creatorjobs-13f-{unit-baseline,focus,node-final,tsc-final,lint-final,
+ qa,qa-final,qa-clean-final,qa-notification-final,notification-baseline,notification-final,
+ backend-affected,ruff-final,portfolio-baseline}-20260922.log.
+Migrations / dependencies / environment variables / services:none.
+Security assumptions:all mutation is confined to loopback, explicit disposable QA SQLite and
+ random namespace. No hosted data/credentials/providers. Cleanup refuses remote PostgreSQL even
+ before opening a database. Provider keys blank; live AI smoke exact0. AI behavior unchanged.
+LAST_FULL_SUITE_OBSERVED:Node1328 current; standard13E504/504; fullQA13C293/293 includes292
+ deterministic plus unintended live smoke before repaired gate (read13C correction); a11y87/87.
+ Backend3W full7712passed+65skipped=7777JUnit cases, exit0, collection7777.
+EXPECTED_CURRENT_COLLECTION:Node1328; standard504; realQA298 (+2); backend7777 unchanged.
+Current Alembic head/current:0070_activity_page_indexes single; last recorded disposable SQLite
+ current unstamped Sept17. No migration; PostgreSQL remains unavailable and was not re-probed.
+Known external failures / remaining risks:PRODUCT-004 wider production demo isolation is not
+ certified by this one surface. All hosted/provider/legal/manual/restore/soak gates remain.
+ Queue-backed AI remains unresolved; AI is retained and draft-only. Release assessment:NO-GO.
+Next phase:13G / TRUST-001. Reproduced source-level issue:both talent card and detail rateLabel
+ replace stored USD/dollar data with hard-coded role-derived rupee prices. Build one canonical
+ truthful formatter, preserve exact source currency/range/note and cover flexible/unknown/unpaid
+ states without inventing amounts. Inspect job compensation paths before calling the row closed.
+Frozen refs:all five exact hashes unchanged at pre-commit verification; verify again after commit.
+No push/deployment; hosted Neon/Vercel/Render untouched.
+```
 
 ## Phase13E checkpoint — hide unverified marketplace activity claims (2026-09-22)
 

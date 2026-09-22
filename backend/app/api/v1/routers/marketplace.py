@@ -1758,6 +1758,10 @@ async def create_talent_listing(
     listing.first_message_requirements = _clean_list(listing.first_message_requirements)
     listing.first_message_custom_instruction = (listing.first_message_custom_instruction or "").strip() or None
     session.add(listing)
+    # The notification deep link is part of this transaction and needs the
+    # database assigned listing identity. Without this flush it was persisted
+    # as resource_id="None" with /talent/None.
+    await session.flush()
     await _create_notification(
         session,
         user_id=current_user.id,

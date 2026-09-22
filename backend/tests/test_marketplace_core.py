@@ -162,6 +162,18 @@ async def test_talent_listing_save_interest_and_notifications(client: AsyncClien
     assert created_listing["content_niches"] == ["Gaming"]
     assert created_listing["content_genres"] == ["Explainers"]
 
+    created_notifications = await client.get(
+        "/api/v1/notifications", headers={"Authorization": f"Bearer {creator_token}"}
+    )
+    assert created_notifications.status_code == 200
+    created_notice = next(
+        row
+        for row in created_notifications.json()["items"]
+        if row["type"] == "talent_listing_created"
+    )
+    assert created_notice["resource_id"] == listing_id
+    assert created_notice["action_url"] == f"/talent/{listing_id}"
+
     public_list = await client.get("/api/v1/talent-listings")
     assert public_list.status_code == 200
     matched = next((item for item in public_list.json()["items"] if item["id"] == listing_id), None)
