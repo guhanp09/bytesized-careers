@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import pytest
+from conftest import TestSessionLocal
 from httpx import AsyncClient
 
 from app.core import config
 from app.db import seed_data_personas
+from app.models import HiringIdentity
 
 PERSONAS_URL = "/api/v1/dev/personas"
 STATUS_URL = "/api/v1/dev/status"
@@ -136,6 +138,56 @@ async def test_seeded_recruiter_identities_use_the_live_identity_contract(client
     public_response = await client.get("/api/v1/users/dev_brightlab/public-profile")
     assert public_response.status_code == 200, public_response.text
     assert [item["name"] for item in public_response.json()["represented_channels"]] == ["FitLab"]
+
+
+async def test_reseeding_repairs_only_legacy_persona_identity_enums(client: AsyncClient) -> None:
+    assert (await client.post(SEED_URL, json={"scenario": "full_demo"})).status_code == 200
+    agency_identity_id = seed_data_personas.persona_uuid("identity:recruiter-drafts-verified")
+    async with TestSessionLocal() as session:
+        identity = await session.get(HiringIdentity, agency_identity_id)
+        assert identity is not None
+        original_status = identity.verification_status
+        original_description = identity.description
+        identity.type = "represented"
+        identity.platform = "youtube"
+        identity.verification_method = "CODE_IN_DESCRIPTION"
+        identity.verification_status = "PENDING"
+        identity.description = "Local edit preserved across reseeding"
+        await session.commit()
+
+    try:
+        reseeded = await client.post(SEED_URL, json={"scenario": "full_demo"})
+        assert reseeded.status_code == 200, reseeded.text
+        assert reseeded.json()["result"]["personas"]["hiring_identities"]["updated"] == 1
+
+        async with TestSessionLocal() as session:
+            identity = await session.get(HiringIdentity, agency_identity_id)
+            assert identity is not None
+            assert identity.type == "AGENCY_REPRESENTED_CHANNEL"
+            assert identity.platform == "YOUTUBE"
+            assert identity.verification_method == "VERIFICATION_CODE"
+            assert identity.verification_status == "PENDING"
+            assert identity.description == "Local edit preserved across reseeding"
+
+        _, agency_token = await _login(client, "recruiter-drafts")
+        listed = await client.get(
+            "/api/v1/me/hiring-identities",
+            headers={"Authorization": f"Bearer {agency_token}"},
+        )
+        assert listed.status_code == 200, listed.text
+        second = await client.post(SEED_URL, json={"scenario": "full_demo"})
+        assert second.status_code == 200, second.text
+        assert second.json()["result"]["personas"]["hiring_identities"]["updated"] == 0
+    finally:
+        async with TestSessionLocal() as session:
+            identity = await session.get(HiringIdentity, agency_identity_id)
+            assert identity is not None
+            identity.type = "AGENCY_REPRESENTED_CHANNEL"
+            identity.platform = "YOUTUBE"
+            identity.verification_method = "VERIFICATION_CODE"
+            identity.verification_status = original_status
+            identity.description = original_description
+            await session.commit()
 
 
 async def test_persona_seed_includes_current_first_message_answers(client: AsyncClient) -> None:

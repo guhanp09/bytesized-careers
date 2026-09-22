@@ -367,9 +367,39 @@ async def seed_personas_if_missing(session: AsyncSession) -> dict[str, dict[str,
     counts["users"]["updated"] = usernames_updated
     await session.flush()
 
-    counts["hiring_identities"] = await _insert_missing(
-        session, HiringIdentity, personas.build_persona_hiring_identities()
+    identity_payloads = personas.build_persona_hiring_identities()
+    counts["hiring_identities"] = await _insert_missing(session, HiringIdentity, identity_payloads)
+    await session.flush()
+
+    # Earlier deterministic persona rows used obsolete enum spellings. A
+    # fresh QA database is correct after the fixture update, but insert-only
+    # seeding would leave existing local/staging persona identities unreadable.
+    # Repair only the known legacy values on our stable persona IDs; leave
+    # verification state and any independently edited identity data untouched.
+    legacy_values = {
+        "type": {"own_channel": "INDIVIDUAL_CHANNEL", "represented": "AGENCY_REPRESENTED_CHANNEL"},
+        "platform": {"youtube": "YOUTUBE", "instagram": "INSTAGRAM"},
+        "verification_method": {
+            "YOUTUBE_CHANNEL_LINK": "MANUAL_ADMIN_REVIEW",
+            "CODE_IN_DESCRIPTION": "VERIFICATION_CODE",
+        },
+    }
+    seeded_identity_rows = await session.execute(
+        select(HiringIdentity).where(
+            HiringIdentity.id.in_([payload["id"] for payload in identity_payloads])
+        )
     )
+    identities_updated = 0
+    for row in seeded_identity_rows.scalars():
+        changed = False
+        for field, mapping in legacy_values.items():
+            current = getattr(row, field)
+            replacement = mapping.get(current)
+            if replacement is not None:
+                setattr(row, field, replacement)
+                changed = True
+        identities_updated += int(changed)
+    counts["hiring_identities"]["updated"] = identities_updated
     await session.flush()
 
     counts["talent_listings"] = await _insert_missing(
