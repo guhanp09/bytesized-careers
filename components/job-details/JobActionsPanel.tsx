@@ -3,19 +3,18 @@
 import Link from "next/link";
 import React from "react";
 import { Job } from "../../lib/types";
-import { formatCompactNumber } from "../../lib/format";
 import {
   buildJobTransparency,
   employerContextLabel,
   hiringVerificationForJob,
 } from "../../lib/jobPresentation";
 import { Icon } from "../Icons";
-import { IconTooltip, Section } from "../ui";
+import { Section } from "../ui";
 
 
 // Secondary action buttons (Save / Share): clearly pressable — filled surface
 // with a subtle lift + shadow — but deliberately subordinate to the solid white
-// primary (Apply) and visually distinct from the flat, passive stat chips.
+// primary (Apply).
 const SECONDARY_ACTION_CLASS =
   "inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.08] text-sm font-semibold text-white/85 shadow-[0_10px_26px_-20px_rgba(0,0,0,0.95)] transition-all duration-150 hover:-translate-y-[1px] hover:border-white/25 hover:bg-white/[0.13] hover:text-white active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-60";
 
@@ -79,51 +78,6 @@ function InlineIdentityLink({
     <Link href={href} aria-label={ariaLabel} className={baseClass}>
       {children}
     </Link>
-  );
-}
-
-function TileShell({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div
-      className={[
-        "rounded-2xl",
-        "bg-white/[0.03] border border-white/[0.06]",
-        "px-4 py-3",
-        "select-none",
-        className,
-      ].join(" ")}
-    >
-      {children}
-    </div>
-  );
-}
-
-function StatTile({ icon, value, label }: { icon: "users" | "eye" | "bolt"; value: string; label: string }) {
-  const tooltipId = React.useId();
-  const anchorRef = React.useRef<HTMLDivElement | null>(null);
-  const [open, setOpen] = React.useState(false);
-
-  return (
-    <div className="relative">
-      <div
-        tabIndex={0}
-        aria-describedby={open ? tooltipId : undefined}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        className="cursor-pointer focus-visible:outline-none"
-      >
-        <TileShell className="h-[54px] flex items-center justify-center">
-          <div ref={anchorRef} className="flex items-center justify-center gap-2 text-white/75 transition-colors duration-150 hover:text-white">
-            <Icon name={icon} className="w-4 h-4" />
-            <span className="tabular-nums text-sm">{value}</span>
-            <span className="sr-only">{label}</span>
-          </div>
-        </TileShell>
-      </div>
-      <IconTooltip label={label} anchorRef={anchorRef} open={open} id={tooltipId} sideOffset={4} />
-    </div>
   );
 }
 
@@ -408,9 +362,6 @@ export default function JobActionsPanel({
   applicationMode?: "internal" | "external";
   applicationNotice?: string | null;
 }) {
-  const responseRate = Number.isFinite(job.responseRate) ? Math.max(0, job.responseRate) : 0;
-  const views = Number.isFinite(job.views) ? Math.max(0, job.views) : 0;
-
   return (
     <div className="min-w-0 space-y-6">
       {isOwner ? null : (
@@ -455,12 +406,6 @@ export default function JobActionsPanel({
           <p role="alert" className="mt-2 text-xs text-amber-200/80">{saveError || "Couldn’t save this job right now."}</p>
         ) : null}
         {shareState === "copied" ? <p role="status" className="mt-2 text-xs text-muted">Link copied to your clipboard.</p> : null}
-
-        <div className="mt-4 hidden grid-cols-3 gap-3 lg:grid">
-          <StatTile icon="users" value={`${job.applicants}`} label="Applicants" />
-          <StatTile icon="eye" value={formatCompactNumber(views)} label="Views" />
-          <StatTile icon="bolt" value={`${responseRate}%`} label="Response rate" />
-        </div>
       </section>
       )}
 

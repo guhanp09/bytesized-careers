@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 
 import { saveJob } from "../lib/backendClient";
 import { formatListingTitle } from "../lib/displayText";
-import { formatCompactNumber, formatPostedLabel } from "../lib/format";
+import { formatPostedLabel } from "../lib/format";
 import {
   compensationForJob,
   engagementForJob,
@@ -16,7 +16,6 @@ import {
   uniqueJobText,
   workSetupForJob,
 } from "../lib/jobPresentation";
-import { normalizeCount, normalizePercent } from "../lib/listingStats";
 import type { Job } from "../lib/types";
 import { useCardSheen } from "../lib/useCardSheen";
 import { Icon } from "./Icons";
@@ -25,7 +24,6 @@ import SearchMatchReasons from "./search/SearchMatchReasons";
 import {
   CardActionFeedback,
   copyTextToClipboard,
-  StatRow,
   TagPill,
   useTransientCardFeedback,
 } from "./ui";
@@ -105,9 +103,6 @@ export function JobCard({ job, matchReasons }: { job: Job; matchReasons?: string
   const sheen = useCardSheen();
   const cardHref = `/jobs/${encodeURIComponent(String(job.id))}`;
   const postedLabel = formatPostedLabel(job.postedShort);
-  const viewCount = normalizeCount(job.views);
-  const applicantCount = normalizeCount(job.applicants);
-  const responseRate = normalizePercent(job.responseRate);
   const role = roleForJob(job);
   const compensation = compensationForJob(job);
   const trial = job.trialStatus ? trialForJob(job) : null;
@@ -235,14 +230,7 @@ export function JobCard({ job, matchReasons }: { job: Job; matchReasons?: string
         ) : null}
 
         <footer className="mt-auto flex min-w-0 items-center justify-between gap-2 pt-4">
-          <div className="hidden min-w-0 items-center gap-3 xl:flex">
-            <StatRow icon="eye" value={formatCompactNumber(viewCount)} label="Views" interactive />
-            <StatRow icon="users" value={formatCompactNumber(applicantCount)} label="Applicants" interactive />
-            <StatRow icon="bolt" value={`${responseRate}%`} label="Response rate" interactive />
-          </div>
-          <p className="min-w-0 truncate text-[11px] text-subtle xl:hidden">
-            {applicantCount} applicant{applicantCount === 1 ? "" : "s"}{postedLabel ? ` · ${postedLabel}` : ""}
-          </p>
+          {postedLabel ? <p className="min-w-0 truncate text-[11px] text-subtle">{postedLabel}</p> : null}
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <IconAction
               label={saved ? "Saved" : "Save"}

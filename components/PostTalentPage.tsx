@@ -35,7 +35,7 @@ import {
   sanitizeRequirementKeys,
 } from "../lib/firstMessageRequirements";
 import { Icon } from "./Icons";
-import { MetaRow, PageLoading, StatRow, TagPill } from "./ui";
+import { MetaRow, PageLoading, TagPill } from "./ui";
 import RecommendedChecklistPopup, { RecommendedChecklistItem } from "./RecommendedChecklistPopup";
 import RequirementSelector from "./first-message/RequirementSelector";
 import ToolPicker from "./you/ToolPicker";
@@ -668,12 +668,7 @@ function TalentPreview({
         </div>
       ) : null}
 
-      <div className="mt-auto flex h-10 items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-4 overflow-hidden">
-          <StatRow icon="eye" value="0" label="Currently viewing" interactive className="shrink-0" />
-          <StatRow icon="user-plus" value="0" label="Interested recruiters" interactive className="shrink-0" />
-          <StatRow icon="bolt" value="0%" label="Response rate" interactive className="shrink-0" />
-        </div>
+      <div className="mt-auto flex h-10 items-center justify-end gap-3">
         <div className="flex flex-shrink-0 items-center gap-2" aria-hidden="true">
           <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/6 text-white/72">
             <Icon name="bookmark" className="h-4 w-4" />

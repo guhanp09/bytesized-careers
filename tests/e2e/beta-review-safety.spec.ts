@@ -28,6 +28,7 @@ test.describe("beta review and trust-copy safety", () => {
       const response = await page.goto(route, { waitUntil: "domcontentloaded" });
       expect(response?.status(), `${route} should not server error`).toBeLessThan(500);
       await expect(page.locator("body")).not.toContainText(blockedTrustCopy);
+      await expect(page.locator("body")).not.toContainText(/Response rate|Currently viewing|Interested recruiters/i);
     });
   }
 

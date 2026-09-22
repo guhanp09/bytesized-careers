@@ -8,12 +8,10 @@ import { BackendTalentListing, saveTalentListing } from "../lib/backendClient";
 import { formatListingTitle } from "../lib/displayText";
 import { publicProfileFallbackSlug } from "../lib/profileSlug";
 import { formatTalentListingExperience } from "../lib/talentListing";
-import { getTalentInterestedRecruiters, getTalentResponseRate, normalizeCount } from "../lib/listingStats";
 import { useCardSheen } from "../lib/useCardSheen";
-import { formatCompactNumber } from "../lib/format";
 import { Icon } from "./Icons";
 import SearchMatchReasons from "./search/SearchMatchReasons";
-import { CardActionFeedback, copyTextToClipboard, MetaRow, StatRow, TagPill, useTransientCardFeedback } from "./ui";
+import { CardActionFeedback, copyTextToClipboard, MetaRow, TagPill, useTransientCardFeedback } from "./ui";
 
 const formatInr = (amount: number) => `₹${new Intl.NumberFormat("en-IN").format(amount)}`;
 
@@ -191,16 +189,8 @@ export default function TalentCard({
     ...item.platforms,
     item.niche,
   ]);
-  const viewCount = normalizeCount(item.views);
-  const initialInterestedRecruitersCount = getTalentInterestedRecruiters(item);
-  const [interestedRecruitersCount, setInterestedRecruitersCount] = useState(initialInterestedRecruitersCount);
-  const responseRate = getTalentResponseRate(item);
   const modeOrLocation = workMode || location || "Remote";
   const displayTitle = formatListingTitle(item.title);
-
-  React.useEffect(() => {
-    setInterestedRecruitersCount(initialInterestedRecruitersCount);
-  }, [initialInterestedRecruitersCount]);
 
   const open = () => {
     router.push(href);
@@ -294,31 +284,7 @@ export default function TalentCard({
           </div>
         ) : null}
 
-        <div className="mt-auto flex h-10 items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-4 overflow-hidden">
-            <StatRow
-              icon="eye"
-              value={formatCompactNumber(viewCount)}
-              label="Currently viewing"
-              interactive
-              className="shrink-0"
-            />
-            <StatRow
-              icon="user-plus"
-              value={`${interestedRecruitersCount}`}
-              label="Interested recruiters"
-              interactive
-              className="shrink-0"
-            />
-            <StatRow
-              icon="bolt"
-              value={`${responseRate}%`}
-              label="Response rate"
-              interactive
-              className="shrink-0"
-            />
-          </div>
-
+        <div className="mt-auto flex h-10 items-center justify-end gap-3">
           <div className="flex flex-shrink-0 items-center gap-2">
             <IconAction
               label={saved ? "Saved" : "Save"}
@@ -339,7 +305,6 @@ export default function TalentCard({
                 try {
                   await saveTalentListing(session.backendAccessToken, item.id);
                   setSaved(true);
-                  setInterestedRecruitersCount((count) => count + 1);
                   showFeedback("Talent listing saved.", "success", "check", {
                     visual: "check",
                     actionLabel: "View",

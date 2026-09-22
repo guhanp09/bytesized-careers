@@ -23,7 +23,6 @@ import { publicProfileFallbackSlug } from "../../../lib/profileSlug";
 import { buildProfileReviewsHref, profileRatingSummaryFromProfile } from "../../../lib/profileRating";
 import { getSeoFilterRoute, isSeoRouteIndexApproved } from "../../../lib/seoFilterRoutes";
 import { formatTalentListingExperience } from "../../../lib/talentListing";
-import { getTalentInterestedRecruiters, getTalentResponseRate } from "../../../lib/listingStats";
 import { serializeJsonLd } from "../../../lib/jsonLd";
 import { talentListingVisibility } from "../../../lib/seo/jobPostingLifecycle";
 
@@ -516,9 +515,6 @@ export default async function TalentListingPage({
             {!isOwner ? (
               <TalentListingActionsClient
                 listingId={listing.id}
-                views={listing.views}
-                interestedRecruitersCount={getTalentInterestedRecruiters(listing)}
-                responseRate={getTalentResponseRate(listing)}
                 requirementKeys={listing.first_message_requirements || []}
                 customInstructionPrompt={listing.first_message_custom_instruction || null}
                 metadataRows={creatorContextRows}

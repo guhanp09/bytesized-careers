@@ -165,7 +165,7 @@ test.describe("phase 3b detail and post surface polish", () => {
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
-  test("job cards remove start timing while keeping activity stats", async ({ page }) => {
+  test("job cards omit start timing and unverified activity stats", async ({ page }) => {
     await page.goto("/jobs");
 
     await expect(
@@ -173,7 +173,7 @@ test.describe("phase 3b detail and post surface polish", () => {
         exact: false,
       }).first(),
     ).toBeVisible();
-    await expect(page.locator("body")).toContainText("Response rate");
+    await expect(page.locator("body")).not.toContainText(/Response rate|Currently viewing|\d+\s*Views|\d+\s*Applicants/i);
     await expect(page.locator("body")).not.toContainText(/Start:/i);
     await expect(page.locator("body")).not.toContainText("Posted by agency");
     await expect(page.locator('[role="link"]').filter({ hasText: /^Verified$/i })).toHaveCount(0);
@@ -181,15 +181,18 @@ test.describe("phase 3b detail and post surface polish", () => {
     await expect(page.locator("body")).not.toContainText(/Proof/i);
   });
 
-  test("persisted job stats remain visible on both cards and detail panels", async ({ page }) => {
+  test("persisted legacy job stats do not become public claims on cards or detail panels", async ({ page }) => {
     await page.goto("/jobs");
 
     const jobCard = page.getByRole("link").filter({
       hasText: "Creator partnerships manager for transparent beauty campaigns",
     }).first();
     await expect(jobCard).toBeVisible();
-    await expect(jobCard).toContainText(/303\s*Views/);
-    await expect(jobCard).toContainText(/62%\s*Response rate/);
+    // Persistence alone is not provenance: these fixtures intentionally still
+    // contain303 views and62%, with no validated real-world metric contract.
+    await expect(jobCard).not.toContainText(/Views|Response rate|Applicants/i);
+    await expect(jobCard.getByRole("button", { name: "Save", exact: true })).toBeVisible();
+    await expect(jobCard.getByRole("button", { name: "Share", exact: true })).toBeVisible();
 
     await page.goto("/jobs/15");
     await expect(
@@ -197,10 +200,9 @@ test.describe("phase 3b detail and post surface polish", () => {
         name: /Creator partnerships manager for transparent beauty campaigns/i,
       }),
     ).toBeVisible();
-    await expect(page.locator("body")).toContainText("Views");
-    await expect(page.locator("body")).toContainText(/303\s*Views/);
-    await expect(page.locator("body")).toContainText("Response rate");
-    await expect(page.locator("body")).toContainText(/62%\s*Response rate/);
+    await expect(page.getByTestId("job-apply-panel")).not.toContainText(/Views|Response rate|Applicants/i);
+    await expect(page.getByTestId("job-apply-panel").getByRole("button", { name: "Save", exact: true })).toBeVisible();
+    await expect(page.getByTestId("job-apply-panel").getByRole("button", { name: "Share", exact: true })).toBeVisible();
   });
 
   test("talent detail keeps work-sample-first recruiter context", async ({ page }) => {
@@ -262,7 +264,7 @@ test.describe("phase 3b detail and post surface polish", () => {
       safetyBounds?.y ?? Number.NEGATIVE_INFINITY
     );
     await expect(page.locator("body")).toContainText("Relevant portfolio");
-    await expect(page.locator("body")).toContainText("Interested recruiters");
+    await expect(page.locator("body")).not.toContainText(/Interested recruiters|Currently viewing|Response rate/);
     await expect(page.locator("body")).toContainText(/Posted \d+ (day|week|month)s? ago|Posted just now/);
     await expect(page.locator("body")).not.toContainText("Featured");
     await expect(page.locator("body")).toContainText("Safety & expectations");

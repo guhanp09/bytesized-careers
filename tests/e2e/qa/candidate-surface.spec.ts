@@ -58,7 +58,14 @@ async function openJob(page: Page, job: { id: string; title: string }) {
   expect(page.url()).toContain(job.id);
 
   // And the listing grid must be gone — a filter route would still show cards.
-  await expect(page.locator('[role="link"]').filter({ hasText: "Response rate" })).toHaveCount(0);
+  await expect(page.locator('[role="link"][title="Open job"]')).toHaveCount(0);
+  const panels = page.getByTestId("job-apply-panel");
+  await expect(panels).not.toHaveCount(0);
+  // Both responsive copies must be free of the old claims, including the
+  // currently hidden one. Do not silently inspect only the first panel.
+  for (const panel of await panels.all()) {
+    await expect(panel).not.toContainText(/Views|Response rate|Applicants/i);
+  }
 }
 
 test("the candidate surface applies through CreatorJobs and nowhere else", async ({ page }) => {
@@ -96,7 +103,8 @@ test("the navigation helper cannot pass while still on the index", async ({ page
   // separates the two surfaces is the grid: the index has cards, the detail
   // page has none, and openJob asserts exactly that.
   await page.goto("/jobs", { waitUntil: "domcontentloaded" });
-  const cards = page.locator('[role="link"]').filter({ hasText: "Response rate" });
+  // The card's actual navigation identity, not the retired fake-metric label.
+  const cards = page.locator('[role="link"][title="Open job"]');
   await expect(cards.first()).toBeVisible({ timeout: 30_000 });
   await expect(cards).not.toHaveCount(0);
 
@@ -108,6 +116,32 @@ test("the navigation helper cannot pass while still on the index", async ({ page
   // Opening the job leaves the grid behind.
   await openJob(page, job);
   await expect(cards).toHaveCount(0);
+});
+
+test("real talent cards and action panels omit unverified activity metrics without losing actions", async ({ page }) => {
+  const response = await page.request.get(`${BACKEND}/talent-listings?limit=1`);
+  expect(response.ok()).toBeTruthy();
+  const listing = (await response.json()).items[0];
+  expect(listing?.id).toBeTruthy();
+  await page.goto("/talent");
+  const card = page.getByRole("link").filter({ hasText: listing.title }).first();
+  await expect(card).toBeVisible();
+  await expect(card).not.toContainText(/Currently viewing|Interested recruiters|Response rate/i);
+  await expect(card.getByRole("button", { name: "Save", exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Share", exact: true })).toBeVisible();
+
+  await page.goto(`/talent/${listing.id}`);
+  await expect(page.getByRole("heading", { name: listing.title, exact: true })).toBeVisible();
+  const panels = page.getByTestId("talent-action-card");
+  await expect(panels).not.toHaveCount(0);
+  for (const panel of await panels.all()) {
+    await expect(panel).not.toContainText(/Currently viewing|Interested recruiters|Response rate/i);
+  }
+  const actions = page.locator('[data-testid="talent-action-card"]:visible');
+  await expect(actions).toBeVisible();
+  await expect(actions.getByTestId("talent-hire-button")).toBeVisible();
+  await expect(actions.getByRole("button", { name: "Save", exact: true })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "Share", exact: true })).toBeVisible();
 });
 
 for (const vp of WIDTHS) {

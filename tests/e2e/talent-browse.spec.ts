@@ -40,7 +40,9 @@ test.describe("talent browse regression coverage", () => {
     // The under-a-year bucket renders as a clean label, never "0 years".
     await expect(page.getByText("Experience: Less than 1 year").first()).toBeVisible();
     await expect(page.locator("body")).not.toContainText("Experience: 0 years");
-    await expect(page.getByText(/interested recruiters/i).first()).toBeVisible();
+    // Legacy saves/counters are not validated recruiter-interest or presence
+    // measurements and must not be presented as public activity claims.
+    await expect(page.locator("body")).not.toContainText(/Interested recruiters|Currently viewing|Response rate/i);
     await expect(page.locator("body")).not.toContainText(/\$|USD|Proof|1 slot open|Selective/);
   });
 
