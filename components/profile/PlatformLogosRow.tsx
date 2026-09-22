@@ -16,6 +16,12 @@ type PlatformDescriptor = {
   key: PlatformKey;
   label: string;
   icon: ReactNode;
+  accountsLabel: string;
+  openLinkLabel: string;
+  emptyLabel: string;
+  connectLabel: string;
+  addLabel: string;
+  disconnectLabel: string;
 };
 
 const supportedPlatforms: PlatformDescriptor[] = [
@@ -23,22 +29,35 @@ const supportedPlatforms: PlatformDescriptor[] = [
     key: "youtube",
     label: "YouTube",
     icon: <Icon name="youtube" className="h-3.5 w-3.5" />,
+    accountsLabel: "YouTube channels",
+    openLinkLabel: "Open channel",
+    emptyLabel: "No verified channels connected.",
+    connectLabel: "Connect YouTube",
+    addLabel: "Add channel",
+    disconnectLabel: "Disconnect YouTube",
   },
   {
     key: "instagram",
     label: "Instagram",
     icon: <Icon name="instagram" className="h-3.5 w-3.5" />,
+    accountsLabel: "Instagram profile link",
+    openLinkLabel: "Open profile",
+    emptyLabel: "No Instagram profile link added.",
+    connectLabel: "Add Instagram link",
+    addLabel: "Edit Instagram link",
+    disconnectLabel: "Remove Instagram link",
   },
 ];
+
+type PlatformActions = {
+  connect?: () => void | Promise<void>;
+  disconnect?: () => void | Promise<void>;
+};
 
 type PlatformLogosRowProps = {
   isOwnerView: boolean;
   connectedAccounts: Partial<Record<PlatformKey, ConnectedPlatformAccount[]>>;
-  onConnectAccount?: (platformKey: PlatformKey) => void | Promise<void>;
-  onRemoveAccount?: (
-    platformKey: PlatformKey,
-    account: ConnectedPlatformAccount
-  ) => void | Promise<void>;
+  platformActions?: Partial<Record<PlatformKey, PlatformActions>>;
 };
 
 const ensureHandlePrefix = (handle?: string | null) => {
@@ -52,18 +71,17 @@ const getAccountName = (account: ConnectedPlatformAccount) => {
   if (displayName) return displayName;
   const handle = ensureHandlePrefix(account.handle);
   if (handle) return handle;
-  return "Connected account";
+  return "Profile link";
 };
 
 export default function PlatformLogosRow({
   isOwnerView,
   connectedAccounts,
-  onConnectAccount,
-  onRemoveAccount,
+  platformActions,
 }: PlatformLogosRowProps) {
   const rowRef = useRef<HTMLDivElement | null>(null);
   const [openPlatformKey, setOpenPlatformKey] = useState<PlatformKey | null>(null);
-  const [removingAccountKey, setRemovingAccountKey] = useState<string | null>(null);
+  const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
 
   const accountsByPlatform = useMemo<Record<PlatformKey, ConnectedPlatformAccount[]>>(
     () => ({
@@ -76,9 +94,13 @@ export default function PlatformLogosRow({
   const visiblePlatforms = useMemo(
     () =>
       isOwnerView
-        ? supportedPlatforms
+        ? supportedPlatforms.filter(
+            (platform) =>
+              accountsByPlatform[platform.key].length > 0 ||
+              Boolean(platformActions?.[platform.key]?.connect)
+          )
         : supportedPlatforms.filter((platform) => accountsByPlatform[platform.key].length > 0),
-    [accountsByPlatform, isOwnerView]
+    [accountsByPlatform, isOwnerView, platformActions]
   );
 
   useEffect(() => {
@@ -105,24 +127,37 @@ export default function PlatformLogosRow({
 
   if (!visiblePlatforms.length) return null;
 
-  const handleRemove = async (
+  const handleDisconnect = async (
     platformKey: PlatformKey,
     platformLabel: string,
-    account: ConnectedPlatformAccount
+    disconnect: () => void | Promise<void>
   ) => {
-    if (!isOwnerView || !onRemoveAccount) return;
+    if (!isOwnerView) return;
     const confirmMessage =
       platformKey === "youtube"
         ? "Disconnect YouTube from CreatorJobs? This removes every verified YouTube channel and revokes stored YouTube access. Google sign-in remains linked."
-        : `Remove this ${platformLabel} account?`;
+        : `Remove the ${platformLabel} profile link?`;
     if (!window.confirm(confirmMessage)) return;
 
-    const accountKey = `${platformKey}:${account.id}`;
-    setRemovingAccountKey(accountKey);
+    const actionKey = `${platformKey}:disconnect`;
+    setPendingActionKey(actionKey);
     try {
-      await onRemoveAccount(platformKey, account);
+      await disconnect();
     } finally {
-      setRemovingAccountKey((current) => (current === accountKey ? null : current));
+      setPendingActionKey((current) => (current === actionKey ? null : current));
+    }
+  };
+
+  const handleConnect = async (
+    platformKey: PlatformKey,
+    connect: () => void | Promise<void>
+  ) => {
+    const actionKey = `${platformKey}:connect`;
+    setPendingActionKey(actionKey);
+    try {
+      await connect();
+    } finally {
+      setPendingActionKey((current) => (current === actionKey ? null : current));
     }
   };
 
@@ -132,7 +167,9 @@ export default function PlatformLogosRow({
         const accounts = accountsByPlatform[platform.key];
         const hasAccounts = accounts.length > 0;
         const isOpen = openPlatformKey === platform.key;
-        const openLinkLabel = platform.key === "youtube" ? "Open channel" : "Open profile";
+        const action = platformActions?.[platform.key];
+        const connecting = pendingActionKey === `${platform.key}:connect`;
+        const disconnecting = pendingActionKey === `${platform.key}:disconnect`;
 
         return (
           <div key={platform.key} className="relative">
@@ -146,7 +183,7 @@ export default function PlatformLogosRow({
                   ? "border-white/15 bg-white/[0.05] text-white/70 hover:bg-white/[0.1] hover:text-white/90"
                   : "border-white/10 bg-white/[0.03] text-muted hover:bg-white/[0.08] hover:text-white/75",
               ].join(" ")}
-              aria-label={`${platform.label} accounts`}
+              aria-label={platform.accountsLabel}
               aria-haspopup="dialog"
               aria-expanded={isOpen}
             >
@@ -156,7 +193,7 @@ export default function PlatformLogosRow({
             {isOpen ? (
               <div
                 role="dialog"
-                aria-label={`${platform.label} accounts`}
+                aria-label={platform.accountsLabel}
                 className="absolute left-0 top-[calc(100%+8px)] z-30 w-72 rounded-2xl border border-white/15 bg-[#111216] p-3 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.95)]"
               >
                 <div className="flex items-center justify-between gap-2">
@@ -175,7 +212,6 @@ export default function PlatformLogosRow({
                   <ul className="mt-3 space-y-2">
                     {accounts.map((account) => {
                       const accountKey = `${platform.key}:${account.id}`;
-                      const isRemoving = removingAccountKey === accountKey;
                       const handleLabel = ensureHandlePrefix(account.handle);
 
                       return (
@@ -199,18 +235,8 @@ export default function PlatformLogosRow({
                                   onClick={() => setOpenPlatformKey(null)}
                                   className="text-[11px] text-white/60 hover:text-white/90 transition-colors"
                                 >
-                                  {openLinkLabel}
+                                  {platform.openLinkLabel}
                                 </a>
-                              ) : null}
-                              {isOwnerView ? (
-                                <button
-                                  type="button"
-                                  onClick={() => void handleRemove(platform.key, platform.label, account)}
-                                  disabled={isRemoving || !onRemoveAccount}
-                                  className="text-[11px] text-muted hover:text-white/85 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  {isRemoving ? "Removing..." : "Remove"}
-                                </button>
                               ) : null}
                             </div>
                           </div>
@@ -219,18 +245,32 @@ export default function PlatformLogosRow({
                     })}
                   </ul>
                 ) : (
-                  <p className="mt-3 text-xs text-white/55">No accounts connected yet.</p>
+                  <p className="mt-3 text-xs text-white/55">{platform.emptyLabel}</p>
                 )}
 
-                {isOwnerView ? (
-                  <button
-                    type="button"
-                    onClick={() => void onConnectAccount?.(platform.key)}
-                    disabled={!onConnectAccount}
-                    className="mt-3 h-8 rounded-lg border border-white/15 bg-white/[0.05] px-3 text-xs font-semibold text-white/85 hover:bg-white/[0.1] transition-colors inline-flex items-center justify-center cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {accounts.length ? "Add account" : `Connect ${platform.label}`}
-                  </button>
+                {isOwnerView && (action?.connect || (hasAccounts && action?.disconnect)) ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {action?.connect ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleConnect(platform.key, action.connect!)}
+                        disabled={Boolean(pendingActionKey)}
+                        className="h-8 rounded-lg border border-white/15 bg-white/[0.05] px-3 text-xs font-semibold text-white/85 hover:bg-white/[0.1] transition-colors inline-flex items-center justify-center cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {connecting ? "Connecting..." : hasAccounts ? platform.addLabel : platform.connectLabel}
+                      </button>
+                    ) : null}
+                    {hasAccounts && action?.disconnect ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleDisconnect(platform.key, platform.label, action.disconnect!)}
+                        disabled={Boolean(pendingActionKey)}
+                        className="h-8 rounded-lg border border-red-300/20 bg-red-300/[0.04] px-3 text-xs font-semibold text-red-100/80 hover:bg-red-300/[0.08] transition-colors inline-flex items-center justify-center cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/30 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {disconnecting ? "Disconnecting..." : platform.disconnectLabel}
+                      </button>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             ) : null}

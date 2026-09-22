@@ -122,7 +122,7 @@ const SECTIONS: Array<{
   { id: "account", title: "Account", icon: "user" },
   { id: "profile-visibility", title: "Profile & visibility", icon: "globe" },
   { id: "work-preferences", title: "Work preferences", icon: "briefcase" },
-  { id: "connected-accounts", title: "Connected accounts", icon: "badge-check" },
+  { id: "connected-accounts", title: "Accounts & links", icon: "badge-check" },
   { id: "notifications", title: "Notifications", icon: "bell" },
   { id: "security", title: "Security", icon: "shield" },
   { id: "data-support", title: "Data & support", icon: "help" },
@@ -254,6 +254,10 @@ export default function SettingsClient({
   const email = profile?.email || me?.email || sessionUser.email || "Not available";
   const avatarUrl = profile?.avatar_url || sessionUser.image || null;
   const unreadCount = notifications?.unread_count || 0;
+  const hasInstagramProfileLink = Boolean(
+    profile?.social_connections?.instagram?.handle?.trim() ||
+      profile?.social_connections?.instagram?.url?.trim()
+  );
   const usesPasswordSignIn = sessionUser.provider === "credentials";
   const publicProfilePath = username ? `/u/${username}` : null;
 
@@ -1161,9 +1165,9 @@ export default function SettingsClient({
 
           <SettingsSection
             id="connected-accounts"
-            title="Connected accounts"
+            title="Accounts & profile links"
             icon="badge-check"
-            description="Verified accounts used for profile trust and channel identity."
+            description="Verified YouTube access and public profile links, kept distinct."
           >
             <SettingRow
               rowId="connected-youtube"
@@ -1215,10 +1219,10 @@ export default function SettingsClient({
 
             <SettingRow
               rowId="connected-instagram"
-              title="Instagram profile"
-              description="Optional Instagram handle or URL shown as a connected profile link."
-              status={profile?.social_connections?.instagram?.connected ? "Connected" : "Not set"}
-              statusTone={profile?.social_connections?.instagram?.connected ? "active" : "neutral"}
+              title="Instagram profile link"
+              description="Optional public profile link. This is not an Instagram account connection or verification."
+              status={hasInstagramProfileLink ? "Added" : "Not set"}
+              statusTone={hasInstagramProfileLink ? "active" : "neutral"}
               feedback={rowFeedback["connected-instagram"]}
               action={<EditButton active={activeEditor === "connected-instagram"} onClick={() => openEditor("connected-instagram")} />}
             >

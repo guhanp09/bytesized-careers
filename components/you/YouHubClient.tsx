@@ -2119,49 +2119,43 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
     sessionStatus,
   ]);
 
-  const connectPlatformAccount = useCallback(
-    async (platformKey: PlatformKey) => {
-      if (platformKey === "youtube") {
-        await startYouTubeConnectFlow();
-        return;
-      }
-      setError("Instagram connection is not configured in this environment.");
-    },
-    [startYouTubeConnectFlow]
-  );
-
-  const removePlatformAccount = useCallback(
-    async (platformKey: PlatformKey, account: ConnectedPlatformAccount) => {
-      if (platformKey === "youtube") {
+  const disconnectYouTubeFromProfile = useCallback(
+    async () => {
+      try {
+        const result = await disconnectYouTubeConnection();
+        setChannelOptions([]);
         try {
-          const result = await disconnectYouTubeConnection();
-          setChannelOptions([]);
-          try {
-            const refreshedProfile = await withFreshBackendToken((token) => getMyProfile(token));
-            setProfile(refreshedProfile);
-            hydrateFromProfile(refreshedProfile);
-          } catch {
-            // The disconnect already succeeded; reload will reconcile profile state.
-          }
-          if (
-            result.provider_revocation === "rejected" ||
-            result.provider_revocation === "unavailable"
-          ) {
-            setError(
-              "YouTube was disconnected locally, but Google did not confirm remote revocation. Remove CreatorJobs from your Google Account permissions as a precaution."
-            );
-          } else {
-            setError(null);
-          }
-        } catch (err) {
-          setError(err instanceof Error ? err.message : "Could not disconnect YouTube.");
+          const refreshedProfile = await withFreshBackendToken((token) => getMyProfile(token));
+          setProfile(refreshedProfile);
+          hydrateFromProfile(refreshedProfile);
+        } catch {
+          // The disconnect already succeeded; reload will reconcile profile state.
         }
-        return;
+        if (
+          result.provider_revocation === "rejected" ||
+          result.provider_revocation === "unavailable"
+        ) {
+          setError(
+            "YouTube was disconnected locally, but Google did not confirm remote revocation. Remove CreatorJobs from your Google Account permissions as a precaution."
+          );
+        } else {
+          setError(null);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not disconnect YouTube.");
       }
-      // TODO: Wire to backend endpoint when Instagram disconnect is available.
-      setError(`Removing ${account.displayName || "this Instagram account"} is not available yet.`);
     },
     [hydrateFromProfile, withFreshBackendToken]
+  );
+
+  const platformActions = useMemo(
+    () => ({
+      youtube: {
+        connect: startYouTubeConnectFlow,
+        disconnect: disconnectYouTubeFromProfile,
+      },
+    }),
+    [disconnectYouTubeFromProfile, startYouTubeConnectFlow]
   );
 
   const toggleRoleSelection = useCallback(
@@ -4763,8 +4757,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                 <PlatformLogosRow
                   isOwnerView={isOwnerView}
                   connectedAccounts={connectedAccounts}
-                  onConnectAccount={connectPlatformAccount}
-                  onRemoveAccount={removePlatformAccount}
+                  platformActions={platformActions}
                 />
                 <div className="grid gap-4 md:grid-cols-3">
                   <label className="space-y-1">

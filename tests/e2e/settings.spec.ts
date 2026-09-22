@@ -164,9 +164,19 @@ async function mockSettingsMutations(page: Page) {
     const request = route.request();
     if (request.method() === "PATCH") {
       const body = JSON.parse(request.postData() || "{}");
+      const instagramHandle = typeof body.instagram_handle === "string" ? body.instagram_handle : null;
+      const instagramUrl = typeof body.instagram_url === "string" ? body.instagram_url : null;
       await fulfillJson(route, profile({
         display_name: body.display_name ?? "Demo Owner",
         username: body.username ?? "demo-owner",
+        social_connections: {
+          youtube: { connected: false },
+          instagram: {
+            connected: Boolean(instagramHandle || instagramUrl),
+            handle: instagramHandle,
+            url: instagramUrl,
+          },
+        },
       }));
       return;
     }
@@ -438,6 +448,36 @@ test.describe("Settings page", () => {
       .click();
 
     await expect(page.getByTestId("settings-row-connected-youtube")).toContainText("Settings E2E Channel");
+    await expect(page).toHaveURL(/\/settings$/);
+  });
+
+  test("keeps an Instagram profile link distinct from a provider connection", async ({ page, context }) => {
+    await signInAsOwner(context);
+    await mockSettingsMutations(page);
+
+    await page.goto("/settings", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Accounts & profile links" })).toBeVisible();
+
+    const row = page.getByTestId("settings-row-connected-instagram");
+    await expect(row).toContainText("This is not an Instagram account connection or verification.");
+    await expect(row).toContainText("Not set");
+    await expect(row.getByRole("button", { name: /Connect|Disconnect/ })).toHaveCount(0);
+
+    await row.getByRole("button", { name: "Edit" }).click();
+    await page.getByLabel("Instagram handle").fill("creatorjobs");
+    await page.getByLabel("Instagram URL").fill("https://instagram.com/creatorjobs");
+    const saveRequest = page.waitForRequest(
+      (request) => request.url().includes("/api/v1/me/profile") && request.method() === "PATCH"
+    );
+    await row.getByRole("button", { name: "Save" }).click();
+    const request = await saveRequest;
+
+    expect(JSON.parse(request.postData() || "{}")).toMatchObject({
+      instagram_handle: "creatorjobs",
+      instagram_url: "https://instagram.com/creatorjobs",
+    });
+    await expect(row).toContainText("Added");
+    await expect(row).not.toContainText("Connected");
     await expect(page).toHaveURL(/\/settings$/);
   });
 

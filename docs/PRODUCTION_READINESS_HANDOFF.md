@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external
 CURRENT PHASE:Phase13 certification — real-backend and cross-engine aggregates passed; remaining local behavioral proof and external gates.
-LAST COMPLETED ATOMIC SLICE:13I / PRODUCT-002 — free beta now publishes directly under the existing authenticated server authorization and creates no payment/access grant; the client-controlled entitlement mint, pretend checkout page and pre-publication mint calls are gone; historical entitlement rows are explicitly audit-only. Commit `fix(beta): remove client-created entitlements`.
-NEXT ATOMIC SLICE:13J / PRODUCT-003 — inventory every customer-visible connect/disconnect or incomplete-integration control, remove unsupported affordances, and prove each retained path against its real server contract. Do not attempt the externally blocked live Google consent drill in this local slice.
+LAST COMPLETED ATOMIC SLICE:13J / PRODUCT-003 — only the implemented YouTube provider path now exposes connect/refresh/disconnect; Instagram is accurately an editable public profile link with no fake provider action; Post Job no longer advertises an unavailable channel sign-in method. Commit `fix(integrations): remove unsupported account controls`.
+NEXT ATOMIC SLICE:13K / PRODUCT-004 — complete the wider production seed/demo/fixed-ID isolation inventory beyond the already validated talent-portfolio subpart. Prove production paths cannot silently source demo content, personas or fixed fixture identities before validating the parent row.
 PHASE 11 STATUS: SEO-001/002/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED locally; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
 CURRENT ALEMBIC CURRENT: disposable SQLite `.local-data/readiness-3o-backend.db` unstamped (2026-09-17); one head 0070_activity_page_indexes; no migration. Historical PostgreSQL migration proof was not rerun.
@@ -18,9 +18,9 @@ NEW ENVIRONMENT VARIABLES: `GOOGLE_PLACES_API_KEY` moved from the frontend templ
 NEW DEPENDENCIES:latest3X/3Z lock updates documented below (Next16.3.5, Sharp0.35.4, mapping2.11.24; compatible developer-tooling group). No13C dependency change. Backend redis-py8.1.0 from3J; locked production53packages/55hashed requirement rows.
 NEW SERVICES: no service was provisioned. Google Places is an optional fixed external provider behind the backend boundary; keep its key absent until console API restrictions, billing quotas, current provider-policy review and a live lookup/attribution/outage drill are complete. Production still concretely requires managed Redis 7.2+ for shared rate limiting, but none was contacted here. Existing local/CI audit, rotation, incident, metric, error and synthetic services remain as documented.
 OUTSTANDING EXTERNAL REQUIREMENTS: Google Places console key/API/service restriction, billing quota, current terms/policy review and live lookup/attribution/outage drill before setting `GOOGLE_PLACES_API_KEY`; a human/operator tabletop; immutable artifact rollback/traffic-shift drill; hosted database/PITR and media restore; other real provider outage/failover/revocation drills; production credential rotation; production log ingestion/retention/access; real alert-destination delivery and acknowledgement; standalone-worker absence/process-death monitoring; scheduled synthetics against isolated staging data; evidence-backed traffic/latency/capacity thresholds; authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; staging soak
-KNOWN TEST FAILURES:13I final Node1347/1347, focused20/20, TSC0, changed lint0 errors/2 pre-existing PostJob warnings, Ruff0, affected backend files83/83 independently, final backend policy3/3, fresh production build and serial browser41/41. One combined marketplace+admin+rate pytest invocation exposed an order-sensitive `test_conversations_metadata_and_abuse_signals` top-N tie after earlier fixtures populated the database; its exact isolated rerun and every affected file passed, and no production code in that path changed. It was not baseline-reproduced and remains test-isolation debt, not a hidden green claim. No task-caused failure remains. 13E standard504/504 remains the latest full standard; current fullQA expected299 but was not rerun. Last aggregate13C293/293 included unintended live smoke (see correction). Backend last full3W7712passed+65skipped=7777. Known popup/load intermittency and all external gates remain; NO-GO.
-COMMANDS TO RESUME:git status --short; git branch --show-current; git rev-parse HEAD; verify frozen refs. Read13I checkpoint and execution-ledger PRODUCT-003. Inventory customer-visible integration controls and their callers/routes with `rg`; retain only paths backed by an authenticated server contract and deterministic tests. Keep provider keys blank and do not perform a live Google consent drill.
-FILES TO READ FIRST:13I checkpoint; execution ledger PRODUCT-003 and AUTH-009; account/profile integration settings; YouTube connect/disconnect components, Next routes, backend OAuth grant routes and existing integration tests. Do not edit unrelated IDE PHP file.
+KNOWN TEST FAILURES:13J final focused Node12/12, full Node1350/1350, TSC0, changed lint0 errors/12 existing warnings, backend Google OAuth/disconnect17/17, and fresh-build serial browser20/20 across settings13/13 and Post Job/detail7/7. The live Google consent/reconnect/refresh/revoke/outage drill remains external under AUTH-009; no provider was contacted. No task-caused failure remains. The 13I combined-pytest order-sensitive top-N tie remains documented below. 13E standard504/504 remains the latest full standard; current fullQA expected299 but was not rerun. Last aggregate13C293/293 included unintended live smoke (see correction). Backend last full3W7712passed+65skipped=7777. Known popup/load intermittency and all external gates remain; NO-GO.
+COMMANDS TO RESUME:git status --short; git branch --show-current; git rev-parse HEAD; verify frozen refs. Read13J and13F checkpoints plus execution-ledger PRODUCT-004/004A. Inventory every production-reachable fixture/demo/persona/fixed-ID import and data fallback with `rg`; prove behavior through actual loaders rather than source-string absence alone. Do not run destructive seed commands or contact hosted databases.
+FILES TO READ FIRST:13J and13F checkpoints; execution ledger PRODUCT-004/004A; `lib/dataSource.ts`, local mock/fixture registries, backend seed modules and dev/test/persona routers; production config gates and existing demo-isolation tests. Do not edit unrelated IDE PHP file.
 RELEASE ASSESSMENT: NO-GO
 IMPORTANT NEW ARCHITECTURE (Phase 3M): `YouTubeProviderClient` is the only YouTube Data API transport. `fetch_user_youtube_channels` and `fetch_youtube_video_metadata` remain compatible entrypoints. `POST /me/youtube-identity` shares the existing verified-user outbound quota. `YOUTUBE_API_KEY` is preferred; backend-only `YOUTUBE_DATA_API_KEY` is the compatibility alias; both are SecretStr, blank primary falls through. Remove keys from the frontend at eventual operator cutover; no live configuration changed. The QA harness explicitly blanks both keys. No new migration, dependency, service or AI behavior change.
 IMPORTANT NEW ARCHITECTURE (Phase 3N): Pure-ASGI HttpAdmissionMiddleware admits synchronously before await, counts until the application unwinds in finally, and rejects excess work without reading/parsing/queuing. Metrics, CORS and request ID wrap its 503. MAX_CONCURRENT_HTTP_REQUESTS is required at production boot and bounded by schema; local/test fallback is 100 for existing local concurrency harness. One additional slot is only for exact GET health liveness. Redis quotas and WebSocket lifecycle are unchanged. No migration, new dependency/service or AI behavior change.
@@ -28,6 +28,58 @@ IMPORTANT NEW ARCHITECTURE (Phase 3O): REQUEST_BODY_IDLE_TIMEOUT_SECONDS=10 and 
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase13J checkpoint — remove unsupported integration controls (2026-09-22)
+
+```text
+Phase:13J / PRODUCT-003
+Status:COMPLETE / VALIDATED
+Initial HEAD:e45d837d67237922915e445e9eeed1719d643e27
+Final HEAD / Commit:git log -1 --format=%H --grep='fix(integrations): remove unsupported account controls'
+Files materially changed:Settings page/client; PostJobPage organization-verification modal;
+ PlatformLogosRow; YouHubClient's profile-editor provider actions; integration source guards and
+ Settings browser coverage; execution ledger and handoff.
+Migrations:none. Alembic remains one head at0070_activity_page_indexes; no database was contacted.
+Behavior changed:the active Settings surface now separates verified YouTube access from an editable
+ Instagram public profile link. Instagram says `Added`, never `Connected`, and presents only its real
+ profile PATCH editor. The profile-editor platform popover now takes a per-platform action map; only
+ YouTube receives connect/disconnect handlers, and disconnect is one platform-level action matching
+ the backend's all-channel revocation contract rather than a misleading per-channel Remove button.
+ The unavailable Instagram handlers are deleted. Post Job's represented-identity modal now offers
+ only its implemented temporary public-code verification instead of a disabled channel-login card.
+Security assumptions:YouTube still crosses only the authenticated same-origin Next routes and the
+ server-owned stored OAuth grant; browser code receives no provider credential. Instagram handle/URL
+ persistence is ordinary profile data, not identity verification or delegated provider authority.
+ AUTH-009 remains BLOCKED_EXTERNAL for a live Google consent/reconnect/refresh/revoke/outage drill.
+ No local test or copy change is promoted as that missing provider evidence.
+Baseline / non-vacuity:all three new integration-control guards failed against e45d837: Post Job
+ contained the unavailable sign-in card; the generic profile row rendered connect/remove callbacks
+ for every platform; YouHub's Instagram handlers returned `not configured/not available`; Settings
+ described a manually entered Instagram link as connected. Final guards pass3/3.
+Tests run / exact results:final integration/provider Node focus12/12; full
+ `node --test tests/*.test.mjs`1350/1350 in3.96s; `npx tsc --noEmit` exit0; changed-file ESLint
+ exit0 with12 pre-existing warnings (image optimization plus one PostJob hook dependency); backend
+ `test_google_oauth_scope_disconnect.py`17/17; `tests/e2e/settings.spec.ts`13/13 including same-origin
+ YouTube refresh/disconnect and Instagram PATCH semantics; `phase3b-detail-post.spec.ts`7/7. Both
+ serial Playwright runs built production successfully with live-import/provider keys blank. Focused
+ browser total20/20. `git diff --check` clean.
+Known failures:none task-caused. Browser server logs two expected best-effort backend-session
+ revocation failures while the standard mock-browser backend is absent; the assertions and sign-out
+ journeys passed. FastAPI emitted only the already known `on_event` deprecation warnings.
+Dependencies / environment / services / AI:none changed. No provider/service was contacted or
+ provisioned. AI Import remains retained, gated, draft-only and unchanged.
+Known external failures / remaining risks:AUTH-009's real Google console/consent/provider drill and
+ all other managed-provider, hosted-infrastructure, legal, manual-accessibility, restore and staging
+ soak gates remain. Queue-backed paid AI execution remains unresolved. Release assessment:NO-GO.
+Next phase:13K / PRODUCT-004. Complete the repository-wide production seed/demo/fixed-ID isolation
+ inventory and validate the parent row without repeating PRODUCT-004A's portfolio work. Prefer actual
+ loader/config execution tests over a brittle ban on harmless fixture text in test-only modules.
+Important commands:git status --short; verify branch/head/frozen refs; read13F; `rg -n
+ "mock|demo|fixture|seed|persona|fixed" app components lib backend/app tests`; inspect production
+ config gates before writing tests. Use only disposable local state; do not invoke hosted databases.
+Frozen refs:verify all five exact baseline hashes after commit. No push/deployment; hosted
+ Neon/Vercel/Render untouched.
+```
 
 ## Phase13I checkpoint — enforce honest free-beta access (2026-09-22)
 

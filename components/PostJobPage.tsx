@@ -962,20 +962,9 @@ function HiringIdentityModal({
                 Confirm access
               </h2>
               <p className="mt-3 text-sm leading-6 text-white/62">
-                To publish jobs for {resolved.name}, confirm access to this channel/page.
+                To publish jobs for {resolved.name}, confirm access with a temporary public code.
               </p>
               <div className="mt-5 space-y-3">
-                <div className="w-full rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 opacity-70">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold text-white/72">Sign in as this channel/page</span>
-                    <span className="shrink-0 rounded-full border border-white/12 bg-white/[0.05] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">
-                      Coming soon
-                    </span>
-                  </div>
-                  <span className="mt-1 block text-sm text-muted">
-                    Connect the account that owns this channel/page.
-                  </span>
-                </div>
                 <button
                   type="button"
                   onClick={() => void startBioVerification()}
