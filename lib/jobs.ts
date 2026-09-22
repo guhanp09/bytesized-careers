@@ -22,22 +22,6 @@ import type {
 import { resolveToolDisplay } from "./toolCatalog.ts";
 import type { Job, JobCategory, ReferenceVideo, StartTimeframe } from "./types";
 
-export const CATEGORIES = [
-  "All",
-  "Editing",
-  "Design",
-  "Writing",
-  "Thumbnails",
-  "Shorts",
-  "Motion Graphics",
-  "Channel Manager",
-  "Research",
-  "Voice Over",
-  "Marketing",
-] as const;
-
-export const START_TIME_VALUES: StartTimeframe[] = ["ASAP", "<1mo", "<2mo", "<3mo", "Flexible"];
-
 type DemoIdentity = {
   key: string;
   username: string;

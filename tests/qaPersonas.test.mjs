@@ -33,6 +33,14 @@ test("production always rejects QA UI even if the switch is set", () => {
     }),
     false
   );
+  assert.equal(
+    evaluateQaPersonaUiAllowed({
+      APP_ENV: "test",
+      VERCEL_ENV: "production",
+      ENABLE_QA_PERSONA_SWITCHER: "true",
+    }),
+    false
+  );
 });
 
 test("QA session overlay keeps the controller backend token separate", () => {

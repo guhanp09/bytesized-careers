@@ -14,6 +14,10 @@ RESET_URL = "/api/v1/dev/reset"
 
 async def test_dev_routes_are_404_in_production(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(config.settings, "app_env", "production")
+    # The ASGI middleware stack is built lazily on this first request. Supply
+    # the independent production admission bound so this test reaches the dev
+    # route gates it is meant to prove instead of failing during stack setup.
+    monkeypatch.setattr(config.settings, "max_concurrent_http_requests", 20)
 
     assert (await client.get(PERSONAS_URL)).status_code == 404
     assert (await client.get(STATUS_URL)).status_code == 404

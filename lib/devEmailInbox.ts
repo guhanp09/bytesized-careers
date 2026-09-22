@@ -1,11 +1,9 @@
+import { hasProductionEnvironmentSignal } from "./runtimeEnvironment.ts";
+
 const isLocalUrl = (value?: string) => Boolean(value && /localhost|127\.0\.0\.1/.test(value));
 
 export const isDevEmailInboxAllowed = () => {
-  if (
-    process.env.APP_ENV === "production" ||
-    process.env.NEXT_PUBLIC_APP_ENV === "production" ||
-    process.env.VERCEL_ENV === "production"
-  ) {
+  if (hasProductionEnvironmentSignal(process.env)) {
     return false;
   }
 
@@ -26,8 +24,12 @@ export const isDevEmailInboxAllowed = () => {
   );
 };
 
-export const shouldShowDevEmailInboxLink = () =>
-  process.env.NODE_ENV === "development" ||
-  process.env.NEXT_PUBLIC_APP_ENV === "development" ||
-  process.env.NEXT_PUBLIC_APP_ENV === "test" ||
-  isLocalUrl(process.env.NEXT_PUBLIC_BACKEND_URL);
+export const shouldShowDevEmailInboxLink = () => {
+  if (hasProductionEnvironmentSignal(process.env)) return false;
+  return (
+    process.env.NODE_ENV === "development" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "development" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "test" ||
+    isLocalUrl(process.env.NEXT_PUBLIC_BACKEND_URL)
+  );
+};

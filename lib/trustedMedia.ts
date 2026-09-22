@@ -1,3 +1,5 @@
+import { hasProductionEnvironmentSignal } from "./runtimeEnvironment.ts";
+
 type MediaEnvironment = Readonly<Record<string, string | undefined>>;
 
 export type TrustedMediaRemotePattern = {
@@ -21,9 +23,7 @@ const CONFIGURATION_METACHARACTERS = /[?#[\]{}*\\]/;
 const ENCODED_SEPARATOR_OR_DOT = /%(?:2e|2f|5c)/i;
 
 export function isStrictProductionEnvironment(environment: MediaEnvironment): boolean {
-  const explicit = (environment.APP_ENV || environment.NEXT_PUBLIC_APP_ENV || "").trim();
-  if (explicit) return explicit === "production";
-  return environment.VERCEL_ENV === "production";
+  return hasProductionEnvironmentSignal(environment);
 }
 
 function invalid(reason: string): never {

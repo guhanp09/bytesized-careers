@@ -15,7 +15,7 @@ import {
 } from "../../lib/jobContract";
 import type { JobDiscoveryState } from "../../lib/jobDiscovery";
 import { sentenceCaseJobValue, uniqueJobText } from "../../lib/jobPresentation";
-import { START_TIME_VALUES } from "../../lib/jobs";
+import { JOB_START_TIME_VALUES } from "../../lib/jobFilterOptions";
 import { Icon } from "../Icons";
 
 const FOCUSABLE_SELECTOR = [
@@ -220,7 +220,7 @@ export default function JobFiltersDrawer({
               className="mt-2.5 h-11 w-full cursor-pointer rounded-xl border border-white/10 bg-white/[0.055] px-3 text-sm text-white outline-none focus:border-white/25"
             >
               <option value="" className="bg-[#15161a]">Any start timeframe</option>
-              {START_TIME_VALUES.map((value) => (
+              {JOB_START_TIME_VALUES.map((value) => (
                 <option key={value} value={value} className="bg-[#15161a]">
                   {formatStartFilterLabel(value)}
                 </option>

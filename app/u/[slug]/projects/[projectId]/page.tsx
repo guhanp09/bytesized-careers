@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import ProjectDetailPage from "../../../../../components/project/ProjectDetailPage";
 import type { BackendPortfolioItem, BackendPublicProfileResponse } from "../../../../../lib/backendClient";
+import { getMarketplaceDataSourceState } from "../../../../../lib/devDataSource.server";
 import { resolvePublicProfileWithTalentFallback } from "../../../../../lib/publicProfileFallback";
 import { NOINDEX } from "../../../../../lib/seo/noindex";
 
@@ -71,7 +72,8 @@ export async function generateMetadata({
   const username = decodeURIComponent(rawSlug || "").trim().toLowerCase();
   const projectId = decodeURIComponent(rawProjectId || "");
 
-  const profile = await resolvePublicProfileWithTalentFallback(username);
+  const dataSource = await getMarketplaceDataSourceState();
+  const profile = await resolvePublicProfileWithTalentFallback(username, dataSource);
   const project = profile
     ? [...(profile.portfolio_now || []), ...(profile.portfolio_past || [])].find(
         (item) => item.id === projectId,
@@ -116,7 +118,11 @@ export default async function PublicProjectPage({
   const username = decodeURIComponent(rawSlug || "").trim().toLowerCase();
   const projectId = decodeURIComponent(rawProjectId || "");
 
-  const profile: BackendPublicProfileResponse | null = await resolvePublicProfileWithTalentFallback(username);
+  const dataSource = await getMarketplaceDataSourceState();
+  const profile: BackendPublicProfileResponse | null = await resolvePublicProfileWithTalentFallback(
+    username,
+    dataSource,
+  );
 
   if (!profile) {
     return (

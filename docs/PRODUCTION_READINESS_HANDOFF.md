@@ -5,9 +5,10 @@
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external
 CURRENT PHASE:Phase13 certification — real-backend and cross-engine aggregates passed; remaining local behavioral proof and external gates.
-LAST COMPLETED ATOMIC SLICE:13J / PRODUCT-003 — only the implemented YouTube provider path now exposes connect/refresh/disconnect; Instagram is accurately an editable public profile link with no fake provider action; Post Job no longer advertises an unavailable channel sign-in method. Commit `fix(integrations): remove unsupported account controls`.
-NEXT ATOMIC SLICE:13K / PRODUCT-004 — complete the wider production seed/demo/fixed-ID isolation inventory beyond the already validated talent-portfolio subpart. Prove production paths cannot silently source demo content, personas or fixed fixture identities before validating the parent row.
+LAST COMPLETED ATOMIC SLICE:13K / PRODUCT-004 — production signals now force Backend mode and reject every demo switch; public-profile, fixed-ID job, private-draft and Applications scenario paths require an explicit non-production fixture capability; demo corpora remain usable locally but cannot silently replace customer data. Commit `fix(data): isolate production from demo fixtures`.
+NEXT ATOMIC SLICE:13L / CORRECT-001 — certify public recruiter/agency profiles and every entry link against the intended backend contract. Inventory route/link ownership first; repair only reproducible profile/navigation defects and add real-backend plus standard-browser proof before changing the ledger row.
 PHASE 11 STATUS: SEO-001/002/003/004, PERF-001, PERF-002, CORRECT-007 and A11Y-001 VALIDATED locally; A11Y-002 BLOCKED_EXTERNAL for a genuine manual keyboard/screen-reader/zoom/touch review.
+IMPORTANT NEW ARCHITECTURE (13K): `lib/runtimeEnvironment.ts` is the single frontend/server production-signal and truthy-flag contract: any APP_ENV, NEXT_PUBLIC_APP_ENV or VERCEL production marker wins, while local `next start` remains possible only because NODE_ENV alone is not treated as deployment authority. Production always resolves the marketplace to Backend and `next.config.ts` refuses local mocks, the dev data switch and QA personas under every accepted truthy spelling. Public profiles receive the resolved data-source capability explicitly; backend absence returns not-found instead of canonical/mock/listing-derived people. Public job cards enrich from demo data only when the server explicitly supplies a fixture map, so a colliding customer ID is inert. Private draft fixtures moved to a server-loaded module and require both a non-production capability and explicit/local Mock selection; missing backend authority is an authentication error. Production Applications ignores `seed`, including unknown-scenario error copy. Client browse controls live in a fixture-free vocabulary module, and built client chunks are checked for job, draft and scenario sentinels. Server-side demo pages, the local Prisma mock route and backend seed/persona routers remain usable only through the same environment gates; roles seed JSON is static product taxonomy, not customer content. Production deployment must explicitly set APP_ENV/NEXT_PUBLIC_APP_ENV or provide VERCEL_ENV; that live configuration check remains CERT-002.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes (single head; parent 0069_support_tickets)
 CURRENT ALEMBIC CURRENT: disposable SQLite `.local-data/readiness-3o-backend.db` unstamped (2026-09-17); one head 0070_activity_page_indexes; no migration. Historical PostgreSQL migration proof was not rerun.
 IMPORTANT NEW ARCHITECTURE (RATE-003B / OF-105): `app.services.google_places_service.GooglePlacesService` is a fixed-destination provider adapter, not an arbitrary-URL fetcher. It owns the backend-only Places key, disables redirects/environment proxies/cookies, streams decoded JSON under 128 KiB, applies four-second operation and six-second whole-attempt deadlines, and returns only bounded normalized dataclasses. `GET /me/location/autocomplete` and `/details` are authenticated and share `LOCATION_LOOKUP_LIMIT` (120/minute/user) through the existing Redis fail-closed boundary. The Next routes perform same-origin/session enforcement, own no provider key or network client, preserve local-catalogue fallback only for an explicit missing-provider code, and proxy bounded numeric retry guidance. `LocationAutocompleteField` attributes only provider-backed results with exact non-translated `Google Maps` text in the same visual container but outside the ARIA listbox. IMPORTANT NEW ARCHITECTURE (RATE-003A): `app.core.rate_limit.enforce_rate_limit` is the only HTTP allow/reject/fail-closed path. `rate_limit` supplies a trusted `ip:<address>` key before authentication; `authenticated_rate_limit` supplies `user:<verified UUID>` after the normal durable-session/strong-auth dependency. The namespace prevents a textual IP/user collision and user buckets follow the account across devices and NAT changes. Each dependency carries a `RateLimitPolicy`, so structural tests inventory the actual FastAPI graph rather than grepping source. One shared outbound category (30/10m/user) prevents endpoint-switch evasion; media is 20/hour/user, public deep search 120/min/IP, marketplace/messaging actions 120/5m/user, admin/support 300/5m/user, refresh 120/5m/IP and verification 60/10m/IP. Admin allowance is consumed only after permission succeeds. Anonymous reports remain IP-scoped. Logout/logout-all are explicit recovery exemptions.
@@ -18,9 +19,9 @@ NEW ENVIRONMENT VARIABLES: `GOOGLE_PLACES_API_KEY` moved from the frontend templ
 NEW DEPENDENCIES:latest3X/3Z lock updates documented below (Next16.3.5, Sharp0.35.4, mapping2.11.24; compatible developer-tooling group). No13C dependency change. Backend redis-py8.1.0 from3J; locked production53packages/55hashed requirement rows.
 NEW SERVICES: no service was provisioned. Google Places is an optional fixed external provider behind the backend boundary; keep its key absent until console API restrictions, billing quotas, current provider-policy review and a live lookup/attribution/outage drill are complete. Production still concretely requires managed Redis 7.2+ for shared rate limiting, but none was contacted here. Existing local/CI audit, rotation, incident, metric, error and synthetic services remain as documented.
 OUTSTANDING EXTERNAL REQUIREMENTS: Google Places console key/API/service restriction, billing quota, current terms/policy review and live lookup/attribution/outage drill before setting `GOOGLE_PLACES_API_KEY`; a human/operator tabletop; immutable artifact rollback/traffic-shift drill; hosted database/PITR and media restore; other real provider outage/failover/revocation drills; production credential rotation; production log ingestion/retention/access; real alert-destination delivery and acknowledgement; standalone-worker absence/process-death monitoring; scheduled synthetics against isolated staging data; evidence-backed traffic/latency/capacity thresholds; authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; staging soak
-KNOWN TEST FAILURES:13J final focused Node12/12, full Node1350/1350, TSC0, changed lint0 errors/12 existing warnings, backend Google OAuth/disconnect17/17, and fresh-build serial browser20/20 across settings13/13 and Post Job/detail7/7. The live Google consent/reconnect/refresh/revoke/outage drill remains external under AUTH-009; no provider was contacted. No task-caused failure remains. The 13I combined-pytest order-sensitive top-N tie remains documented below. 13E standard504/504 remains the latest full standard; current fullQA expected299 but was not rerun. Last aggregate13C293/293 included unintended live smoke (see correction). Backend last full3W7712passed+65skipped=7777. Known popup/load intermittency and all external gates remain; NO-GO.
-COMMANDS TO RESUME:git status --short; git branch --show-current; git rev-parse HEAD; verify frozen refs. Read13J and13F checkpoints plus execution-ledger PRODUCT-004/004A. Inventory every production-reachable fixture/demo/persona/fixed-ID import and data fallback with `rg`; prove behavior through actual loaders rather than source-string absence alone. Do not run destructive seed commands or contact hosted databases.
-FILES TO READ FIRST:13J and13F checkpoints; execution ledger PRODUCT-004/004A; `lib/dataSource.ts`, local mock/fixture registries, backend seed modules and dev/test/persona routers; production config gates and existing demo-isolation tests. Do not edit unrelated IDE PHP file.
+KNOWN TEST FAILURES:13K final full Node1361/1361, focused isolation/scenario24/24, TSC0, production build32 pages, changed lint0 errors/3 existing image warnings, Ruff green, backend seed/dev/QA/config147 passed/1 skipped, standard affected browser107/107 and real-backend QA1/1. During validation, one existing profile separator lacked DOM whitespace and one backend route-gate test omitted the independent production concurrency setting; each exact rerun and the complete affected suite passed after the narrow fixes. The known QA server `destination stream closed early` disconnect log did not fail its assertion. No task-caused failure remains. 13E standard504/504 remains the latest whole standard aggregate; current fullQA expected299 but was not rerun. Last aggregate13C293/293 included unintended live smoke (see correction). Backend last full3W7712passed+65skipped=7777. External provider/infrastructure/manual/legal gates remain; NO-GO.
+COMMANDS TO RESUME:git status --short; git branch --show-current; git rev-parse HEAD; verify frozen refs. Read13K and the execution-ledger CORRECT-001 row. Inventory every public-profile entry link and recruiter/agency route; run actual standard and real-backend browser paths before editing. Do not contact hosted databases or providers.
+FILES TO READ FIRST:13K checkpoint; execution ledger CORRECT-001; `app/u/[slug]/page.tsx`, `app/u/[slug]/projects/[projectId]/page.tsx`, `components/profile/PublicProfileTabs.tsx`, profile link builders/call sites, existing adaptive-profile and QA candidate/profile suites. Do not edit unrelated IDE PHP files.
 RELEASE ASSESSMENT: NO-GO
 IMPORTANT NEW ARCHITECTURE (Phase 3M): `YouTubeProviderClient` is the only YouTube Data API transport. `fetch_user_youtube_channels` and `fetch_youtube_video_metadata` remain compatible entrypoints. `POST /me/youtube-identity` shares the existing verified-user outbound quota. `YOUTUBE_API_KEY` is preferred; backend-only `YOUTUBE_DATA_API_KEY` is the compatibility alias; both are SecretStr, blank primary falls through. Remove keys from the frontend at eventual operator cutover; no live configuration changed. The QA harness explicitly blanks both keys. No new migration, dependency, service or AI behavior change.
 IMPORTANT NEW ARCHITECTURE (Phase 3N): Pure-ASGI HttpAdmissionMiddleware admits synchronously before await, counts until the application unwinds in finally, and rejects excess work without reading/parsing/queuing. Metrics, CORS and request ID wrap its 503. MAX_CONCURRENT_HTTP_REQUESTS is required at production boot and bounded by schema; local/test fallback is 100 for existing local concurrency harness. One additional slot is only for exact GET health liveness. Redis quotas and WebSocket lifecycle are unchanged. No migration, new dependency/service or AI behavior change.
@@ -28,6 +29,85 @@ IMPORTANT NEW ARCHITECTURE (Phase 3O): REQUEST_BODY_IDLE_TIMEOUT_SECONDS=10 and 
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase13K checkpoint — isolate production from demo and seed data (2026-09-22)
+
+```text
+Phase:13K / PRODUCT-004 (PRODUCT-004A remains the already validated talent-portfolio subpart)
+Status:COMPLETE / VALIDATED locally; hosted content/config inspection remains CERT-002
+Initial HEAD:adab4ccb160628236e67c8c41e10d765308a610f
+Final HEAD / Commit:git log -1 --format=%H --grep='fix(data): isolate production from demo fixtures'
+Commit(s):fix(data): isolate production from demo fixtures
+Files materially changed:`lib/runtimeEnvironment.ts`, marketplace/dev/QA/email/media environment
+ gates, production Next configuration, public-profile loader/pages/job adapter, Drafts server/client
+ data policy and split mock corpus, fixture-free browse filter vocabulary, Applications scenario gate,
+ focused isolation/bundle/config tests, one real-backend QA profile test, backend dev-route harness,
+ semantic experience separator, execution ledger and handoff.
+Migrations:none. Alembic remains one head at0070_activity_page_indexes. No database was contacted.
+Dependencies:none.
+New environment variables/services:none. The existing APP_ENV/NEXT_PUBLIC_APP_ENV/VERCEL_ENV,
+ NEXT_PUBLIC_USE_LOCAL_MOCKS, NEXT_PUBLIC_ENABLE_DEV_DATA_SWITCH and ENABLE_QA_PERSONA_SWITCHER
+ contracts are stricter; no service was provisioned.
+Behavior changed:any production signal now wins over conflicting development/test signals and forces
+ the Backend data source. Production config rejects every supported truthy spelling of all three demo
+ controls. A failed/missing backend public profile now remains missing instead of becoming a canonical,
+ mock or talent-listing-derived fabricated person. A backend job whose ID equals a demo ID receives
+ only backend fields unless the server explicitly grants a fixture lookup. Draft fixtures are no longer
+ statically imported by the client or used merely because a backend token is absent; they require a
+ server-granted non-production capability plus explicit/local Mock mode. Production `?seed=` parameters
+ on Applications are inert and cannot expose scenario vocabulary in an error. Browse filter constants no
+ longer pull the whole job fixture registry into client modules. Local Mock, scenario and draft workflows
+ remain available under their explicit non-production gates. The profile experience separator now owns
+ textual whitespace instead of relying on CSS padding, preserving semantic/browser text.
+Repository inventory/classification:home, Jobs, Talent, detail and sitemap fixture imports are server
+ modules and every data read is dominated by `getMarketplaceDataSourceState`/`isLocalMocksEnabled`, now
+ fail-closed for production. `/api/jobs` is a local create route returning404 outside local mocks; its
+ Prisma seed repository has no production read route. `/api/dev/scenario` returns404 in production and
+ generated manifests are read only by that server route; no manifest/demo job/private-draft sentinel is
+ in a client chunk. Backend demo seed/dev-persona/email routes are development/test gated and the QA
+ persona service is staging/test plus controller/flag gated. `roles_batch_1.json` and backend role seeding
+ are static product taxonomy, not customer/demo identity content. `ReceivedApplicationsClient` and its
+ mock application import have no application/component caller and are not production-reachable; they were
+ left untouched rather than deleting unrelated dormant code.
+Security assumptions:a real deployment explicitly sets APP_ENV or NEXT_PUBLIC_APP_ENV to `production`,
+ or supplies VERCEL_ENV=`production`; NODE_ENV alone is intentionally not deployment authority because
+ isolated local/QA `next start` uses production NODE_ENV. Production config validation is therefore a
+ mandatory release/deployment gate. Backend responses and database rows are authoritative for customer
+ identity/content. A non-production fixture capability is never inferred from a missing token or failed
+ network call. Static server inclusion is not authorization; the runtime gates above remain mandatory.
+Tests run:focused production-demo/scenario/bundle Node; complete Node suite; TypeScript; changed-file
+ ESLint; production build with live import/provider keys blank; affected standard Drafts/profile/smoke/
+ review/detail/Post Job browser group plus exact regression rerun; complete Applications browser suite;
+ real-backend candidate profile absence check; backend dev persona/workflow/email, QA persona, demo seed,
+ seed reconciliation/integrity/script and configuration pytest; focused Ruff; `git diff --check`.
+Exact results:focused isolation/scenario24/24; full Node1361/1361 in3.45s; TSC exit0; changed ESLint
+ exit0 with3 existing `no-img-element` warnings; build passed and generated32 static pages; affected
+ browser group initially85 passed/1 failed because the existing `|` separator had no DOM whitespace,
+ then the exact failed case passed after the semantic fix (86 unique cases green); final Applications
+ suite21/21, for107 affected standard cases green; real-backend QA1/1. Backend affected collection148:
+ final147 passed/1 skipped after the production route-gate test received its independent concurrency
+ bound; focused Ruff passed; `git diff --check` clean. Bundle sentinels pass inside the final full suite.
+Known failures / classifications:the first backend run failed before route execution because FastAPI
+ lazily built production middleware while the test supplied no MAX_CONCURRENT_HTTP_REQUESTS; the test
+ now supplies20 and its original three404 security assertions are unchanged. The profile test exposed a
+ real semantic-whitespace defect rather than an assertion problem. QA logged one known disconnected
+ render `destination stream closed early`; the not-found assertions passed. No unresolved task-caused
+ failure remains.
+Known external failures:no hosted database was inspected for legacy demo rows; no production deployment
+ configuration, immutable artifact, provider or managed service was contacted. CERT-002 must verify all
+ production signals/demo flags and production content before traffic. All prior external gates remain.
+Remaining risks:CORRECT-001/002/003/004/005/006/008 and the other IN_PROGRESS/NOT_STARTED ledger rows
+ remain. AUTH-007's general browser bearer, queue-backed paid AI execution, managed-provider drills,
+ legal approval, manual accessibility, restore and staging soak remain unresolved. AI Import is retained,
+ gated and draft-only; this slice neither disables nor changes it. Release assessment:NO-GO.
+Next phase:13L / CORRECT-001. Certify recruiter/agency public-profile routes and all entry links using
+ both explicit local Mock behavior and real-backend records; repair only reproduced contract defects.
+Important commands:`git status --short`; verify branch/head/frozen refs; read this checkpoint and ledger
+ CORRECT-001; `rg -n "profileSlug|agencyProfileSlug|channelProfileSlug|/u/" app components lib tests`;
+ inspect adaptive-profile and QA profile suites before edits; keep hosted databases/providers untouched.
+Frozen refs:verify all five exact Phase0 objects after commit. Nothing pushed/deployed; hosted
+ Neon/Vercel/Render untouched.
+```
 
 ## Phase13J checkpoint — remove unsupported integration controls (2026-09-22)
 

@@ -9,8 +9,8 @@ import {
   type BackendProfileReviewItem,
   type BackendRepresentedChannel,
 } from "../../lib/backendClient";
-import { JOBS } from "../../lib/jobs";
 import type { Job } from "../../lib/types";
+import { mapPublicJobToCanonical } from "../../lib/publicProfileJobs";
 import { Icon } from "../Icons";
 import { JobCard } from "../JobCard";
 import JobsEmptyState from "../jobs/JobsEmptyState";
@@ -35,6 +35,7 @@ type PublicProfileTabsProps = {
   profile: BackendPublicProfileResponse;
   initialView?: ProfileViewMode;
   initialTab?: TopTab;
+  demoJobs?: Job[];
 };
 
 const metricNumber = (value: unknown) => {
@@ -203,24 +204,6 @@ const sortProfileJobs = (activeJobs: BackendPublicJobItem[], pastJobs: BackendPu
     return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
   });
 
-const publicJobLookup = new Map(JOBS.map((job) => [String(job.id), job] as const));
-
-const basePublicJobId = (value: string) => value.split("-past-hiring-")[0];
-
-const PUBLIC_JOB_CATEGORIES = new Set<Job["category"]>([
-  "Editing",
-  "Design",
-  "Writing",
-  "Thumbnails",
-  "Shorts",
-  "Motion Graphics",
-  "Channel Manager",
-  "Research",
-  "Voice Over",
-  "Marketing",
-  "Uncategorized",
-]);
-
 const RECENT_HIRE_ROLE_LABELS: Record<string, string> = {
   editing: "Video Editor",
   design: "Designer",
@@ -240,75 +223,6 @@ const normalizeRecentHireRole = (value?: string | null) => {
   const withoutPrefix = text.replace(/^hired\s+/i, "").trim();
   const mapped = RECENT_HIRE_ROLE_LABELS[withoutPrefix.toLowerCase()];
   return mapped || withoutPrefix;
-};
-
-const mapPublicJobToCanonical = (
-  item: BackendPublicJobItem,
-  fallbackChannelName?: string | null
-): Job => {
-  const lookupId = String(item.id || "");
-  const baseJob = publicJobLookup.get(lookupId) || publicJobLookup.get(basePublicJobId(lookupId));
-  const channelName = cleanText(item.channel_name) || baseJob?.channel.name || cleanText(fallbackChannelName) || "Creator profile";
-  const isClosed = String(item.status || "").toLowerCase() === "closed";
-  const legacyCategory = cleanText(item.category);
-  const category = PUBLIC_JOB_CATEGORIES.has(legacyCategory as Job["category"])
-    ? (legacyCategory as Job["category"])
-    : baseJob?.category || "Uncategorized";
-  const primaryRoleName = cleanText(item.primary_role_name_snapshot);
-  const roleSpecialization = cleanText(item.role_specialization);
-
-  return {
-    ...(baseJob || {
-      id: lookupId,
-      title: cleanText(item.title) || "Job listing",
-      category,
-      legacyCategory: legacyCategory || null,
-      primaryRoleName: primaryRoleName || undefined,
-      roleSpecialization: roleSpecialization || undefined,
-      budget: "",
-      experience: "",
-      location: cleanText(item.location) || "",
-      postedShort: "",
-      views: 0,
-      applicants: 0,
-      responseRate: 0,
-      channel: {
-        name: channelName,
-        logoUrl: "",
-        subscribers: null,
-        verified: false,
-      },
-      tags: [],
-      startTimeframe: "Flexible" as const,
-      type: "One-time" as const,
-    }),
-    id: baseJob?.id || lookupId,
-    title: cleanText(item.title) || baseJob?.title || "Job listing",
-    category,
-    legacyCategory: legacyCategory || baseJob?.legacyCategory || null,
-    primaryRoleName: primaryRoleName || baseJob?.primaryRoleName,
-    roleSpecialization: roleSpecialization || baseJob?.roleSpecialization,
-    location: cleanText(item.location) || baseJob?.location || "",
-    channel: {
-      name: channelName,
-      logoUrl: baseJob?.channel.logoUrl || "",
-      subscribers: baseJob?.channel.subscribers ?? null,
-      verified: baseJob?.channel.verified ?? false,
-    },
-    tags:
-      baseJob?.tags?.length
-        ? baseJob.tags
-        : cleanList([
-            primaryRoleName,
-            roleSpecialization,
-            cleanText(item.category),
-            cleanText(item.location),
-            isClosed ? "Closed" : "Open",
-          ]),
-    status: isClosed ? "closed" : baseJob?.status || "published",
-    createdAt: item.created_at || baseJob?.createdAt,
-    updatedAt: item.created_at || baseJob?.updatedAt,
-  };
 };
 
 function JobsPreviewList({ items }: { items: Array<{ key: string; job: Job }> }) {
@@ -474,7 +388,7 @@ const modeFromProfile = (profile: BackendPublicProfileResponse, requested?: Prof
   return "talent";
 };
 
-export default function PublicProfileTabs({ profile, initialView, initialTab }: PublicProfileTabsProps) {
+export default function PublicProfileTabs({ profile, initialView, initialTab, demoJobs }: PublicProfileTabsProps) {
   const [topTab, setTopTab] = useState<TopTab>(initialTab || "overview");
   const profileMode = modeFromProfile(profile, initialView);
 
@@ -525,6 +439,12 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
       : null,
   ].filter((row): row is { label: string; name: string } => Boolean(row));
   const pastJobs = useMemo(() => profile.jobs_past || [], [profile.jobs_past]);
+  const demoJobLookup = useMemo(
+    () => demoJobs?.length
+      ? new Map(demoJobs.map((job) => [String(job.id), job] as const))
+      : undefined,
+    [demoJobs],
+  );
   const portfolioPreview = useMemo(() => sortPortfolioPreview(portfolioProjects), [portfolioProjects]);
   const jobsPreview = useMemo(() => sortJobsPreview(activeJobs, pastJobs), [activeJobs, pastJobs]);
   const recruiterJobs = useMemo(() => sortProfileJobs(activeJobs, pastJobs), [activeJobs, pastJobs]);
@@ -532,17 +452,17 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
     () =>
       jobsPreview.map((item) => ({
         key: String(item.id),
-        job: mapPublicJobToCanonical(item, profile.display_name),
+        job: mapPublicJobToCanonical(item, profile.display_name, demoJobLookup),
       })),
-    [jobsPreview, profile.display_name]
+    [demoJobLookup, jobsPreview, profile.display_name]
   );
   const recruiterTabJobs = useMemo(
     () =>
       recruiterJobs.map((item) => ({
         key: String(item.id),
-        job: mapPublicJobToCanonical(item, profile.display_name),
+        job: mapPublicJobToCanonical(item, profile.display_name, demoJobLookup),
       })),
-    [recruiterJobs, profile.display_name]
+    [demoJobLookup, recruiterJobs, profile.display_name]
   );
   const hiringExperiencePreview = useMemo(() => pastJobs.slice(0, 3), [pastJobs]);
   const hiringForChannels = useMemo(() => authorizedRepresentedChannels(profile), [profile]);

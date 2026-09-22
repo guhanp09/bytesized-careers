@@ -7,13 +7,17 @@ export const metadata = noindexPage("Drafts");
 import { getServerSession } from "next-auth";
 import { PageHeader, StateCard } from "../../components/ui";
 import { authOptions } from "../../lib/auth";
-import { isProductionRuntime } from "../../lib/backendClient";
+import { isLocalMocksEnabled, isProductionRuntime } from "../../lib/backendClient";
 import DraftsPageClient from "../../components/drafts/DraftsPageClient";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function DraftsPage() {
+export default async function DraftsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user) {
@@ -36,6 +40,14 @@ export default async function DraftsPage() {
     );
   }
 
+  const params = await searchParams;
+  const first = (value?: string | string[]) => Array.isArray(value) ? value[0] : value;
+  const allowDemo = !isProductionRuntime();
+  const demoRequested = first(params.demo) === "1" || first(params.mock) === "1";
+  const demoDrafts = allowDemo && (demoRequested || isLocalMocksEnabled())
+    ? (await import("../../lib/mockOwnerDrafts")).MOCK_OWNER_DRAFTS
+    : undefined;
+
   return (
     // Inbox-style canvas: on desktop the split workspace fills the viewport below the
     // fixed 56px header and scrolls internally (no vertical gutter, no enclosing card);
@@ -46,7 +58,8 @@ export default async function DraftsPage() {
             so the sample-data preview is gated by the reliable server value. */}
         <DraftsPageClient
           backendAccessToken={session.backendAccessToken}
-          allowDemo={!isProductionRuntime()}
+          allowDemo={allowDemo}
+          demoDrafts={demoDrafts}
         />
       </section>
     </main>

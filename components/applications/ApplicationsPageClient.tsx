@@ -174,13 +174,17 @@ export default function ApplicationsPageClient({
     `default`, so nobody spends an afternoon testing a dataset they did not ask
     for.
   */
-  const seedParam = searchParams.get("seed");
+  // A production URL parameter is inert: it neither selects a scenario nor
+  // exposes the development scenario vocabulary in an error banner.
+  const seedParam = allowDemo ? searchParams.get("seed") : null;
   const resolvedScenario = resolveScenario({ query: seedParam });
   const [scenarioInteractions, setScenarioInteractions] = useState<OwnerInteraction[] | null>(null);
-  const [scenarioError, setScenarioError] = useState<string | null>(resolvedScenario.error);
+  const [scenarioError, setScenarioError] = useState<string | null>(
+    allowDemo ? resolvedScenario.error : null,
+  );
 
   useEffect(() => {
-    setScenarioError(resolvedScenario.error);
+    setScenarioError(allowDemo ? resolvedScenario.error : null);
     // Only Mock mode reads a manifest. With a backend token the workspace shows
     // real data, and quietly replacing it with seed rows would be worse than
     // ignoring the parameter.

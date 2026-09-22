@@ -57,6 +57,27 @@ test("default marketplace data source follows NEXT_PUBLIC_USE_LOCAL_MOCKS", () =
   assert.equal(getDefaultMarketplaceDataSourceFromEnv({ NEXT_PUBLIC_USE_LOCAL_MOCKS: "1" }), "mock");
 });
 
+test("every production signal forces the backend regardless of mock flag spelling", () => {
+  for (const productionSignal of [
+    { APP_ENV: "production" },
+    { NEXT_PUBLIC_APP_ENV: "production" },
+    { VERCEL_ENV: "production" },
+    { APP_ENV: "test", NEXT_PUBLIC_APP_ENV: "production" },
+    { APP_ENV: "staging", VERCEL_ENV: "production" },
+  ]) {
+    for (const value of ["1", "true", "yes", "on", "TRUE", " on "]) {
+      const env = { ...productionSignal, NEXT_PUBLIC_USE_LOCAL_MOCKS: value };
+      assert.equal(getDefaultMarketplaceDataSourceFromEnv(env), "backend");
+      assert.deepEqual(resolveMarketplaceDataSource({ env, cookieValue: "mock" }), {
+        enabled: false,
+        source: "backend",
+        defaultSource: "backend",
+        overrideSource: null,
+      });
+    }
+  }
+});
+
 test("valid cookies override the default only when the switch is enabled", () => {
   assert.deepEqual(
     resolveMarketplaceDataSource({

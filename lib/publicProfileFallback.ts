@@ -1,39 +1,40 @@
-import type { BackendPublicProfileResponse, BackendTalentListing } from "./backendClient";
-import { getPublicProfile, listTalentListings } from "./backendClient";
-import { buildMockPublicTalentProfileFromListing, getMockPublicTalentProfile } from "./mockPublicTalentProfiles";
-import { publicProfileFallbackSlug } from "./profileSlug";
+import type { BackendPublicProfileResponse } from "./backendClient";
+import { canUseLocalMockFallback, getPublicProfile } from "./backendClient";
+import type { MarketplaceDataSourceState } from "./devDataSource";
+import { getMockPublicTalentProfile } from "./mockPublicTalentProfiles";
 import { getCanonicalPublicProfile } from "./seed/canonicalProfile";
 
-const talentProfileSlugFromListing = (listing: Pick<BackendTalentListing, "owner_username" | "owner_display_name" | "id">) =>
-  (listing.owner_username || publicProfileFallbackSlug(listing.owner_display_name || listing.id)).trim().toLowerCase();
+export const canUsePublicProfileFixtures = (
+  dataSource: MarketplaceDataSourceState,
+): boolean =>
+  dataSource.source === "mock" ||
+  (dataSource.overrideSource !== "backend" && canUseLocalMockFallback());
 
 export async function resolvePublicProfileWithTalentFallback(
-  username: string
+  username: string,
+  dataSource: MarketplaceDataSourceState,
 ): Promise<BackendPublicProfileResponse | null> {
   const normalizedUsername = username.trim().toLowerCase();
 
-  try {
-    const profile = await getPublicProfile(normalizedUsername);
-    if (profile) return profile;
-  } catch {
-    // Fall through to testing-friendly fallbacks.
+  // Mock mode is an explicit, isolated data source. It must not become a view
+  // over whichever live backend happens to be reachable from a developer's
+  // machine.
+  if (dataSource.source !== "mock") {
+    try {
+      const profile = await getPublicProfile(normalizedUsername);
+      if (profile) return profile;
+    } catch {
+      // Local development may deliberately continue into its fixture corpus.
+      // Production and explicit Backend mode stop below with no invented user.
+    }
   }
 
-  // The canonical corpus first, because a scenario slug is unambiguous: only
-  // the generator produces `def-`/`bus-`-prefixed handles, so this can never
-  // shadow a real profile, and a canonical applicant would otherwise fall
-  // through every remaining source to "Profile not found".
+  if (!canUsePublicProfileFixtures(dataSource)) return null;
+
+  // The canonical corpus comes first because generated scenario handles are
+  // unambiguous inside explicit local Mock mode.
   const canonical = await getCanonicalPublicProfile(normalizedUsername);
   if (canonical) return canonical;
 
-  const mockProfile = getMockPublicTalentProfile(normalizedUsername);
-  if (mockProfile) return mockProfile;
-
-  try {
-    const response = await listTalentListings({ status: "published", limit: 100, offset: 0 });
-    const listing = response.items.find((item) => talentProfileSlugFromListing(item) === normalizedUsername);
-    return listing ? buildMockPublicTalentProfileFromListing(listing) : null;
-  } catch {
-    return null;
-  }
+  return getMockPublicTalentProfile(normalizedUsername);
 }

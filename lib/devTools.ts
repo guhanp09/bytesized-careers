@@ -1,3 +1,5 @@
+import { hasProductionEnvironmentSignal } from "./runtimeEnvironment.ts";
+
 // Environment gate for the dev persona switcher + seed/reset tooling.
 //
 // Mirrors lib/devEmailInbox.ts: production is hard-denied, dev/test/local is
@@ -30,11 +32,7 @@ export const evaluateDevToolsAllowed = (env: DevEnv): boolean => {
   // ambiguous and could route a tester through the wrong switching mechanism.
   if (/^(1|true|yes|on)$/i.test(env.ENABLE_QA_PERSONA_SWITCHER || "")) return false;
   // Any explicit production signal wins — never expose the tooling in production.
-  if (
-    env.APP_ENV === "production" ||
-    env.NEXT_PUBLIC_APP_ENV === "production" ||
-    env.VERCEL_ENV === "production"
-  ) {
+  if (hasProductionEnvironmentSignal(env)) {
     return false;
   }
 

@@ -3,22 +3,20 @@
 // needs in order to reuse the real normalisation rather than reimplement it.
 import type { Job, JobCategory, ReferenceVideo, StartTimeframe } from "./types";
 import { normalizeReferenceVideo } from "./referenceVideos.ts";
+import {
+  hasProductionEnvironmentSignal,
+  isTruthyEnvironmentFlag,
+} from "./runtimeEnvironment.ts";
 
 const START_VALUES: StartTimeframe[] = ["ASAP", "<1mo", "<2mo", "<3mo", "Flexible"];
 
-const parseBool = (value?: string) => {
-  if (!value) return false;
-  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+export const isProductionRuntime = () => {
+  return hasProductionEnvironmentSignal(process.env);
 };
 
 export const isLocalMocksEnabled = () =>
-  parseBool(process.env.NEXT_PUBLIC_USE_LOCAL_MOCKS);
-
-export const isProductionRuntime = () => {
-  const appEnv = process.env.APP_ENV || process.env.NEXT_PUBLIC_APP_ENV;
-  if (appEnv) return appEnv === "production";
-  return process.env.VERCEL_ENV === "production";
-};
+  !isProductionRuntime() &&
+  isTruthyEnvironmentFlag(process.env.NEXT_PUBLIC_USE_LOCAL_MOCKS);
 
 const isLocalBackendUrl = () => {
   const raw = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000/api/v1";

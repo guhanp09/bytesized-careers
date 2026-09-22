@@ -24,6 +24,8 @@ const SEED_SENTINELS = [
   "thumbs.scenario.invalid",
   "Bartholomew Maximilian",      // an edge-scenario display name
   "Case Files Weekly",           // a generated channel
+  "Money & Mindset turns personal-finance questions", // demo job corpus
+  "mock-job-draft-verification-failed", // private draft corpus
   // Deliberately not the package path: the client-side version error tells a
   // developer which command regenerates the manifests, and that string is help,
   // not seed data. The sentinels above are content, which is what must not ship.
@@ -43,7 +45,7 @@ function clientChunks() {
   return files;
 }
 
-test("no seed sentinel appears in any client chunk", (t) => {
+test("no seed or demo sentinel appears in any client chunk", (t) => {
   const files = clientChunks();
   if (!files) return t.skip("no production build to inspect — run `npm run build` first");
   assert.ok(files.length > 0, "the build produced no client chunks to inspect");

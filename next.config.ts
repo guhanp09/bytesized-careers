@@ -4,6 +4,7 @@ import {
   isStrictProductionEnvironment,
   trustedMediaConfiguration,
 } from "./lib/trustedMedia.ts";
+import { isTruthyEnvironmentFlag } from "./lib/runtimeEnvironment.ts";
 
 const unsafeSecretValues = new Set([
   "",
@@ -69,8 +70,14 @@ const requireProductionEnv = () => {
     failures.push("Production backend URL must not point to localhost.");
   }
 
-  if (process.env.NEXT_PUBLIC_USE_LOCAL_MOCKS === "true") {
-    failures.push("NEXT_PUBLIC_USE_LOCAL_MOCKS must not be true in production.");
+  for (const name of [
+    "NEXT_PUBLIC_USE_LOCAL_MOCKS",
+    "NEXT_PUBLIC_ENABLE_DEV_DATA_SWITCH",
+    "ENABLE_QA_PERSONA_SWITCHER",
+  ]) {
+    if (isTruthyEnvironmentFlag(process.env[name])) {
+      failures.push(`${name} must be disabled in production.`);
+    }
   }
 
   if (failures.length) {

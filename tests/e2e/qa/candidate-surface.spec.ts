@@ -135,6 +135,21 @@ test("the navigation helper cannot pass while still on the index", async ({ page
   await expect(cards).toHaveCount(0);
 });
 
+test("backend mode never turns a missing profile into a frontend demo person", async ({ page }) => {
+  await page.goto("/u/aarav-mehta", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("heading", { name: "Profile not found" })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Finance Creator Team");
+  await expect(page.locator("body")).not.toContainText("Retention editor for creator-led YouTube channels");
+  expect((await page.context().cookies()).some((cookie) => cookie.name === "cj_data_source")).toBe(false);
+
+  await page.goto("/u/aarav-mehta/projects/aarav-mehta-sample-1", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByRole("heading", { name: "Project unavailable" })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("A focused shorts project");
+});
+
 test("real talent cards and action panels omit unverified activity metrics without losing actions", async ({ page }) => {
   const response = await page.request.get(`${BACKEND}/talent-listings?limit=1`);
   expect(response.ok()).toBeTruthy();

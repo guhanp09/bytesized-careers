@@ -1,3 +1,8 @@
+import {
+  hasProductionEnvironmentSignal,
+  isTruthyEnvironmentFlag,
+} from "./runtimeEnvironment.ts";
+
 export type MarketplaceDataSource = "backend" | "mock";
 
 export const MARKETPLACE_DATA_SOURCE_COOKIE = "cj_data_source";
@@ -18,11 +23,6 @@ export type MarketplaceDataSourceState = {
   overrideSource: MarketplaceDataSource | null;
 };
 
-const truthy = (value?: string) => {
-  if (!value) return false;
-  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
-};
-
 const normalizeSource = (value?: string | null): MarketplaceDataSource | null => {
   if (value === "backend" || value === "mock") return value;
   return null;
@@ -31,15 +31,11 @@ const normalizeSource = (value?: string | null): MarketplaceDataSource | null =>
 export const evaluateDevDataSwitchAllowed = (env: Env): boolean => {
   const appEnv = env.APP_ENV || env.NEXT_PUBLIC_APP_ENV;
 
-  if (
-    env.APP_ENV === "production" ||
-    env.NEXT_PUBLIC_APP_ENV === "production" ||
-    env.VERCEL_ENV === "production"
-  ) {
+  if (hasProductionEnvironmentSignal(env)) {
     return false;
   }
 
-  if (truthy(env.NEXT_PUBLIC_ENABLE_DEV_DATA_SWITCH)) return true;
+  if (isTruthyEnvironmentFlag(env.NEXT_PUBLIC_ENABLE_DEV_DATA_SWITCH)) return true;
 
   if (appEnv === "staging") return false;
 
@@ -57,8 +53,10 @@ export const evaluateDevDataSwitchAllowed = (env: Env): boolean => {
   return false;
 };
 
-export const getDefaultMarketplaceDataSourceFromEnv = (env: Env): MarketplaceDataSource =>
-  truthy(env.NEXT_PUBLIC_USE_LOCAL_MOCKS) ? "mock" : "backend";
+export const getDefaultMarketplaceDataSourceFromEnv = (env: Env): MarketplaceDataSource => {
+  if (hasProductionEnvironmentSignal(env)) return "backend";
+  return isTruthyEnvironmentFlag(env.NEXT_PUBLIC_USE_LOCAL_MOCKS) ? "mock" : "backend";
+};
 
 export const resolveMarketplaceDataSource = ({
   env,

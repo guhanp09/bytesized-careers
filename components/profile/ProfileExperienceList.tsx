@@ -223,7 +223,7 @@ export default function ProfileExperienceList({
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-white/86">
                     <span>{cleanExperienceText(item.role) || "Creator role"}</span>
-                    <span className="px-1.5 text-subtle">|</span>
+                    <span className="px-1.5 text-subtle">| </span>
                     <ExperienceIdentityAction links={organizationLinks} onOpenChoices={() => setActiveLinkItemId(itemKey)}>
                       <span className="text-white/68 hover:text-white">{organization}</span>
                     </ExperienceIdentityAction>

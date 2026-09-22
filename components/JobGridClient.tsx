@@ -16,7 +16,7 @@ import {
   type JobDiscoveryState,
 } from "../lib/jobDiscovery";
 import { uniqueJobText } from "../lib/jobPresentation";
-import { CATEGORIES } from "../lib/jobs";
+import { JOB_CATEGORIES } from "../lib/jobFilterOptions";
 import {
   primaryRoleChipsForType,
   seoSelectedChipLabels,
@@ -82,7 +82,7 @@ export default function JobGridClient({
   const hasSubfilterRow = subfiltersForRoute(seoRoute).length > 0;
   const seoChips = primaryRoleChipsForType("jobs");
   const seoChipLabels = new Set(seoChips.map((route) => route.chipLabel.toLocaleLowerCase()));
-  const localCategoryChips = CATEGORIES.filter((category) => category !== "All" && !seoChipLabels.has(category.toLocaleLowerCase()));
+  const localCategoryChips = JOB_CATEGORIES.filter((category) => category !== "All" && !seoChipLabels.has(category.toLocaleLowerCase()));
   const activeCount = activeJobDiscoveryCount(discovery);
   const activeLegacyCategory = discovery.filter[0] || "";
 

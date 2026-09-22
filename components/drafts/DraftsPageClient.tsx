@@ -18,11 +18,11 @@ import {
 } from "../../lib/backendClient";
 import { relativeTimeLabel } from "../../lib/ownerInteractions";
 import { classifyDraftLoad } from "../../lib/draftLoad";
+import { resolveDraftDataMode } from "../../lib/draftDataSource";
 import { formatListingTitle } from "../../lib/displayText";
 import DraftTipTicker from "./DraftTipTicker";
 import {
   DRAFT_TITLE_MAX_LENGTH,
-  MOCK_OWNER_DRAFTS,
   applyDraftTitle,
   buildDuplicateJobPayload,
   buildDuplicateTalentPayload,
@@ -199,24 +199,37 @@ function CompletionTodoRow({ item, resumeHref }: { item: CompletionItem; resumeH
 export default function DraftsPageClient({
   backendAccessToken,
   allowDemo = false,
+  demoDrafts,
 }: {
   backendAccessToken?: string;
   allowDemo?: boolean;
+  demoDrafts?: DraftItem[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const demoMode = allowDemo && (searchParams.get("demo") === "1" || searchParams.get("mock") === "1");
+  const demoRequested = searchParams.get("demo") === "1" || searchParams.get("mock") === "1";
   const savedParam = searchParams.get("saved") === "1";
   const savedDraftKindParam = searchParams.get("type");
   const savedDraftKind: DraftKind | null =
     savedDraftKindParam === "job" || savedDraftKindParam === "talent" ? savedDraftKindParam : null;
   const savedDraftId = searchParams.get("draftId") || null;
 
-  const liveMode = Boolean(backendAccessToken) && !isLocalMocksEnabled() && !demoMode;
+  const dataMode = resolveDraftDataMode({
+    allowDemo,
+    demoRequested,
+    localMocksEnabled: isLocalMocksEnabled(),
+    demoDataAvailable: Boolean(demoDrafts?.length),
+    hasBackendToken: Boolean(backendAccessToken),
+  });
+  const liveMode = dataMode !== "demo";
 
-  const [drafts, setDrafts] = useState<DraftItem[]>(() => (liveMode ? [] : MOCK_OWNER_DRAFTS));
-  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(liveMode ? "loading" : "ready");
-  const [errorKind, setErrorKind] = useState<"generic" | "auth">("generic");
+  const [drafts, setDrafts] = useState<DraftItem[]>(() => dataMode === "demo" ? demoDrafts || [] : []);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(
+    dataMode === "demo" ? "ready" : dataMode === "live" ? "loading" : "error"
+  );
+  const [errorKind, setErrorKind] = useState<"generic" | "auth">(
+    dataMode === "auth_error" ? "auth" : "generic"
+  );
   const [reloadNonce, setReloadNonce] = useState(0);
   const [filter, setFilter] = useState<DraftKind>(() => savedDraftKind || "job");
   const [selectedId, setSelectedId] = useState<string | null>(() => savedDraftId);

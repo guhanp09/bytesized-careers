@@ -12,6 +12,10 @@ test("production signals hard-deny the dev tools", () => {
   assert.equal(evaluateDevToolsAllowed({ APP_ENV: "production" }), false);
   assert.equal(evaluateDevToolsAllowed({ NEXT_PUBLIC_APP_ENV: "production" }), false);
   assert.equal(evaluateDevToolsAllowed({ VERCEL_ENV: "production" }), false);
+  assert.equal(
+    evaluateDevToolsAllowed({ APP_ENV: "test", VERCEL_ENV: "production" }),
+    false
+  );
   // A production signal wins even alongside dev/local signals.
   assert.equal(
     evaluateDevToolsAllowed({

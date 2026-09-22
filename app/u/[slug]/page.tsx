@@ -6,8 +6,13 @@ import ProfileModeSwitch from "../../../components/profile/ProfileModeSwitch";
 import SocialIconRow from "../../../components/profile/SocialIconRow";
 import RatingDisplay from "../../../components/RatingDisplay";
 import { type BackendPublicProfileResponse } from "../../../lib/backendClient";
+import { getMarketplaceDataSourceState } from "../../../lib/devDataSource.server";
+import type { MarketplaceDataSourceState } from "../../../lib/devDataSource";
 import { buildSocialIconLinks } from "../../../lib/profileSocialLinks";
-import { resolvePublicProfileWithTalentFallback } from "../../../lib/publicProfileFallback";
+import {
+  canUsePublicProfileFixtures,
+  resolvePublicProfileWithTalentFallback,
+} from "../../../lib/publicProfileFallback";
 import {
   isTrustedStoredMediaUrl,
   trustedMediaConfiguration,
@@ -16,8 +21,15 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-async function resolvePublicProfile(username: string) {
-  return resolvePublicProfileWithTalentFallback(username) as Promise<BackendPublicProfileResponse | null>;
+async function resolvePublicProfile(
+  username: string,
+  dataSource?: MarketplaceDataSourceState,
+) {
+  const resolvedDataSource = dataSource ?? await getMarketplaceDataSourceState();
+  return resolvePublicProfileWithTalentFallback(
+    username,
+    resolvedDataSource,
+  ) as Promise<BackendPublicProfileResponse | null>;
 }
 
 export async function generateMetadata({
@@ -180,7 +192,8 @@ export default async function PublicProfilePage({
   const username = decodeURIComponent(rawUsername || "").trim().toLowerCase();
   const isPreview = preview === "1";
 
-  const profile = await resolvePublicProfile(username);
+  const dataSource = await getMarketplaceDataSourceState();
+  const profile = await resolvePublicProfile(username, dataSource);
 
   if (!profile) {
     return (
@@ -253,6 +266,9 @@ export default async function PublicProfilePage({
     publicLinks: publicProfile.public_links,
     websiteOrSocialUrl: publicProfile.hiring_info?.website_or_social_url,
   });
+  const demoJobs = canUsePublicProfileFixtures(dataSource)
+    ? (await import("../../../lib/jobs")).JOBS
+    : undefined;
 
   return (
     <main className="min-h-[calc(100vh-56px)] bg-[#0b0b0f] text-white">
@@ -389,7 +405,12 @@ export default async function PublicProfilePage({
           </div>
         </section>
 
-        <PublicProfileTabs profile={publicProfile} initialView={activeProfileView} initialTab={initialProfileTab} />
+        <PublicProfileTabs
+          profile={publicProfile}
+          initialView={activeProfileView}
+          initialTab={initialProfileTab}
+          demoJobs={demoJobs}
+        />
       </section>
     </main>
   );
