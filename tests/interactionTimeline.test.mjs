@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { mapActivityToOwnerInteractions } from "../lib/ownerInteractions.ts";
+import { pipelineProfileHrefOf } from "../lib/applicationPipeline.ts";
 
 const now = "2026-07-13T00:00:00Z";
 
@@ -45,6 +46,40 @@ test("the activity page carries its authorized conversation into workspace actio
   );
 
   assert.equal(item.conversationId, "conversation-1");
+});
+
+test("an agency application names and links to its actual recruiter", () => {
+  const [item] = mapActivityToOwnerInteractions({
+    myJobs: [],
+    myTalentListings: [],
+    relatedJobs: [{
+      id: "agency-job",
+      title: "Editor for FitLab",
+      channel: { name: "FitLab" },
+      postedByAgency: true,
+      managedByAgencyName: "BrightLab Media",
+      channelProfileSlug: null,
+      agencyProfileSlug: "dev_brightlab",
+      tags: [],
+    }],
+    relatedTalentListings: [],
+    sentApplications: [{
+      id: "agency-application",
+      job_id: "agency-job",
+      job_owner_user_id: "agency-owner",
+      status: "new",
+      created_at: now,
+      updated_at: now,
+    }],
+    receivedApplications: [],
+    receivedInterests: [],
+    sentInterests: [],
+  });
+
+  assert.equal(item.counterpartyName, "BrightLab Media");
+  assert.equal(item.job.channelName, "FitLab");
+  assert.equal(item.job.agencyProfileSlug, "dev_brightlab");
+  assert.equal(pipelineProfileHrefOf(item), "/u/dev_brightlab?view=hiring");
 });
 
 test("persisted interaction history survives mapping into the Inbox timeline", () => {

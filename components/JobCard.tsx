@@ -166,8 +166,8 @@ export function JobCard({ job, matchReasons }: { job: Job; matchReasons?: string
               <div className="flex min-w-0 items-center gap-1.5">
                 <ChannelAttribution
                   channelName={employerName}
-                  channelProfileSlug={job.channelProfileSlug}
-                  channelExternalUrl={job.channelExternalUrl}
+                  channelProfileSlug={job.postedByAgency ? undefined : job.channelProfileSlug}
+                  channelExternalUrl={job.postedByAgency ? job.channelExternalUrl : undefined}
                   className="min-w-6 max-w-full truncate text-sm font-semibold text-white underline-offset-4"
                 />
                 {verified ? (
@@ -177,9 +177,21 @@ export function JobCard({ job, matchReasons }: { job: Job; matchReasons?: string
                   </span>
                 ) : null}
               </div>
-              <p className="mt-0.5 block min-w-0 truncate text-[11px] text-[var(--vt-text-muted,rgba(255,255,255,0.55))]">
-                {representedBy ? `Managed by ${representedBy}` : postedLabel || "Open listing"}
-              </p>
+              {representedBy ? (
+                <div className="mt-0.5 flex min-w-0 items-center text-[11px] text-[var(--vt-text-muted,rgba(255,255,255,0.55))]">
+                  <span className="shrink-0">Managed by&nbsp;</span>
+                  <ChannelAttribution
+                    channelName={representedBy}
+                    channelProfileSlug={job.agencyProfileSlug}
+                    className="min-w-0 max-w-full text-[11px] text-inherit"
+                    ariaLabel={`Open ${representedBy} CreatorJobs profile`}
+                  />
+                </div>
+              ) : (
+                <p className="mt-0.5 block min-w-0 truncate text-[11px] text-[var(--vt-text-muted,rgba(255,255,255,0.55))]">
+                  {postedLabel || "Open listing"}
+                </p>
+              )}
             </div>
           </div>
           <ListingCta

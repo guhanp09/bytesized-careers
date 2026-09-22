@@ -213,4 +213,40 @@ test.describe("adaptive profile overview", () => {
     ).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
+
+  test("job browse cards keep direct and agency profile entry points canonical", async ({ page }) => {
+    await page.goto("/jobs");
+
+    const directCard = page.locator('[role="link"][title="Open job"]').filter({
+      hasText: "Long-form YouTube editor for evidence-led finance stories",
+    });
+    await expect(directCard).toBeVisible();
+    await expect(
+      directCard.getByRole("link", { name: "Open Money & Mindset CreatorJobs profile" }),
+    ).toHaveAttribute("href", "/u/anika_demo?view=hiring");
+    await expect(
+      directCard.getByRole("link", { name: "Open Money & Mindset channel or page" }),
+    ).toHaveCount(0);
+
+    const agencyCard = page.locator('[role="link"][title="Open job"]').filter({
+      hasText: "Short-form editor for a daily science Shorts series",
+    });
+    await expect(agencyCard).toBeVisible();
+    await expect(
+      agencyCard.getByRole("link", { name: "Open Northstar Creator Agency channel or page" }),
+    ).toHaveAttribute("href", "https://example.com/creatorjobs-demo/northstar");
+    const agencyProfileLink = agencyCard.getByRole("link", {
+      name: "Open Northstar Creator Agency CreatorJobs profile",
+    });
+    await expect(agencyProfileLink).toHaveAttribute(
+      "href",
+      "/u/northstar_demo?view=hiring",
+    );
+
+    await agencyProfileLink.click();
+    await expect(page).toHaveURL(/\/u\/northstar_demo\?view=hiring$/);
+    await expect(
+      page.getByRole("heading", { name: "Northstar Creator Agency", exact: true }),
+    ).toBeVisible();
+  });
 });

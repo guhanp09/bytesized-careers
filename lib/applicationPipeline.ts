@@ -433,14 +433,15 @@ export function pipelineContextLabelOf(
  * Public profile of the person on the other side of the interaction. Mirrors
  * the inbox header's link logic: hiring requests point at the recruiter (or,
  * for sent ones, the talent who owns the listing); applications point at the
- * applicant (or, for sent ones, the hiring channel).
+ * applicant (or, for sent ones, the direct channel or agency that owns the job).
  */
 export function pipelineProfileHrefOf(
   item: Pick<OwnerInteraction, "kind" | "job" | "talent" | "recruiter">
 ): string | null {
   const talentHref = item.talent?.profileSlug ? `/u/${item.talent.profileSlug}?view=talent` : null;
   const recruiterHref = item.recruiter?.profileSlug ? `/u/${item.recruiter.profileSlug}?view=hiring` : null;
-  const channelHref = item.job?.channelProfileSlug ? `/u/${item.job.channelProfileSlug}?view=hiring` : null;
+  const hiringSlug = item.job?.channelProfileSlug || item.job?.agencyProfileSlug;
+  const channelHref = hiringSlug ? `/u/${hiringSlug}?view=hiring` : null;
   return item.kind === "hiring_request" ? recruiterHref || talentHref : talentHref || channelHref;
 }
 

@@ -112,6 +112,7 @@ import {
   headerActionWeight,
   nextBestActionFor,
   pipelineContextLabelOf,
+  pipelineProfileHrefOf,
   pipelineSummaryOf,
   stageNotifyPolicyOf,
   stageTargetsFor,
@@ -1064,15 +1065,11 @@ function subtitleFor(item: OwnerInteraction): {
   avatarSrc?: string | null;
   href?: string | null;
 } {
-  const talentHref = item.talent?.profileSlug ? `/u/${item.talent.profileSlug}?view=talent` : null;
-  const recruiterHref = item.recruiter?.profileSlug ? `/u/${item.recruiter.profileSlug}?view=hiring` : null;
-  const channelHref = item.job?.channelProfileSlug ? `/u/${item.job.channelProfileSlug}?view=hiring` : null;
-  const href = item.kind === "hiring_request" ? recruiterHref || talentHref : talentHref || channelHref;
   return {
     lead: item.counterpartyName,
     avatarName: item.counterpartyName,
     avatarSrc: item.counterpartyAvatarUrl,
-    href,
+    href: pipelineProfileHrefOf(item),
   };
 }
 

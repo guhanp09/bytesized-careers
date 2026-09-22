@@ -169,7 +169,7 @@ test("pipeline context options are distinct labels in first-seen order", () => {
   assert.equal(pipelineContextLabelOf(items[3]), null);
 });
 
-test("profile href mirrors the inbox header logic for all four combos", () => {
+test("profile href mirrors the inbox header logic for direct and agency applications", () => {
   // Received application → the applicant's talent profile.
   assert.equal(
     pipelineProfileHrefOf({ kind: "application", talent: { profileSlug: "aarav-mehta" }, job: null, recruiter: null }),
@@ -179,6 +179,12 @@ test("profile href mirrors the inbox header logic for all four combos", () => {
   assert.equal(
     pipelineProfileHrefOf({ kind: "application", talent: null, job: { channelProfileSlug: "finance-creator" }, recruiter: null }),
     "/u/finance-creator?view=hiring"
+  );
+  // Agency applications belong to the agency owner, not to the represented
+  // channel's external page. The backend deliberately leaves channel slug null.
+  assert.equal(
+    pipelineProfileHrefOf({ kind: "application", talent: null, job: { channelProfileSlug: null, agencyProfileSlug: "brightlab-media" }, recruiter: null }),
+    "/u/brightlab-media?view=hiring"
   );
   // Received hiring request → the recruiter's profile.
   assert.equal(

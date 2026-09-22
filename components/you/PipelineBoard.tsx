@@ -1271,7 +1271,9 @@ export default function PipelineBoard({
                         const cardAction = nextActionFor?.(item) ?? null;
                         const dispatchable =
                           cardAction && BOARD_DISPATCHABLE_ACTIONS.has(cardAction.key) ? cardAction : null;
-                        const name = direction === "received" ? item.counterpartyName : item.title;
+                        // The link opens the counterparty's profile in both
+                        // directions; the job/listing title belongs below it.
+                        const name = item.counterpartyName;
                         const factsDuplicateEvidence =
                           portfolio.length === 0 &&
                           firstMessageLines.length > 0 &&

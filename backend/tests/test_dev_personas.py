@@ -100,6 +100,44 @@ async def test_persona_relationship_data_serializes_through_read_schemas(client:
     assert (await client.get("/api/v1/me/activity/summary", headers=talent_headers)).status_code == 200
 
 
+async def test_seeded_recruiter_identities_use_the_live_identity_contract(client: AsyncClient) -> None:
+    assert (await client.post(SEED_URL, json={"scenario": "full_demo"})).status_code == 200
+
+    _, direct_token = await _login(client, "recruiter-active")
+    direct_response = await client.get(
+        "/api/v1/me/hiring-identities",
+        headers={"Authorization": f"Bearer {direct_token}"},
+    )
+    assert direct_response.status_code == 200, direct_response.text
+    direct = direct_response.json()["items"]
+    assert len(direct) == 1
+    assert direct[0]["display_name"] == "Finance Simplified"
+    assert direct[0]["type"] == "INDIVIDUAL_CHANNEL"
+    assert direct[0]["platform"] == "YOUTUBE"
+    assert direct[0]["verification_method"] == "MANUAL_ADMIN_REVIEW"
+    assert direct[0]["verification_status"] == "VERIFIED"
+
+    _, agency_token = await _login(client, "recruiter-drafts")
+    agency_response = await client.get(
+        "/api/v1/me/hiring-identities",
+        headers={"Authorization": f"Bearer {agency_token}"},
+    )
+    assert agency_response.status_code == 200, agency_response.text
+    agency = agency_response.json()["items"]
+    assert {item["display_name"] for item in agency} == {
+        "Science Daily",
+        "Science Daily IG (agency)",
+        "FitLab",
+    }
+    assert all(item["type"] == "AGENCY_REPRESENTED_CHANNEL" for item in agency)
+    assert all(item["verification_method"] == "VERIFICATION_CODE" for item in agency)
+    assert next(item for item in agency if item["display_name"] == "FitLab")["verification_status"] == "VERIFIED"
+
+    public_response = await client.get("/api/v1/users/dev_brightlab/public-profile")
+    assert public_response.status_code == 200, public_response.text
+    assert [item["name"] for item in public_response.json()["represented_channels"]] == ["FitLab"]
+
+
 async def test_persona_seed_includes_current_first_message_answers(client: AsyncClient) -> None:
     assert (await client.post(SEED_URL, json={"scenario": "full_demo"})).status_code == 200
     legacy_keys = {"portfolio_link", "rate_expectation"}

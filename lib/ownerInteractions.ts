@@ -63,6 +63,7 @@ export type InteractionJobSnapshot = {
   channelName?: string | null;
   channelLogoUrl?: string | null;
   channelProfileSlug?: string | null;
+  agencyProfileSlug?: string | null;
   budget: string;
   workMode: string;
   location?: string | null;
@@ -443,6 +444,7 @@ function jobSnapshotFromJob(job: Job): InteractionJobSnapshot {
     channelName: job.channel?.name || null,
     channelLogoUrl: job.channel?.logoUrl || null,
     channelProfileSlug: job.channelProfileSlug || null,
+    agencyProfileSlug: job.agencyProfileSlug || null,
     budget: job.budget,
     workMode: [job.type, job.workMode].filter(Boolean).join(" · ") || "—",
     location: job.location || null,
@@ -556,8 +558,12 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
     // six applications out saw six identical rows and could not tell which was
     // which — the exact defect Phase 1 fixed for "Applicant", still alive here.
     const recruiterName = displayPersonName({
-      displayName: job?.channel?.name,
-      username: job?.channelProfileSlug,
+      displayName: job?.postedByAgency
+        ? job.managedByAgencyName
+        : job?.channel?.name,
+      username: job?.postedByAgency
+        ? job.agencyProfileSlug
+        : job?.channelProfileSlug,
       identity: application.job_owner_user_id || application.id,
       role: "recruiter",
     });
@@ -577,7 +583,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         title: job?.title || "Job application",
         counterpartyName: recruiterName,
         counterpartyUserId: application.job_owner_user_id || null,
-        counterpartyAvatarUrl: job?.channel?.logoUrl || null,
+        counterpartyAvatarUrl: job?.postedByAgency ? null : job?.channel?.logoUrl || null,
         createdAt: application.created_at,
         updatedAt: application.updated_at || application.created_at,
         message: application.cover_note || "",
@@ -737,7 +743,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         firstMessageAnswers: coerceAnswers(interest.first_message_answers),
         recruiter: relatedJob || interest.recruiter_username
           ? {
-              profileSlug: interest.recruiter_username || relatedJob?.channelProfileSlug || null,
+              profileSlug: interest.recruiter_username || relatedJob?.channelProfileSlug || relatedJob?.agencyProfileSlug || null,
               name: recruiterName,
               avatarUrl: interest.recruiter_avatar_url || relatedJob?.channel?.logoUrl || null,
               channelName: relatedJob?.channel?.name || null,
