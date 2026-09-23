@@ -1,5 +1,9 @@
 # CreatorJobs Beta Launch Readiness
 
+> Historical checklist. Current authority is `PRODUCTION_READINESS_EXECUTION.md`,
+> `PRODUCTION_READINESS_HANDOFF.md` and `PRODUCTION_RELEASE_ROADMAP.md`. This document
+> does not certify current release readiness or supersede newly recorded blockers.
+
 Date: 2026-06-02
 
 ## Beta Data And Staging Readiness

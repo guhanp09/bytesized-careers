@@ -1,6 +1,77 @@
 # CreatorJobs Production Readiness Handoff
 
-## Resume summary
+## Current completion-program checkpoint (2026-09-23)
+
+```text
+LAST COMPLETED ATOMIC SLICE: R0A / ROAD-001 — approved roadmap persisted, ledger reconciled,
+ bounded current baseline. This is NOT completion of all R0 or release certification.
+CURRENT HEAD: documentation checkpoint containing this section; resolve git rev-parse HEAD.
+NEXT PHASE: R1A / VIS-001 — fix SQL public visibility for deletion-hidden accounts; R0B /
+ ROAD-002 route/service inventory and reproducible infrastructure remain NOT_STARTED.
+ORDER ADJUSTMENT: prioritize two reproduced release blockers after the R0A documentation
+ checkpoint; neither requires a migration or an unavailable Docker daemon. Do not defer
+ their local fixes merely because remaining R0B infrastructure proof cannot run today.
+CURRENT ALEMBIC HEAD: 0070_activity_page_indexes, single head.
+CURRENT ALEMBIC CURRENT: explicit sqlite+aiosqlite:///:memory: unstamped (no migration applied).
+IMPORTANT NEW ARCHITECTURE: none in R0A. PRODUCTION_RELEASE_ROADMAP.md maps R0–R11 completion
+ waves and F1–F7 recruiter AND talent additions onto existing audit IDs. Existing features
+ are preserved. MEDIA-002 is reopened by approved R6; LEGAL-001 inventory status normalized
+ to IMPLEMENTED (not legal approval). Missing storage/Redis adapters are LOCAL code work.
+NEW ENVIRONMENT VARIABLES / DEPENDENCIES / SERVICES / MIGRATIONS: none.
+OUTSTANDING EXTERNAL REQUIREMENTS: all existing provider/hosted/remote/legal/restore/soak gates;
+ Docker CLI exists but docker info cannot connect to local daemon. No container proof claimed.
+KNOWN TEST FAILURES: none in completed current checks. Initial baseline command referenced
+ nonexistent tests/test_notification_runner.py (exit4, no tests); corrected discovered path
+ tests/test_email_worker_runner.py passed in the 66-case focus. This was a command error,
+ not an application failure. Historical unrerun aggregate risks remain below and in ledger.
+COMMANDS TO RESUME: git branch --show-current; git rev-parse HEAD; git status --short;
+ git worktree list; git diff --check; inspect five frozen refs before editing.
+FILES TO READ FIRST: PRODUCTION_RELEASE_ROADMAP.md, current execution ledger VIS-001/
+ EMAIL-006, backend/app/core/account_state.py, repositories/search_repository.py and
+ job_repository.py, api/v1/routers/marketplace.py, tests/test_moderation_enforcement.py.
+RELEASE ASSESSMENT: NO-GO. AI retained; no runtime AI change. Nothing pushed/deployed;
+ hosted Neon/Vercel/Render/providers untouched. No overlapping writer edits observed.
+```
+
+### R0A evidence
+
+```text
+Phase: R0A / ROAD-001
+Status: COMPLETE (atomic documentation slice); overall R0 still incomplete (ROAD-002)
+Initial HEAD: f6b54af159460ea12bb6c1273bfb878c64934401
+Final HEAD / Commit(s): docs(readiness): record approved completion and feature roadmap
+ (resolve git log --format=%H --grep='docs(readiness): record approved completion').
+Files materially changed: roadmap, execution ledger, handoff, historical post-beta/beta docs.
+Migrations: none. Behavior changed: none.
+Security assumptions: all database commands use explicit disposable local settings;
+ no providers used. Search/account/mail defects remain unfixed at this checkpoint.
+Tests run: git fsck --full --no-dangling; git diff --check; ledger unique-ID/status check;
+ npx tsc --noEmit; node --test --experimental-strip-types tests/*.test.mjs;
+ APP_ENV=test DATABASE_URL=sqlite+aiosqlite:///:memory: .venv/bin/python -m pytest
+ tests/test_deep_search.py tests/test_moderation_enforcement.py tests/test_email_outbox_worker.py
+ tests/test_email_outbox_delivery.py tests/test_email_worker_runner.py -q
+ --junitxml=/tmp/creatorjobs-r0-focused.xml; Alembic heads/current with same explicit URL.
+Exact results: fsck0; diff0; TSC0; Node1362 passed,0 failed/skipped; backend66 passed,
+ 0 failures/errors/skips (exit0 and parsed JUnit); single head0070, empty memory DB unstamped.
+Full backend/build/browser/QA/dependency scans not rerun in this documentation-only slice.
+Known external failures: Docker daemon not running; docker info exit1. No migration harness
+ run; no hosted credentials, external messages, provider calls, remote push or deployment.
+Remaining risks: every nonvalidated item, notably public hiding and production email pause.
+Next phase: R1A regression first, then narrow shared predicate fix. R1B follows separately.
+Important commands: listed above; never use hosted DATABASE_URL for local checks.
+```
+
+Frozen references (read-only baseline, unchanged):
+
+```text
+wip/messaging-paused fdabfd4b3feb2ea75fda3ac0a889f7e02dac5158
+recovery/pre-messaging-merge 858934259fe8ea7b7de69ac2326d4c099375a80c
+backup/integrated-import-messaging-2026-07-30 de7a0583e4c003073fc0cd67b4fdc43859cf0eed
+wip/job-import-readiness-paused-2026-07-25 93c31b2ae69512a7b0f38d5098e65f861e0028b5
+integrated-import-messaging-2026-07-30 (tag) 5e06112afbf9cf36a2957491c26e6626f4fe5523
+```
+
+## Previous resume summary (historical; current checkpoint above takes precedence)
 
 ```text
 LAST COMPLETED PHASE: Phase 12 — locally implementable observability, incident-response and credential-rotation work is complete; OPS-005's local six-journey aggregate is now 6/6 and only hosted ingestion/delivery/scheduling/soak proof remains external

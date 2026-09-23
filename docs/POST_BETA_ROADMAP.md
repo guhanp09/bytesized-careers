@@ -1,5 +1,14 @@
 # CreatorJobs Post-Beta Roadmap
 
+> Historical proposal (2026-06-02), superseded for execution by
+> [the approved production/feature roadmap](PRODUCTION_RELEASE_ROADMAP.md) and
+> [the execution ledger](PRODUCTION_READINESS_EXECUTION.md). Pipeline, private notes,
+> interviews/reviews, structured job niche/genre/format fields, deep search and parts of
+> verification/consent are now implemented. Do not rebuild them from this historical list.
+> Notification controls and release-critical moderation are readiness work, not optional
+> post-beta deferrals. Recruiter AND talent additions are the new F1–F7 tracks. Free beta
+> remains free; payments require a separate decision. Historical text below is retained.
+
 Date: 2026-06-02
 
 This roadmap is intentionally not implemented for beta. These items should wait until real beta usage confirms demand and workflow shape.
