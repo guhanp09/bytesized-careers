@@ -9,8 +9,8 @@ one — a mock adapter that marked rows ``mocked``, a status the worker never
 produces — and two paths with different vocabularies is how a row ends up in a
 state that nothing else understands.
 
-``real_delivery_enabled()`` still decides whether that provider is the real SMTP
-one or the mock; see ``app/notifications/runner.build_provider``.
+``real_delivery_enabled()`` gates SMTP. Production pauses when it is off; only
+nonproduction environments may use a mock. See ``runner.build_provider``.
 
 Authentication mail (verification, password reset, invitation) now goes through
 the same table via ``queue_auth_email``. It used to send inline after the
@@ -49,6 +49,11 @@ class EmailPayload:
 def real_delivery_enabled() -> bool:
     """Real outbox delivery is attempted only when explicitly switched on."""
     return bool(settings.email_delivery_enabled) and settings.email_mode == "smtp"
+
+
+def production_delivery_paused() -> bool:
+    """Disabled or invalid production delivery preserves all queued intent."""
+    return settings.app_env == "production" and not real_delivery_enabled()
 
 
 def queue_notification_email(session: AsyncSession, payload: EmailPayload) -> EmailOutbox:

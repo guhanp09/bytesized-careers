@@ -175,9 +175,10 @@ CONFIG_CONTRACT: dict[str, ConfigContract] = {
         Requirement.FEATURE_CONDITIONAL,
         Enforcement.FEATURE_GATE,
         "The master switch for real delivery from the shared email outbox. Off "
-        "keeps both authentication and notification intent durable while the "
-        "worker uses its mock provider. The provider is selected when the "
-        "worker starts, so a change takes effect only after worker restart.",
+        "pauses production processing without claiming rows or recording "
+        "delivery. Mock providers are nonproduction-only. The gate is checked "
+        "each pass and before sending; environment changes require a worker "
+        "restart to reload settings.",
     ),
     "debug": ConfigContract(
         Requirement.CORE_REQUIRED,

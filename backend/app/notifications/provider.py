@@ -19,7 +19,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol
 
+from app.core.config import settings
 from app.models import EmailOutbox
+from app.notifications.email import production_delivery_paused
 from app.services.email_service import EmailDeliveryError, send_auth_email
 
 
@@ -64,22 +66,26 @@ class EmailProvider(Protocol):
     async def send(self, row: EmailOutbox) -> ProviderResult: ...
 
 
-class MockEmailProvider:
-    """Records intent without sending, which is the default everywhere today.
+class EmailDeliveryPaused(RuntimeError):
+    """No provider I/O occurred; preserve the row without spending a retry."""
 
-    Returns SENT rather than a separate "mocked" outcome so the queue exercises
-    exactly one success path in development and in production. The distinction
-    between a real send and a mocked one belongs in configuration and in the
-    logs, not in the state machine — a second success state would mean every
-    consumer had to know about both.
-    """
+
+class MockEmailProvider:
+    """Exercise the success path without sending, only outside production."""
 
     def __init__(self) -> None:
         self.sent: list[EmailOutbox] = []
 
     async def send(self, row: EmailOutbox) -> ProviderResult:
+        require_production_provider(self)
         self.sent.append(row)
         return ProviderResult.sent(message_id=f"mock-{row.id}")
+
+
+def require_production_provider(provider: EmailProvider) -> None:
+    """Reject accidental mock injection before claiming or recording success."""
+    if settings.app_env == "production" and isinstance(provider, MockEmailProvider):
+        raise RuntimeError("Mock email delivery is forbidden in production")
 
 
 class SmtpEmailProvider:
@@ -93,6 +99,8 @@ class SmtpEmailProvider:
     """
 
     async def send(self, row: EmailOutbox) -> ProviderResult:
+        if production_delivery_paused():
+            raise EmailDeliveryPaused("Production email delivery is paused")
         try:
             send_auth_email(
                 to_email=row.to_email,

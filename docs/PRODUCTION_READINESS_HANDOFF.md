@@ -3,10 +3,12 @@
 ## Current completion-program checkpoint (2026-09-24)
 
 ```text
-LAST COMPLETED ATOMIC SLICE: R1A.1 / VIS-001A — public SQL eligibility and interaction
- admission enforce BOTH account states; 42 new security tests and 224 affected tests pass.
-CURRENT HEAD: security(visibility) checkpoint containing this section; git rev-parse HEAD.
-NEXT PHASE: R1B.1 / EMAIL-006 — production pause/no-mock guard first. VIS-001B retains
+LAST COMPLETED ATOMIC SLICE: R1B.1 / EMAIL-006A — production pause/no-mock guard;
+ 16 new guards pass, affected email/config/consent suite283 passed/1 existing skip.
+CURRENT HEAD: security(email): pause production delivery without consuming queued mail
+ checkpoint containing this section; resolve with git rev-parse HEAD.
+NEXT PHASE: R1B.2 / EMAIL-006B — resume freshness and read-only suspect-success diagnostic.
+ VIS-001B retains
  browser/cache/sitemap/related/expiry transition certification. ROAD-002 retains remaining
  R0 route/service inventory and reproducible infrastructure; no whole-wave completion claim.
 ORDER ADJUSTMENT: prioritize two reproduced release blockers after the R0A documentation
@@ -21,6 +23,14 @@ IMPORTANT NEW ARCHITECTURE: core.account_state.active_account_clause(User or ali
  Public jobs/detail/search/talent, new saves/applications/interests and ordinary messaging
  apply the shared boundary. Existing private saved snapshots/notes and conversation history
  remain readable to their authorized owner/participant; live hidden talent details are absent.
+ notifications.email.production_delivery_paused() gates production worker admission, per-row
+ processing and SMTP send. build_provider returns None while paused, never Mock in production.
+ The runner reselects each pass and opens no DB session while paused. Explicit Mock injection
+ is rejected before claims; direct Mock.send is also guarded. EmailDeliveryPaused means no
+ provider I/O and consumes no retry. Unattempted mid-batch claims keep normal120s leases.
+ Settings are process-loaded, NOT a shared dynamic switch: env changes need all workers
+ restarted. Existing SMTP blocking I/O, claim transaction/fencing and uncertain acceptance
+ are NOT repaired by this slice (EMAIL-007). Freshness/diagnostic remain EMAIL-006B.
  PRODUCTION_RELEASE_ROADMAP.md maps R0–R11 completion
  waves and F1–F7 recruiter AND talent additions onto existing audit IDs. Existing features
  are preserved. MEDIA-002 is reopened by approved R6; LEGAL-001 inventory status normalized
@@ -35,16 +45,69 @@ KNOWN TEST FAILURES: none unresolved in current focused/affected checks. Initial
  addresses and a 21-character username; corrected to the existing email/20-character contract,
  no validation weakened. Guessed test_jobs.py/test_profile_phase1.py paths also caused exit4
  before discovery corrected commands. Historical aggregate risks remain below and in ledger.
+ R1B broad skip is preexisting test_config_contract.py::TestFeatureSettingsFailClosed::
+ test_a_feature_setting_is_absent_or_off_by_default[job_import_enabled], reason "a kill switch
+ defaults on by design; see the test below". Isolated rerun skips identically; the separate
+ positive AI-default assertion passes. No required email regression is skipped.
 LAST_FULL_SUITE_OBSERVED: backend3W 7712 passed/65 skipped (historical, NOT rerun here).
-EXPECTED_CURRENT_COLLECTION:7822 independently collected, +42 new VIS tests over7780 initial.
- Current affected backend224/224; dedicated VIS security42/42; Node1362/1362 and TSC0 in R0A.
+EXPECTED_CURRENT_COLLECTION:7838 independently collected, +42 VIS and16 pause tests over7780.
+ Combined current affected suite507 passed/1 preexisting skip/0 failures (508 cases,118.642s);
+ dedicated pause16/16; VIS224/224, dedicated visibility42/42; Node1362/1362 and TSC0 in R0A.
+ Ledger149 unique IDs:76 VALIDATED,18 IMPLEMENTED,13 IN_PROGRESS,26 NOT_STARTED,16 BLOCKED_EXTERNAL.
+ Item counts are not a launch-readiness percentage; parent waves remain incomplete.
 COMMANDS TO RESUME: git branch --show-current; git rev-parse HEAD; git status --short;
  git worktree list; git diff --check; inspect five frozen refs before editing.
-FILES TO READ FIRST: PRODUCTION_RELEASE_ROADMAP.md, ledger EMAIL-006, backend/app/notifications/
- runner.py, provider.py, worker.py, email.py, tests/test_email_worker_runner.py,
- tests/test_email_outbox_worker.py. Do not reopen completed identity/SSRF work.
+FILES TO READ FIRST: PRODUCTION_RELEASE_ROADMAP.md, ledger EMAIL-006B/EMAIL-007,
+ docs/NOTIFICATIONS.md, backend/app/notifications/{email,runner,provider,worker}.py,
+ app/repositories/email_outbox_{repository,delivery}.py, app/services/auth_service.py,
+ app/models/email_outbox.py, tests/test_email_production_pause.py,
+ tests/test_auth_email_durability.py. Do not reopen completed identity/SSRF work.
 RELEASE ASSESSMENT: NO-GO. AI retained; no runtime AI change. Nothing pushed/deployed;
  hosted Neon/Vercel/Render/providers untouched. No overlapping writer edits observed.
+```
+
+### R1B.1 evidence
+
+```text
+Phase:R1B.1 / EMAIL-006A
+Status:COMPLETE / VALIDATED (pause/provider atomic slice only; EMAIL-006B NOT_STARTED)
+Initial HEAD:b6752356af3701385a364edf48bdb3466af290b7
+Final HEAD / Commit(s):security(email): pause production delivery without consuming queued mail
+ (resolve git log --format=%H --grep='security(email): pause production delivery').
+Files materially changed: notifications/{email,provider,runner,worker}.py; core/config_contract.py;
+ tests/test_email_production_pause.py; docs/NOTIFICATIONS.md; execution ledger/handoff.
+Migrations / dependencies / env / services:none. Alembic0070 unchanged; R0A memory DB unstamped.
+Behavior changed: production disabled/invalid delivery selects no provider, opens no worker DB
+ session and claims nothing. Mock selection/use/injection cannot record production success.
+ Recheck each pass and before send; EmailDeliveryPaused preserves retry count. Mid-batch
+ unattempted queued claims expire normally120s; already accepted send remains recorded.
+ Development/test/staging mock behavior unchanged. Environment changes require all worker
+ processes restarted; NOT a cross-instance dynamic switch.
+Security assumptions: tests patch only app settings and use conftest's disposable SQLite DB;
+ no SMTP or external provider call. This does not solve pre-I/O claim commit/fencing/crash
+ ambiguity or expiry; do not enable production delivery until EMAIL-006B/EMAIL-007 pass.
+Tests run: baseline newly introduced14 tests before runtime edit:10 failed/4 passed;
+ final new security16 passed/0 failed/skipped; affected suite283 passed/1 preexisting skip,
+ 0 failures/errors,12.605s, exit0 and parsed JUnit. Full app/tests Ruff0; diff0.
+Exact affected command (backend cwd): APP_ENV=test DATABASE_URL=sqlite+aiosqlite:///:memory:
+ .venv/bin/python -m pytest tests/test_email_production_pause.py tests/test_email_worker_runner.py
+ tests/test_email_outbox_worker.py tests/test_email_outbox_claim.py tests/test_email_outbox_delivery.py
+ tests/test_email_suppression.py tests/test_auth_email_durability.py tests/test_notifications.py
+ tests/test_notification_consent.py tests/test_dev_email_inbox.py tests/test_operational_metrics.py
+ tests/test_config.py tests/test_config_contract.py -q --junitxml=/tmp/creatorjobs-r1b-focus.xml
+Combined verification: same command plus all files in the R1A.1 affected command below,
+ --junitxml=/tmp/creatorjobs-r1-combined.xml:507 passed/1 preexisting skip/0 failures/errors,
+ 118.642s. Full collection7838 independently verified; not a complete backend run.
+No frontend/runtime code changed; browser/build/QA/full backend were not rerun for R1.
+Known test failures:none unresolved. Existing configuration parameter skip explicitly excludes
+ job_import_enabled from default-off checks and separately asserts its intentionally-on default.
+ Isolated rerun and unmodified baseline source confirm existing contract; not an email proof gap.
+Known external failures:Docker unavailable; no Postgres/container/hosted/provider proof.
+Remaining risks:EMAIL-006B freshness/diagnostic; EMAIL-007 committed claims/fencing/off-loop SMTP;
+ VIS-001B browser/cache/lifecycle proof; all other open rows. No complete R1-wave claim.
+Next phase:R1B.2; evaluate scope/budget before starting. No premature SMTP enable or mass resend.
+Important commands: affected command above; read the listed notification/outbox/auth files.
+Nothing pushed/deployed; Neon/Vercel/Render untouched; all five frozen refs unchanged.
 ```
 
 ### R1A.1 evidence
@@ -53,8 +116,8 @@ RELEASE ASSESSMENT: NO-GO. AI retained; no runtime AI change. Nothing pushed/dep
 Phase: R1A.1 / VIS-001A
 Status: COMPLETE / VALIDATED (SQL/API atomic slice only; VIS-001B remains NOT_STARTED)
 Initial HEAD:1aa3c5ae6d645f5e2c7f8ea96767a0fbfcf59e37
-Final HEAD / Commit(s): security(visibility): enforce deletion hiding across public queries
- (resolve git log --format=%H --grep='security(visibility): enforce deletion hiding').
+Final HEAD / Commit(s): b6752356af3701385a364edf48bdb3466af290b7
+ security(visibility): enforce deletion hiding across public queries.
 Files materially changed: core/account_state.py; repositories/public_visibility.py,
  search_repository.py, job_repository.py; routers/marketplace.py; services/messaging_service.py;
  tests/test_public_account_visibility.py; execution ledger/handoff.
@@ -93,8 +156,8 @@ Nothing pushed/deployed; Neon/Vercel/Render untouched; all five frozen refs unch
 Phase: R0A / ROAD-001
 Status: COMPLETE (atomic documentation slice); overall R0 still incomplete (ROAD-002)
 Initial HEAD: f6b54af159460ea12bb6c1273bfb878c64934401
-Final HEAD / Commit(s): docs(readiness): record approved completion and feature roadmap
- (resolve git log --format=%H --grep='docs(readiness): record approved completion').
+Final HEAD / Commit(s): 1aa3c5ae6d645f5e2c7f8ea96767a0fbfcf59e37
+ docs(readiness): record approved completion and feature roadmap.
 Files materially changed: roadmap, execution ledger, handoff, historical post-beta/beta docs.
 Migrations: none. Behavior changed: none.
 Security assumptions: all database commands use explicit disposable local settings;

@@ -27,7 +27,13 @@ from app.core.operational_metrics import (
     record_email_deliveries,
     record_email_worker_pass,
 )
-from app.notifications.provider import EmailProvider, ProviderOutcome
+from app.notifications.email import production_delivery_paused
+from app.notifications.provider import (
+    EmailDeliveryPaused,
+    EmailProvider,
+    ProviderOutcome,
+    require_production_provider,
+)
 from app.repositories.email_outbox_delivery import (
     mark_retryable_failure,
     mark_sent,
@@ -50,6 +56,7 @@ class DeliveryRun:
     retrying: int = 0
     failed: int = 0
     suppressed: int = 0
+    paused: bool = False
 
 
 async def process_outbox_once(
@@ -80,12 +87,19 @@ async def process_outbox_once(
 
     identity = worker_id or f"worker-{uuid.uuid4().hex[:12]}"
     run = DeliveryRun()
+    if production_delivery_paused():
+        run.paused = True
+        return run
+    require_production_provider(provider)
     started = time.perf_counter()
 
     claimed = await claim_due_emails(session, worker_id=identity, limit=limit, now=now)
     run.claimed = len(claimed)
 
     for row in claimed:
+        if production_delivery_paused():
+            run.paused = True
+            break
         row_id = row.id
 
         # Checked here, at the last moment before sending, rather than at
@@ -109,7 +123,16 @@ async def process_outbox_once(
             continue
 
         try:
+            # Consent/suppression lookups await I/O. Recheck after those awaits.
+            if production_delivery_paused():
+                run.paused = True
+                break
             result = await provider.send(row)
+        except EmailDeliveryPaused:
+            # No attempt happened. Leave unattempted claims queued; their normal
+            # leases expire without adding an unfenced release operation.
+            run.paused = True
+            break
         except Exception as exc:  # noqa: BLE001 - any provider fault is a delivery fault
             logger.warning(
                 "notification_email_provider_raised",
@@ -146,6 +169,7 @@ async def process_outbox_once(
                 "retrying": run.retrying,
                 "failed": run.failed,
                 "suppressed": run.suppressed,
+                "paused": run.paused,
             },
         )
         # Do not emit an idle heartbeat every five seconds. It is costly vanity

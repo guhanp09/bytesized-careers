@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.operational_metrics import record_email_worker_pass
-from app.notifications.email import real_delivery_enabled
+from app.notifications.email import production_delivery_paused, real_delivery_enabled
 from app.notifications.provider import EmailProvider, MockEmailProvider, SmtpEmailProvider
 
 logger = logging.getLogger(__name__)
@@ -43,13 +43,11 @@ DEFAULT_INTERVAL_SECONDS = 5.0
 DEFAULT_BATCH = 20
 
 
-def build_provider() -> EmailProvider:
-    """Real delivery only when it has been switched on explicitly.
+def build_provider() -> EmailProvider | None:
+    """None means paused, never simulated success, in production."""
 
-    The mock is the default everywhere, including production, so an
-    incompletely configured deployment records mail rather than half-sending it.
-    """
-
+    if production_delivery_paused():
+        return None
     if real_delivery_enabled():
         return SmtpEmailProvider()
     return MockEmailProvider()
@@ -80,17 +78,32 @@ async def run_worker_forever(
 
     identity = worker_id or f"worker-{uuid.uuid4().hex[:12]}"
     signal = stop or asyncio.Event()
-    sender = provider or build_provider()
+    was_paused = False
     logger.info("email_worker_started", extra={"worker": identity, "interval": interval_seconds})
 
     while not signal.is_set():
         pass_started = time.perf_counter()
         try:
-            async with session_factory() as session:
-                await process_outbox_once(
-                    session, provider=sender, worker_id=identity, limit=batch
+            # Re-evaluate each pass; an injected provider cannot bypass pause.
+            # Environment changes still require a settings/process reload.
+            sender = (
+                None
+                if production_delivery_paused()
+                else (provider if provider is not None else build_provider())
+            )
+            paused = sender is None
+            if paused != was_paused:
+                logger.info(
+                    "email_worker_paused" if paused else "email_worker_resumed",
+                    extra={"worker": identity},
                 )
-                await session.commit()
+                was_paused = paused
+            if sender is not None:
+                async with session_factory() as session:
+                    await process_outbox_once(
+                        session, provider=sender, worker_id=identity, limit=batch
+                    )
+                    await session.commit()
         except Exception:  # noqa: BLE001 - one bad pass must not end the worker
             record_email_worker_pass(
                 succeeded=False,

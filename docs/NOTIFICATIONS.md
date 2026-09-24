@@ -2,8 +2,9 @@
 
 CreatorJobs has one in-app notification pipeline and one durable email outbox.
 Real email delivery is **disabled by default**: authentication and notification
-email intents still commit to the outbox, while the worker uses a deterministic
-mock provider until a production domain and provider are ready.
+email intents still commit to the outbox. In production the worker **pauses**
+without claiming or consuming them. A deterministic mock provider is available
+only outside production.
 
 Verification, password-reset, and invitation mail use the same outbox through
 `queue_auth_email`. Local development still captures their links immediately at
@@ -40,11 +41,13 @@ dispatch_notification(...)                 queue_auth_email(...)
                                     ▼
                             email_outbox row
                                     │
+                 production gate (off = leave queued)
+                                    │
                  worker claims with lease + retry state
                                     │
                        suppression and consent checks
                                     │
-                    mock provider (default) or SMTP
+                    SMTP (mock only outside production)
                                     │
                          sent / failed / skipped
 ```
@@ -102,12 +105,22 @@ high-value application/interview events also default to email.
 
 ## Real delivery gate
 
-- `EMAIL_DELIVERY_ENABLED` defaults to **false**. With it off, the worker uses
-  `MockEmailProvider` for every authentication and notification row. It exercises
-  the ordinary success transition and records a `mock-*` provider ID; there is no
-  second `mocked` state.
-- The worker chooses its provider at startup. Changing the gate or SMTP mode
-  requires restarting the worker process.
+- `EMAIL_DELIVERY_ENABLED` defaults to **false**. With `APP_ENV=production`,
+  delivery is paused unless this flag is true **and** `EMAIL_MODE=smtp`. Paused
+  passes do not claim rows, spend retries, or record successful delivery. The
+  runner does not open a database session while paused. Production mock provider
+  selection and use are forbidden, including explicit worker injection.
+- Outside production, the disabled default still uses `MockEmailProvider`. It
+  exercises the ordinary success transition and records a `mock-*` provider ID;
+  there is no second `mocked` state. Never run a nonproduction worker against a
+  production outbox.
+- The worker rechecks loaded settings each pass and before sending. Environment
+  variables are still loaded at process startup: changing an environment flag
+  requires restarting **every** worker. This is not yet a shared runtime switch.
+- If a pause is observed mid-batch, unattempted rows remain queued without a retry
+  charge. Already acquired leases expire normally (currently 120 seconds); no
+  unfenced lease release is added. A send already accepted by SMTP cannot be
+  recalled. Resuming does not resend rows already recorded as sent.
 - **To enable real delivery later** (after a domain + provider exist):
   1. Set `EMAIL_DELIVERY_ENABLED=true` **and** `EMAIL_MODE=smtp` with valid `SMTP_*`.
   2. Start/restart the standalone worker and verify an approved real recipient,
@@ -128,6 +141,13 @@ These remain deliberately outside the current delivery contract:
 
 - No **digest scheduler** / cron.
 - Provider/DNS configuration and a real webhook exercise remain external gates.
+- `EMAIL-006B`: time-sensitive message expiry/revalidation on resume and a read-only
+  report of historical `mock-*` success records remain required. **Do not enable
+  production delivery until these and the delivery-safety gates below pass.**
+  Never automatically mass-resend historical mock-success records.
+- `EMAIL-007`: claims must commit before provider I/O, completion needs lease/attempt
+  fencing, and blocking SMTP needs bounded off-event-loop execution. Crash/unknown
+  acceptance tests remain required. SMTP is at-least-once, not exactly-once.
 - The SMTP adapter has only coarse retryable-error classification because the
   existing SMTP service exposes one delivery exception type.
 - `account_type` is a single value, so a user who is both Talent and Recruiter has
