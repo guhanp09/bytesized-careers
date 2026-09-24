@@ -10,16 +10,21 @@ invented to make a workflow look complete.
 referenced script exists in `package.json` or `backend/scripts/`, and each gate
 has been run locally on this machine where the local environment supports it.
 
-**NOT REMOTELY EXECUTED.** No GitHub-hosted runner has ever run these
-workflows, because nothing has been pushed and remote execution is not
-authorised. Tracked as `BLOCKED_EXTERNAL` under `RELEASE-001`.
+**NO VERIFIED HOSTED PASS for the complete release matrix.** The first public push
+on 2026-09-24 started real GitHub Actions runs. The initial
+[Security run](https://github.com/guhanp09/bytesized-careers/actions/runs/36002233432)
+passed secret scanning, SBOM generation, and container source checks, but failed
+the backend production dependency audit on two newly reported AnyIO findings.
+The [CI run](https://github.com/guhanp09/bytesized-careers/actions/runs/36002233377)
+was still running when this checkpoint was written. Inspect current run results;
+do not infer an aggregate pass from successful individual jobs. Details and exact
+advisories are in the [publication checkpoint](../../docs/PORTFOLIO_PUBLICATION.md).
 
 That distinction matters more than it looks. A workflow can be structurally
 valid, invoke real commands, and still fail on a fresh runner — a missing system
 package, a service container that binds differently, a browser dependency that
 is present locally and absent there. **Do not describe these workflows as
-passing.** They are written and locally exercised; the first real run will be the
-first real run.
+passing.** Hosted results apply to the exact tested commit and configuration.
 
 ## Job boundaries follow state, not speed
 
@@ -90,7 +95,8 @@ so this gate cannot be pointed at a hosted or production cache.
 
 ## What is still external
 
-- GitHub-hosted execution of any of this (`RELEASE-001`).
+- Successful completion of the required GitHub-hosted matrix (`RELEASE-001`);
+  first execution has started, but a complete pass is not yet demonstrated.
 - Branch protection and required-check configuration — repository settings, not
   files.
 - The Docker image build and vulnerability scan; only source-level container

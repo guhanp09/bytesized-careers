@@ -6,13 +6,58 @@ task does not authorize a product rebrand or deployment.
 
 ## Publication status
 
-**LOCAL CHECKPOINT — push verification follows.** Authentication is now confirmed
-as `guhanp09` through GitHub CLI, including repository/workflow scopes. The user
-explicitly authorized creating public `guhanp09/bytesized-careers`, pushing all
-legitimate source/history, and connecting the current local branch to it. The new
-name was confirmed absent before creation. Existing `origin` remains
-`guhanp09/skizh`; no write to that remote is authorized. This checkpoint does not
-yet claim an uploaded repository or successful hosted CI run.
+**PUBLISHED AND VERIFIED:** [guhanp09/bytesized-careers](https://github.com/guhanp09/bytesized-careers)
+is a newly created **public** repository with default branch `main`.
+
+The first verified upload is `1616c9f39528764859abd5b3bada4bcfdeef1245`:
+
+- GitHub commit SHA equals the local source checkpoint.
+- GitHub tree SHA equals local Git tree `6ae92455dbfbbd3d36d1b3d5ea6279673f6563d3`.
+- GitHub reports **444 history commits**, matching `git rev-list --count HEAD`
+  at that checkpoint; this is not a snapshot-only upload.
+- GitHub's untruncated recursive tree contains **1,410 files**, matching local
+  tracked files, and no unresolved submodules.
+- The entire source/history passed the reviewed Gitleaks scan before upload.
+- Existing `skizh` remote refs were read before/after publication and are identical.
+  No push or repository setting change was sent to `skizh`.
+
+This evidence-recording commit follows that initial upload. For the current
+publication tip, compare `git rev-parse HEAD` with `git ls-remote portfolio
+refs/heads/main`. Publication is not a successful hosted CI or production release
+claim. The first runs subsequently started; their observed results are below.
+
+### First hosted checks
+
+The [Security run for the first upload](https://github.com/guhanp09/bytesized-careers/actions/runs/36002233432)
+passed Gitleaks, SBOM generation, and container source assertions, but **failed**
+the production dependency audit. The actual audit output identifies:
+
+- `anyio 4.12.1`: `CVE-2026-63374` / `GHSA-82r6-8w77-94w6`.
+- `anyio 4.12.1`: `CVE-2026-64847` / `GHSA-5p39-cfhj-2xmp`.
+
+These are newly observed audit findings requiring a separately tested dependency
+remediation; they are not suppressed to make the portfolio look green. The existing
+exact ECDSA exception remains separately analyzed by the dependency gate.
+The [main CI run](https://github.com/guhanp09/bytesized-careers/actions/runs/36002233377)
+was in progress at this observation. Current results may advance; no complete pass
+is claimed. The documentation contract test now checks this evidence distinction
+instead of asserting that hosted CI has never run.
+
+### Local connection
+
+The local branch remains `integration/import-and-messaging-2026-07-30` and tracks
+`portfolio/main`. `origin` still points to the unchanged `guhanp09/skizh` repository.
+Branch-specific `pushRemote=portfolio` and an explicit `remote.portfolio.push`
+mapping send this integration branch to the new repository's `main`; a plain
+`git push --dry-run` confirmed the destination without touching `skizh`.
+
+```bash
+git status --short --branch
+git remote get-url portfolio
+git rev-parse HEAD
+git ls-remote portfolio refs/heads/main
+git push --dry-run
+```
 
 A separate process created commit `68403a7` (`first commit`) during preparation,
 containing the initial documentation, scanner configuration, and two search-test
@@ -71,10 +116,11 @@ production credentials/configuration. The HTTP smoke used a fresh database/media
 directory under `/tmp`, an isolated working directory, and no real recipients or
 provider calls. Only the processes started for this check were stopped.
 
-Full backend, Playwright/QA/accessibility, hosted CI, dependency audits, PostgreSQL
-contention/migrations, cloud providers, and restore/load drills were **not rerun**
-as part of this documentation/publication task. Docker was previously unavailable.
-The engineering handoff preserves broader earlier evidence separately.
+Full backend, Playwright/QA/accessibility, dependency audits, PostgreSQL
+contention/migrations, cloud providers, and restore/load drills were **not rerun
+locally** for publication. Docker was previously unavailable. Hosted checks started
+after pushing; their observed results are documented above. The engineering handoff
+preserves broader earlier evidence separately.
 
 ### Search test corrections
 
@@ -104,7 +150,11 @@ source-only archive. No scanner report or probe fixture is included in the repos
 Automated scans reduce risk; they do not prove all material is safe or establish
 legal permission for every reference asset.
 
-## Resume publication safely
+## Publication procedure and future recovery
+
+The initial creation/upload/verification is complete. The checklist below documents
+the procedure; do not create another repository or overwrite history when resuming.
+Use the existing `portfolio` remote for subsequent reviewed commits.
 
 1. Confirm the separate writer has finished. Inspect branch, HEAD, diff, worktrees,
    and the frozen refs in the [handoff](PRODUCTION_READINESS_HANDOFF.md).
@@ -130,5 +180,5 @@ legal permission for every reference asset.
    count. Record real CI run URLs/results if runners execute. Existing workflows
    contain checks, not deployment steps; no hosting integration is authorized here.
 
-If authentication is still unavailable, stop at a documented local checkpoint;
-do not claim publication succeeded. The product release assessment remains **NO-GO**.
+If authentication becomes unavailable, preserve the local checkpoint and restore
+access before further pushes. The product release assessment remains **NO-GO**.

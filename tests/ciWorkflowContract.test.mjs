@@ -1,8 +1,8 @@
 /**
  * Do the workflows reference things that exist?
  *
- * A CI file cannot be executed here — nothing is pushed, and no GitHub runner
- * has ever run these. What can be checked is the class of mistake that would
+ * These source contracts do not execute CI. Hosted runs now exist separately;
+ * what can be checked here is the class of mistake that would
  * waste a real run: a script that is not in package.json, a path that does not
  * exist, a Postgres version that disagrees with the local harness, or the two
  * Playwright suites arranged to run at once against a shared build directory.
@@ -265,10 +265,13 @@ test("the production dependency audit installs without dev dependencies", () => 
   assert.ok(!/--ignore-vuln/.test(backendGate));
 });
 
-test("the README does not claim remote CI has run", () => {
+test("the README distinguishes hosted execution from an aggregate passing certificate", () => {
   const readme = readFileSync(join(root, ".github", "workflows", "README.md"), "utf8");
 
-  assert.match(readme, /NOT REMOTELY EXECUTED/);
+  // Publication now triggers hosted runs, so asserting they never ran is false.
+  // Preserve the meaningful contract: never infer release certification from it.
+  assert.match(readme, /NO VERIFIED HOSTED PASS/);
+  assert.match(readme, /exact tested commit and configuration/);
   assert.ok(!/CI is green/i.test(readme));
   assert.ok(!/actions passed/i.test(readme));
 });

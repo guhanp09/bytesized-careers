@@ -2,6 +2,21 @@
 
 ## Portfolio publication checkpoint (2026-09-24; current task)
 
+**Published and verified:** https://github.com/guhanp09/bytesized-careers — PUBLIC,
+default branch main. Initial complete upload1616c9f39528764859abd5b3bada4bcfdeef1245;
+GitHub verified444 history commits,1410 files and exact local tree hash
+6ae92455dbfbbd3d36d1b3d5ea6279673f6563d3. The following evidence commit updates
+this record; use git rev-parse HEAD / git ls-remote portfolio refs/heads/main for
+the latest tip. No production deployment or hosted Neon/Vercel/Render changes.
+Local integration branch tracks portfolio/main; branch-specific pushRemote and
+explicit remote.portfolio.push mapping make ordinary pushes use the new repo.
+origin/skizh is preserved; read-only before/after remote refs match exactly.
+First hosted Security run36002233432 passed secrets/SBOM/container-source jobs but
+FAILED backend dependency audit: anyio4.12.1, CVE-2026-63374/GHSA-82r6-8w77-94w6
+and CVE-2026-64847/GHSA-5p39-cfhj-2xmp. Separate compatible upgrade/revalidation is
+required; no gate suppressed. CI36002233377 was still running at observation.
+No aggregate hosted pass is claimed; inspect current run URLs in publication doc.
+
 The user temporarily redirected work from production implementation to publishing
 the complete project/history as a **new public** `guhanp09/bytesized-careers` repository.
 This explicitly authorizes local commits, new-repository creation/push, and connecting
@@ -12,10 +27,11 @@ the current local branch to that new remote. It does NOT authorize changes to ex
 - A separate process created `68403a7f4707796e492e7e202078611ac650ffcc` (`first commit`)
   from the in-progress portfolio files. Preserved unchanged. Subsequent user instruction
   explicitly says continue, create/push/verify the named repository.
-- Current local checkpoint: `docs(portfolio): record publication evidence and safe setup`;
-  resolve current hash with `git rev-parse HEAD`. Remote proof must follow the actual push.
-- GitHub CLI is authenticated as `guhanp09`; the requested new repository was absent.
-  Keep `origin` unchanged; use a separate `portfolio` remote and explicit `HEAD:main`.
+- Initial local/public checkpoint:1616c9f39528764859abd5b3bada4bcfdeef1245,
+  `docs(portfolio): record publication evidence and safe setup`. Current checkpoint:
+  `docs(portfolio): verify complete public repository publication` (resolve via git log).
+- GitHub CLI authenticated as `guhanp09`; the new repo was confirmed absent, created,
+  pushed and independently verified through API. Keep origin unchanged and use portfolio.
 - All local branches were ancestors of the original publication HEAD; accepted work is
   included in full history. Do not mirror/force-push or alter frozen references.
 - README, architecture, reviewer guide, docs index, local setup, contribution/security
@@ -34,7 +50,7 @@ the current local branch to that new remote. It does NOT authorize changes to ex
 - Local tools installed: gh2.101.0 and Gitleaks8.30.1. No application dependency changes.
 - Read `docs/PORTFOLIO_PUBLICATION.md` first for exact scope, evidence, and safe resume steps.
   Publication is NOT release readiness; product remains NO-GO. Last production slice remains
-  R1B.1; once publication completes, resume EMAIL-006B, VIS-001B, ROAD-002 and the ledger.
+  R1B.1; next production work is EMAIL-006B, VIS-001B, ROAD-002 and the ledger.
 
 ## Current completion-program checkpoint (2026-09-24)
 

@@ -9,6 +9,10 @@ The 2026-09-24 portfolio-publication task is recorded separately in
 `PORTFOLIO_PUBLICATION.md`; publishing source does not validate a release item.
 Its Node regression rerun also closes the two stale R1A source-location assertions:
 full Node1362/1362, focused search10/10, backend visibility/security tests retained.
+First hosted publication Security run36002233432 reports two unanalysed findings
+on anyio4.12.1 (GHSA-82r6-8w77-94w6 and GHSA-5p39-cfhj-2xmp). Historical dependency
+validation does not clear these new findings; compatible remediation and current
+audit proof remain required. See PORTFOLIO_PUBLICATION.md for the exact evidence.
 Historical phase certification paragraphs do not certify later-discovered gaps. New rows
 below extend the audit without erasing accepted evidence. R0A is documentation/bounded
 baseline only; R0's complete route/service inventory and disposable infrastructure are ROAD-002.
