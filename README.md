@@ -1,165 +1,145 @@
 # CreatorJobs
 
-CreatorJobs is a creator-economy hiring marketplace: content creators and channels post
-**jobs**, freelance talent publish **talent listings**, and both sides browse, apply / express
-interest, manage those in a shared inbox, and get in-app notifications. It runs as a
-[Next.js](https://nextjs.org) frontend (App Router) with a standalone [FastAPI](https://fastapi.tiangolo.com)
-backend.
+A full-stack hiring marketplace for the creator economy: creators and hiring teams
+find talent, freelancers showcase their work, and both sides manage applications
+and conversations in one workspace.
 
-> **Status:** free, pre-launch beta. No payments, and notification email delivery is mocked to an
-> outbox until a production domain + provider exist. See [docs/](#documentation) for readiness notes.
+Built with **Next.js, React, TypeScript, FastAPI, SQLAlchemy, and PostgreSQL**.
 
-## Quickstart
+**Status:** pre-launch, under active production hardening. This is a working
+engineering portfolio, **not a claim that the service is ready for real customers**.
+Release assessment: `NO-GO`. Remaining implementation and launch gates are tracked
+in the [execution ledger](docs/PRODUCTION_READINESS_EXECUTION.md).
 
-```bash
-# 1. Install frontend deps
-npm install
+## Start here
 
-# 2. Set up env (frontend). Copy the template and fill in values.
-cp .env.example .env.local
+- **Reviewing the project?** The [reviewer guide](docs/REVIEWER_GUIDE.md) connects
+  product workflows to source, tests, and development history.
+- **Running it?** The [local setup guide](docs/local-auth-testing.md) supports a
+  real-backend email/password demo without paid providers or hosted credentials.
+- **Understanding it?** Read the [architecture guide](docs/ARCHITECTURE.md).
+- **Continuing development?** See [contributing](CONTRIBUTING.md), the
+  [documentation index](docs/README.md), and the [handoff](docs/PRODUCTION_READINESS_HANDOFF.md).
 
-# 3. Set up the backend (FastAPI, managed with uv). See backend/README.md for details.
-#    The dev scripts expect a virtualenv at backend/.venv.
+## Product workflows
 
-# 4. Run frontend + backend together (frontend :3000, backend :8000)
-npm run dev:all
+| Audience | Implemented workflows |
+| --- | --- |
+| Recruiters, creators, agencies | Multi-step job posting, recoverable drafts, screening questions, talent discovery, saved items, applicant management |
+| Talent | Public profiles, portfolio projects, job discovery, applications, saved jobs, application history |
+| Both sides | Conversations, Pipeline status changes, interview coordination, private notes, notifications, engagement/review workflows |
+| Administrators | Strong-authentication controls, reports, moderation, audit records, compliance primitives |
+| AI-assisted posting | Text/URL extraction into a private draft, field review, and the canonical Post Job flow—never automatic publication |
 
-# 5. Seed demo marketplace data (jobs + talent listings) — backend must be running
-npm run seed
+These capabilities are implemented, not universally launch-certified. Durable AI
+execution, browser credential isolation, production storage/shared realtime, and
+complete invite/privacy customer journeys still have open work. Manual posting
+and application workflows do not depend on an AI provider.
+
+## Architecture at a glance
+
+```text
+Browser
+  └─ Next.js App Router — pages, forms, server routes, NextAuth
+       └─ FastAPI /api/v1 — authorization and domain rules
+            ├─ Services → repositories → SQLAlchemy → PostgreSQL
+            ├─ Email outbox → delivery worker → provider
+            ├─ Private AI import state → reviewed canonical draft
+            └─ Realtime events → database-backed HTTP reconciliation
+
+Local review: disposable SQLite + deterministic scenarios + test providers
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+This shows responsibilities, not a completed server-only browser authentication
+migration: some browser API consumers still use backend access tokens (`AUTH-007`).
+Persistent import state exists, but the durable execution worker remains open
+(`AI-001`). See [architecture and tradeoffs](docs/ARCHITECTURE.md).
 
-Frontend-only mode: run `npm run dev` and set `NEXT_PUBLIC_USE_LOCAL_MOCKS=true`. Otherwise
-backend-backed pages fall back to local sample data when the FastAPI service is not running (in
-non-production only).
+## Repository map
 
-## Project layout
-
-| Path | What lives there |
+| Path | Responsibility |
 | --- | --- |
-| `app/` | Next.js App Router routes (pages, layouts, route handlers, loading/error boundaries) |
-| `components/` | UI components (marketplace, job/talent details, post flows, `/you` hub, inbox) |
-| `lib/` | Frontend data access (`backendClient.ts`), drafts, opening-message, mock data, helpers |
-| `backend/` | FastAPI service: routers, models, schemas, services, Alembic migrations, pytest suite |
-| `tests/` | Playwright e2e (`tests/e2e/`) + Node unit tests (`tests/*.test.mjs`) |
-| `docs/` | Readiness audits, notifications architecture, roadmap, IA reference |
+| [`app/`](app/) | Next.js pages, layouts, server routes, metadata, loading/error states |
+| [`components/`](components/) | Posting, discovery, profiles, applications, messaging UI |
+| [`lib/`](lib/) | Typed API access, frontend contracts, validation, drafts, scenario adapters |
+| [`backend/app/`](backend/app/) | API routers, schemas, domain services, persistence, security |
+| [`backend/alembic/`](backend/alembic/) | Versioned database migrations |
+| [`tests/`](tests/) | Node unit/contract tests and Playwright browser/real-backend QA |
+| [`backend/tests/`](backend/tests/) | Backend API, security, migration, concurrency tests |
+| [`fixtures/creator_scenarios/`](fixtures/creator_scenarios/) | Deterministic scenarios for mock/backend parity |
+| [`scripts/`](scripts/) and [`backend/scripts/`](backend/scripts/) | Development, validation, release, operational exercises |
+| [`.github/workflows/`](.github/workflows/) | CI/security checks and their evidence limitations |
+| [`docs/`](docs/) | Architecture, reviewer guide, operations, readiness program |
+| [`reference-homepage/`](reference-homepage/) | Historical design reference; not the main application runtime |
 
-## Scripts
+## Local development
 
-| Command | Purpose |
-| --- | --- |
-| `npm run dev:all` | Run frontend (:3000) and backend (:8000) together |
-| `npm run dev` | Frontend only |
-| `npm run dev:backend` | Backend only (uvicorn, reload) |
-| `npm run seed` | Seed demo marketplace data via the dev-only seed endpoint |
-| `npm run build` | Production build of the frontend |
-| `npm run lint` | ESLint |
-| `npm run test:e2e` | Playwright end-to-end suite |
-| `npm run test:e2e:qa` | Real-backend Playwright QA suite |
-| `npm run test:e2e:a11y` | Whole-document WCAG A/AA matrix in Chromium, Firefox, and WebKit |
-
-## Testing
+Use **Node.js 24**, **Python 3.12**, and **uv**. Install from the committed
+`package-lock.json` and `backend/uv.lock`.
 
 ```bash
-# Type-check the frontend
+# From a fresh clone
+npm ci
+cp -n .env.example .env.local
+npx prisma generate
+cd backend
+uv sync --locked --all-groups
+cp -n .env.example .env
+```
+
+Follow the [two-terminal setup](docs/local-auth-testing.md) to start the backend
+and frontend, seed demonstration data, and verify a local account through
+`/dev/emails`. The backend template's `postgres` hostname is for Docker; the local
+walkthrough explicitly uses SQLite. Demo accounts are synthetic, not customers.
+
+## Validation
+
+```bash
+# Repository root
 npx tsc --noEmit
+npm run lint
+node --test --experimental-strip-types tests/*.test.mjs
+npm run build:release
 
-# Frontend e2e (Playwright)
+# From backend/
+APP_ENV=test DATABASE_URL=sqlite+aiosqlite:///:memory: .venv/bin/python -m pytest
+.venv/bin/ruff check app tests
+APP_ENV=test DATABASE_URL=sqlite+aiosqlite:///:memory: .venv/bin/python -m alembic heads
+```
+
+The backend suite uses its own disposable SQLite test database through conftest;
+the explicit URL also protects application bootstrap from inheriting a hosted DB.
+SQLite is **not** PostgreSQL locking/migration proof. Those gates use the separate
+[disposable harness](backend/scripts/test_interaction_status_postgres.sh).
+
+Browser suites share `.next`; run them **sequentially**:
+
+```bash
+npx playwright install
 npm run test:e2e
-
-# Cross-browser accessibility release gate
+npm run test:e2e:qa
 npm run test:e2e:a11y
-
-# Frontend unit tests (Node's built-in runner; imports lib/*.ts directly)
-# Scope to *.test.mjs so the runner doesn't try to execute the Playwright e2e specs.
-node --test 'tests/*.test.mjs'
-
-# Backend tests — APP_ENV=test is required, or ~30 tests fail on the auth rate limiter
-cd backend && APP_ENV=test .venv/bin/python -m pytest
 ```
 
-## Documentation
+Dated results and limitations are in the [publication checkpoint](docs/PORTFOLIO_PUBLICATION.md)
+and [engineering handoff](docs/PRODUCTION_READINESS_HANDOFF.md). A workflow file is
+not proof of a green hosted run. No unsupported customer, uptime, or capacity
+claim is made here.
 
-- [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) — what's needed to admit live users (infra, secrets, email).
-- [docs/BETA_LAUNCH_READINESS.md](docs/BETA_LAUNCH_READINESS.md) — beta data, copy rules, safety, and manual QA checklist.
-- [docs/PHASE_4A_LAUNCH_READINESS_AUDIT.md](docs/PHASE_4A_LAUNCH_READINESS_AUDIT.md) — env var + migration checklist.
-- [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md) — the in-app notification pipeline + mocked email outbox.
-- [docs/POST_BETA_ROADMAP.md](docs/POST_BETA_ROADMAP.md) — intentionally deferred, post-beta work.
-- [docs/CREATORJOBS_INFORMATION_ARCHITECTURE.md](docs/CREATORJOBS_INFORMATION_ARCHITECTURE.md) — routes and IA.
-- [backend/README.md](backend/README.md) — backend setup (uv), migrations, and run instructions.
+## Security and project status
 
-## Local OAuth Setup
+Public eligibility checks cover suspension and deletion hiding while preserving
+authorized private history. Disabled production email **pauses** delivery; it
+cannot become mock success. Development personas and email links are not production
+features. Provider keys and real data stay outside source control.
 
-Use `.env.example` as your template, and ensure this value matches your frontend dev server port:
+See [security reporting](SECURITY.md) and the [R0–R11 release roadmap](docs/PRODUCTION_RELEASE_ROADMAP.md).
+F1–F7 are optional recruiter/talent improvements, not claims of shipped features.
 
-```bash
-NEXTAUTH_URL=http://localhost:3000
-```
+## History and attribution
 
-If `NEXTAUTH_URL` points to a different port (for example `3001`) while the app runs on `3000`, Google/NextAuth redirects can behave incorrectly.
+Maintained by **Guhan Purushothaman**. The actual development history is preserved.
+Evaluate the code, tests, decisions, and limitations alongside the commit history.
 
-In Google Cloud Console (OAuth 2.0 Client ID for Web application), add:
-
-- Authorized JavaScript origins: `http://localhost:3000`
-- Authorized redirect URIs: `http://localhost:3000/api/auth/callback/google`
-
-If you sometimes run on another local port, add that too (for example `http://localhost:3001` and `http://localhost:3001/api/auth/callback/google`).
-
-## Location Autocomplete Setup
-
-The `/you` profile basics editor works locally without an API key using built-in city suggestions. For broader production coverage, add a Google Places key later. The key is server-only and must not use a `NEXT_PUBLIC_` prefix.
-
-1. Create an API key in Google Cloud Console.
-2. Enable the Google Places API for that project.
-3. Paste the key into `.env.local` at the project root:
-
-```bash
-GOOGLE_PLACES_API_KEY=your_key_here
-```
-
-4. Restart the dev server after changing `.env.local`.
-5. Do not commit `.env.local`; it is ignored by git.
-6. Restrict the key in Google Cloud before production.
-
-Without this key, local autocomplete still works from the built-in dataset. Adding `GOOGLE_PLACES_API_KEY` later switches the server-side autocomplete route to Google Places.
-
-## Backend Data Source Flags
-
-Frontend job data source is switchable via env flags:
-
-```bash
-NEXT_PUBLIC_BACKEND_URL=http://localhost:8000/api/v1
-NEXT_PUBLIC_USE_LOCAL_MOCKS=false
-```
-
-Defaults:
-- `NEXT_PUBLIC_BACKEND_URL` defaults to `http://localhost:8000/api/v1` if unset.
-- `NEXT_PUBLIC_USE_LOCAL_MOCKS=false` (or unset) means backend is the default source of truth.
-- Set `NEXT_PUBLIC_USE_LOCAL_MOCKS=true` only when you explicitly want local mock/SQLite fallback.
-
-## Auth Integration Notes
-
-Frontend auth uses:
-- NextAuth Google OAuth (`signIn("google")`)
-- NextAuth Credentials provider (`signIn("credentials")`) backed by FastAPI `/api/v1/auth/login`
-
-Required frontend env vars:
-
-```bash
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=change-me-please
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-NEXT_PUBLIC_BACKEND_URL=http://localhost:8000/api/v1
-NEXT_PUBLIC_USE_LOCAL_MOCKS=false
-```
-
-Email/password registration + verification endpoints are provided by the backend:
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/verify-email`
-
-During beta, notification email delivery is disabled (`EMAIL_DELIVERY_ENABLED=false`): notification
-emails are queued to an outbox and viewable via the dev inbox at `/dev/emails`. Auth emails (verify,
-reset) follow `EMAIL_MODE` (default `log`). Portfolio YouTube import uses the backend-only
-`YOUTUBE_API_KEY` variable — do not expose it with a `NEXT_PUBLIC_` prefix.
+No open-source license has been selected by this publication step. Publication
+does not relicense third-party dependencies, reference material, or assets.

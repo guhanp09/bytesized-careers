@@ -38,12 +38,24 @@ test("approved import decisions create an idempotent private canonical draft", (
 
 test("deep search reads authoritative public listings and strips private hiring fields", () => {
   const repository = read("backend/app/repositories/search_repository.py");
+  const visibility = read("backend/app/repositories/public_visibility.py");
+  const accountState = read("backend/app/core/account_state.py");
   const serializer = read("backend/app/services/public_listing_serializer.py");
 
-  assert.match(repository, /Job\.status == "published"/);
-  assert.match(repository, /Job\.deleted_at\.is_\(None\)/);
-  assert.match(repository, /TalentListing\.status\.in_\(\("published", "featured"\)\)/);
-  assert.match(repository, /User\.suspended_at\.is_\(None\)/);
+  // R1A centralized these predicates. Check the query wiring AND the shared
+  // implementation; requiring duplicate inline filters contradicts that contract.
+  assert.match(repository, /from app\.repositories\.public_visibility import public_job_predicates, public_talent_predicates/);
+  assert.match(repository, /\.where\(\*public_job_predicates\(\)\)/);
+  assert.match(repository, /\.where\(\*public_talent_predicates\(\)\)/);
+  assert.match(visibility, /Job\.status == "published"/);
+  assert.match(visibility, /Job\.deleted_at\.is_\(None\)/);
+  assert.match(visibility, /TalentListing\.status\.in_\(\("published", "featured"\)\)/);
+  assert.match(visibility, /TalentListing\.deleted_at\.is_\(None\)/);
+  assert.match(visibility, /User\.id == Job\.posted_by_user_id, ~active_account_clause\(User\)/);
+  assert.match(visibility, /~blocked_owner/);
+  assert.match(visibility, /active_account_clause\(User\)/);
+  assert.match(accountState, /user_model\.suspended_at\.is_\(None\)/);
+  assert.match(accountState, /user_model\.deletion_hidden_at\.is_\(None\)/);
   assert.doesNotMatch(repository, /JobImport|JobApplication|Message|Screening|Evidence|Provider/);
   assert.match(serializer, /screening_questions = None/);
   assert.match(serializer, /languages = \[\]/);

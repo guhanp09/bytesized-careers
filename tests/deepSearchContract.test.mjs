@@ -86,9 +86,17 @@ test("public talent language data can satisfy free-text without becoming a job r
 
 test("deep search backend reads only authoritative public record types", () => {
   const repository = read("backend/app/repositories/search_repository.py");
-  assert.match(repository, /Job\.status == "published"/);
-  assert.match(repository, /TalentListing\.status\.in_\(\("published", "featured"\)\)/);
-  assert.match(repository, /User\.suspended_at\.is_\(None\)/);
+  const visibility = read("backend/app/repositories/public_visibility.py");
+  const accountState = read("backend/app/core/account_state.py");
+  // Public eligibility moved to one shared policy in R1A. Verify both the
+  // repository's use of it and its unchanged publication/stronger account rules.
+  assert.match(repository, /\.where\(\*public_job_predicates\(\)\)/);
+  assert.match(repository, /\.where\(\*public_talent_predicates\(\)\)/);
+  assert.match(visibility, /Job\.status == "published"/);
+  assert.match(visibility, /TalentListing\.status\.in_\(\("published", "featured"\)\)/);
+  assert.match(visibility, /active_account_clause\(User\)/);
+  assert.match(accountState, /user_model\.suspended_at\.is_\(None\)/);
+  assert.match(accountState, /user_model\.deletion_hidden_at\.is_\(None\)/);
   assert.doesNotMatch(repository, /JobImport|Message|Screening|Application/);
 
   const serializer = read("backend/app/services/public_listing_serializer.py");

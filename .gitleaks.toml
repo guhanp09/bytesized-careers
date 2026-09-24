@@ -1,0 +1,40 @@
+title = "CreatorJobs: default rules with reviewed nonsecret fixture exceptions"
+
+[extend]
+useDefault = true
+
+# No whole-file, directory, commit, or credential-class exclusions. Each exception
+# requires BOTH the exact known value and its reviewed location. See
+# docs/PORTFOLIO_PUBLICATION.md for the raw findings and review rationale.
+
+[[allowlists]]
+description = "FastAPI source expression, not a credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(^|/)backend/app/main\.py$''']
+regexTarget = "secret"
+regexes = ['''^docs_url=None$''']
+
+[[allowlists]]
+description = "RFC 6238 SHA-1 public test vector in two cryptography tests"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(^|/)backend/tests/test_(totp|strong_auth_secrets)\.py$''']
+regexTarget = "secret"
+regexes = ['''^GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ$''']
+
+[[allowlists]]
+description = "Synthetic leak-detection marker injected only by the health test"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(^|/)backend/tests/test_health_contracts\.py$''']
+regexTarget = "secret"
+regexes = ['''^leaked-jwt-secret-8f3a1c$''']
+
+[[allowlists]]
+description = "One dummy recovery-code line resembles a Square access token"
+targetRules = ["square-access-token"]
+condition = "AND"
+paths = ['''(^|/)tests/(strongAuthClient\.test\.mjs|e2e/admin-strong-auth\.spec\.ts)$''']
+regexTarget = "line"
+regexes = ['''^\s*"EAAA-BBBB-CCCC-DDDD-EEEE-FFFF-GGGG-HHHH",?\s*$''']
