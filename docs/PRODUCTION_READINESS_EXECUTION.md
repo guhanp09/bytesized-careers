@@ -5,6 +5,10 @@ This ledger translates the production-readiness audit into resumable implementat
 ## Ledger contract
 
 Current completion program: `PRODUCTION_RELEASE_ROADMAP.md` (approved 2026-09-23).
+The 2026-09-24 portfolio-publication task is recorded separately in
+`PORTFOLIO_PUBLICATION.md`; publishing source does not validate a release item.
+Its Node regression rerun also closes the two stale R1A source-location assertions:
+full Node1362/1362, focused search10/10, backend visibility/security tests retained.
 Historical phase certification paragraphs do not certify later-discovered gaps. New rows
 below extend the audit without erasing accepted evidence. R0A is documentation/bounded
 baseline only; R0's complete route/service inventory and disposable infrastructure are ROAD-002.

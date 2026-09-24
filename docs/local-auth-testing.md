@@ -45,6 +45,7 @@ Terminal 1, from `backend/`:
 APP_ENV=development \
 DATABASE_URL=sqlite+aiosqlite:///./.local-data/creatorjobs_backend.db \
 EMAIL_MODE=log EMAIL_DELIVERY_ENABLED=false EMAIL_WORKER_IN_PROCESS=false \
+RATE_LIMIT_BACKEND=memory REDIS_URL= JOB_IMPORT_SWEEPER_IN_PROCESS=false \
 OPENAI_API_KEY= YOUTUBE_API_KEY= YOUTUBE_DATA_API_KEY= GOOGLE_PLACES_API_KEY= \
 uv run --no-sync uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```

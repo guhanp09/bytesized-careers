@@ -1,5 +1,41 @@
 # CreatorJobs Production Readiness Handoff
 
+## Portfolio publication checkpoint (2026-09-24; current task)
+
+The user temporarily redirected work from production implementation to publishing
+the complete project/history as a **new public** `guhanp09/bytesized-careers` repository.
+This explicitly authorizes local commits, new-repository creation/push, and connecting
+the current local branch to that new remote. It does NOT authorize changes to existing
+`guhanp09/skizh`, production deployment, hosted Neon/Vercel/Render, or paid providers.
+
+- Starting HEAD for publication: `28f969575ceadfd6497b0ab65363b74eeee9e704`.
+- A separate process created `68403a7f4707796e492e7e202078611ac650ffcc` (`first commit`)
+  from the in-progress portfolio files. Preserved unchanged. Subsequent user instruction
+  explicitly says continue, create/push/verify the named repository.
+- Current local checkpoint: `docs(portfolio): record publication evidence and safe setup`;
+  resolve current hash with `git rev-parse HEAD`. Remote proof must follow the actual push.
+- GitHub CLI is authenticated as `guhanp09`; the requested new repository was absent.
+  Keep `origin` unchanged; use a separate `portfolio` remote and explicit `HEAD:main`.
+- All local branches were ancestors of the original publication HEAD; accepted work is
+  included in full history. Do not mirror/force-push or alter frozen references.
+- README, architecture, reviewer guide, docs index, local setup, contribution/security
+  guidance and narrow scanner exceptions are added. No product runtime or migration change.
+- Two stale Node source-location assertions from the R1A centralization were corrected to
+  check policy wiring AND implementation, retaining publication/private-field assertions
+  and adding deletion hiding. Initial isolated failures are documented; no assertions skipped.
+- Fresh Node1362/1362; focused search10/10; TSC0; lint0 errors/32 existing warnings;
+  backend visibility/email/health/TOTP/encryption102/102; scanner-config8/8; Ruff0.
+- Local/test `build:release` passed;449 maps collected/75 public maps stripped. Local HTTP
+  health/DB/roles/docs/seed/register/verify/login all200 on disposable data; inbox confirmed.
+- Reviewed full-history and source-only Gitleaks scans pass. Six initial nonsecret findings
+  received exact value+path+rule exceptions; two negative scanner probes are still detected.
+- No full backend/browser/QA/a11y/dependency/PostgreSQL/hosted certification claimed here.
+  Backend collection was7838 before the8 scanner-config tests; Alembic0070 unchanged.
+- Local tools installed: gh2.101.0 and Gitleaks8.30.1. No application dependency changes.
+- Read `docs/PORTFOLIO_PUBLICATION.md` first for exact scope, evidence, and safe resume steps.
+  Publication is NOT release readiness; product remains NO-GO. Last production slice remains
+  R1B.1; once publication completes, resume EMAIL-006B, VIS-001B, ROAD-002 and the ledger.
+
 ## Current completion-program checkpoint (2026-09-24)
 
 ```text
