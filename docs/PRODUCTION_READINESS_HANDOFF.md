@@ -1,6 +1,44 @@
 # CreatorJobs Production Readiness Handoff
 
-## AI and early-access documentation checkpoint (2026-09-24; latest task)
+## Cross-repository portfolio checkpoint (2026-09-24; latest task)
+
+User authorized publication of the separate waitlist repository, reviewer-oriented
+documentation in both repositories, and its normal automatic docs-push redeployment.
+No application, dependency, migration, production-setting or data change was authorized
+or made in this task. Reviewer-facing introductions now focus on product/work evidence;
+existing author metadata and accepted history remain intact. Product feature descriptions
+and engineering limitations remain accurate.
+
+- Marketplace initial HEAD:339c0a9518a1e6c78ffef76d49ce71c9890ef539.
+  Final checkpoint subject:`docs(portfolio): connect public waitlist and refine reviewer guides`;
+  resolve using `git log -1 --format=%H --grep='connect public waitlist'`.
+- Waitlist initial HEAD:0179605ceb2ce1465bd5edea39ec32586dece4a1; published
+  documentation commit5c55f93 at https://github.com/guhanp09/bytesized-careers-waitlist,
+  PUBLIC/default main, verified via GitHub. Separate repository/data boundaries remain.
+  Credential-free anonymous clone matched HEAD/tree and passed git fsck. Authorized
+  Vercel deployment6639108176 succeeded; no provider/database configuration changes.
+- Waitlist additions: README, reviewer/architecture/local-development/status/index guides,
+  contribution/security guidance; corrected stale phone verification/consent, deferred-save
+  and attribution inventory. Existing read-only policy records retain their original dates.
+- Fresh checks: marketplace Node1362 passed/0 failed/0 skipped,4.339s; waitlist unit139/139
+  in21 files,0 failures/skips (baseline16.29s, final16.90s); typecheck/lint0;76 waitlist
+  local links resolve. Waitlist source/all-ref history/commit-message secret scans0 leaks.
+- Known pre-existing waitlist failure: clean `npm ci --dry-run --ignore-scripts --no-audit
+  --no-fund` in isolated baseline source fails EUSAGE, missing @emnapi/core1.11.3 and
+  @emnapi/wasi-threads1.2.3. Hosted baseline run32022682563 also misses runtime1.11.3.
+  Publication CI36006812075 also failed at npm ci; no aggregate hosted pass claimed.
+  No lockfile/dependency or security-gate workaround applied. See companion PROJECT_STATUS.md.
+- Docker daemon unavailable: no database/integration/browser or full release certificate.
+  No subscriber record, credential, private database, export, or hosted setting opened/changed.
+- Logs outside Git:/tmp/bytesized-waitlist-publication.LnpjCy. Read companion
+  docs/PROJECT_STATUS.md for commands and priorities; never use the marketplace database there.
+- Marketplace publish ONLY to portfolio/main. origin/skizh and frozen references remain
+  protected. Final verification: `git status --short`, `git ls-remote portfolio refs/heads/main`;
+  in the companion use origin/main. No rewritten history or merged application code.
+- Production roadmap unchanged: NO-GO; last slice R1B.1; next EMAIL-006B, VIS-001B, ROAD-002.
+  Previous sections are dated evidence, including references to earlier private-source status.
+
+## AI and early-access documentation checkpoint (2026-09-24; previous task)
 
 User requested separate documentation of implemented/planned AI and the early-access
 page found on this Mac. This is documentation only, not another implementation phase.

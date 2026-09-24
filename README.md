@@ -77,8 +77,9 @@ collects interest from people seeking work, hiring talent, or doing both. It is 
 **separate waitlist application**, not a live demonstration of the full marketplace
 or an automatic marketplace account/invitation.
 
-Its source lives in the separate, private `bytesized-careers-waitlist` repository;
-it is not bundled here. The [early-access project note](docs/EARLY_ACCESS.md) explains
+Its source is public in the separate
+[`bytesized-careers-waitlist`](https://github.com/guhanp09/bytesized-careers-waitlist)
+repository; it is not bundled here. The [early-access project note](docs/EARLY_ACCESS.md) explains
 its flow, architecture, and separation from this project. Subscriber data and
 credentials are not included in this public repository.
 
@@ -182,10 +183,11 @@ features. Provider keys and real data stay outside source control.
 See [security reporting](SECURITY.md) and the [R0–R11 release roadmap](docs/PRODUCTION_RELEASE_ROADMAP.md).
 F1–F7 are optional recruiter/talent improvements, not claims of shipped features.
 
-## History and attribution
+## Maintainer and history
 
 Maintained by **Guhan Purushothaman**. The actual development history is preserved.
-Evaluate the code, tests, decisions, and limitations alongside the commit history.
+Review the code, tests, design decisions, and documented limitations alongside
+the commit history.
 
 No open-source license has been selected by this publication step. Publication
 does not relicense third-party dependencies, reference material, or assets.
