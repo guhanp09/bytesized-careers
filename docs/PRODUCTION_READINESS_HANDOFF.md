@@ -1,6 +1,45 @@
 # CreatorJobs Production Readiness Handoff
 
-## Portfolio publication checkpoint (2026-09-24; current task)
+## AI and early-access documentation checkpoint (2026-09-24; latest task)
+
+User requested separate documentation of implemented/planned AI and the early-access
+page found on this Mac. This is documentation only, not another implementation phase.
+
+- Initial HEAD: `5c3bcb4e875d15eea6a7999dc41fd75102bf0404` (clean tree).
+- Final HEAD / commit: `docs(portfolio): explain AI capabilities and early access`;
+  resolve with `git log -1 --format=%H --grep='explain AI capabilities and early access'`.
+- Material files: README, docs index/reviewer guide, new `docs/AI_FEATURES.md` and
+  `docs/EARLY_ACCESS.md`, ledger note and this handoff. No runtime behavior, migration,
+  dependency, environment-variable, or service changes; no audit status promoted.
+- AI guide distinguishes implemented import, constrained Bea clarification, and
+  brand enrichment from R5 completion and optional F6 assistance. It explicitly
+  distinguishes request/background work from durable workers, attempt counts from
+  monetary budgets, and import pause gates from a shared all-AI runtime switch.
+- Companion checkout: `../bytesized-careers-waitlist`, read-only at
+  `0179605ceb2ce1465bd5edea39ec32586dece4a1`. Its GitHub repository is private and
+  remains separate. No source was copied; subscriber records, exports, credentials
+  and databases were not opened. Public `/early-access` HTTPS GET returned200 with
+  matching page title; no registration submitted or hosted configuration changed.
+- Validation: full Node1362 passed/0 failed/0 skipped (4.038s); focused deterministic
+  AI/brand backend201 passed/0 failed/0 skipped, JUnit7.258s. Exact backend selection
+  and disposable command are in AI_FEATURES.md. Provider key was explicitly empty;
+  test doubles were used, no paid provider calls. Existing deprecation warnings remain.
+- Local Markdown targets:114 checked across five overview/guide files,0 missing;
+  Gitleaks docs and staged-source scans0 leaks. Logs/JUnit in
+  `/tmp/creatorjobs-ai-docs.wAuVCM` on this Mac, not shipped. Complete diff reviewed;
+  diff check passed. A final full-history secret scan gates the subsequent push.
+- No fresh TypeScript/build/full backend/browser/QA/a11y/PostgreSQL or live provider
+  certificate claimed. Waitlist tests not rerun; page reachability is not signup proof.
+- Authorized publication target remains ONLY `portfolio/main` in
+  `guhanp09/bytesized-careers`. Verify `git rev-parse HEAD`,
+  `git ls-remote portfolio refs/heads/main`, and `git status --short` after push.
+  `origin/skizh`, companion source/deployment, frozen recovery refs and production
+  services must remain unchanged. Alembic lineage unchanged from0070 below.
+- Release assessment: `NO-GO`; last production slice remains R1B.1. Next engineering
+  work remains EMAIL-006B, VIS-001B and ROAD-002. Read the ledger and approved roadmap
+  before resuming; documentation does not resolve the earlier hosted dependency findings.
+
+## Portfolio publication checkpoint (2026-09-24; previous task)
 
 **Published and verified:** https://github.com/guhanp09/bytesized-careers — PUBLIC,
 default branch main. Initial complete upload1616c9f39528764859abd5b3bada4bcfdeef1245;

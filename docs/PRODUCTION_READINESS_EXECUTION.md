@@ -7,7 +7,11 @@ This ledger translates the production-readiness audit into resumable implementat
 Current completion program: `PRODUCTION_RELEASE_ROADMAP.md` (approved 2026-09-23).
 The 2026-09-24 portfolio-publication task is recorded separately in
 `PORTFOLIO_PUBLICATION.md`; publishing source does not validate a release item.
-Its Node regression rerun also closes the two stale R1A source-location assertions:
+The subsequent AI/early-access documentation checkpoint is in the handoff;
+`AI_FEATURES.md` maps implemented capabilities and R5/F6 plans without changing
+item statuses. `EARLY_ACCESS.md` describes the separate companion, not a completed
+marketplace invitation integration or a new release certificate.
+The publication Node rerun also closes the two stale R1A source-location assertions:
 full Node1362/1362, focused search10/10, backend visibility/security tests retained.
 First hosted publication Security run36002233432 reports two unanalysed findings
 on anyio4.12.1 (GHSA-82r6-8w77-94w6 and GHSA-5p39-cfhj-2xmp). Historical dependency

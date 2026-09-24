@@ -12,6 +12,11 @@ inspectable. It does not claim production customers, revenue, or capacity certif
 4. Inspect the [ledger](PRODUCTION_READINESS_EXECUTION.md) and
    [handoff](PRODUCTION_READINESS_HANDOFF.md) for unfinished work.
 
+The [AI feature guide](AI_FEATURES.md) distinguishes implemented import, draft
+clarification, and brand enrichment from planned recruiter/talent assistance, with
+source and test links. The [early-access companion note](EARLY_ACCESS.md) links the
+public waitlist and explains why it is a separate application, not a marketplace demo.
+
 ## Representative work
 
 | Area | Source | Tests/evidence |

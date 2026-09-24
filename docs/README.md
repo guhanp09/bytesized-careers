@@ -5,6 +5,10 @@
 - [Project overview](../README.md)
 - [Reviewer guide](REVIEWER_GUIDE.md): product walkthrough and code/test/history evidence.
 - [Architecture](ARCHITECTURE.md): responsibilities, flows, unfinished boundaries.
+- [AI features](AI_FEATURES.md): implemented import/assistant/enrichment, safeguards,
+  and separately labelled future recruiter/talent assistance.
+- [Early access companion](EARLY_ACCESS.md): public page, standalone waitlist, and
+  private-source/data boundaries.
 - [Local setup](local-auth-testing.md): real-backend demo without hosted credentials.
 - [Contributing](../CONTRIBUTING.md) and [security](../SECURITY.md).
 - [Publication checkpoint](PORTFOLIO_PUBLICATION.md): exact checks and push status.

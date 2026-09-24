@@ -36,6 +36,52 @@ execution, browser credential isolation, production storage/shared realtime, and
 complete invite/privacy customer journeys still have open work. Manual posting
 and application workflows do not depend on an AI provider.
 
+## AI capabilities: implemented and planned
+
+### Implemented in the application
+
+- **AI Job Import:** turn pasted job text or a supported public job URL into
+  structured fields for a private draft. Source evidence, contextual inference,
+  missing information, and conflicting values remain distinguishable.
+- **Draft Assistant (Bea):** clarify unresolved details one question at a time,
+  save answers for resumption, and hand off to the existing Post Job editor.
+  Recruiters can edit or continue manually; importing never publishes a job.
+- **Brand-description enrichment:** optionally fill an empty company/channel
+  About field using existing descriptions or source-grounded website summaries.
+  Identity/evidence checks and stale-result guards protect recruiter-written text.
+
+These are implemented capabilities, **not a production-readiness certificate**.
+Provider calls require configured access and can incur costs. Import safeguards
+already include authentication, bounded fetching, quotas, retry limits, and a
+server-side pause gate; durable execution and complete shared cost controls remain
+unfinished. The clarification flow uses server-owned rules, not an unrestricted chatbot.
+
+### Planned, not yet implemented
+
+- **Recruiter assistance:** job-brief clarity review, missing-information prompts,
+  suggested screening questions, and side-by-side edits requiring approval.
+- **Talent assistance:** application clarity suggestions, portfolio-description
+  editing, and unanswered-question prompts using only user-selected facts.
+- **Production completion:** durable workers, progress/cancellation, atomic spending
+  reservations, and coordinated worker/admission controls before wider AI use.
+
+Future assistance is opt-in, separately budgeted, and human-reviewed—not automatic
+applications, messages, publishing, candidate ranking, or hiring decisions. See the
+[AI feature guide](docs/AI_FEATURES.md) for source/test evidence and the
+[release and feature roadmap](docs/PRODUCTION_RELEASE_ROADMAP.md) for dependencies.
+
+## Early access companion site
+
+The public [ByteSized Careers early-access page](https://bytesizedcareers.com/early-access)
+collects interest from people seeking work, hiring talent, or doing both. It is a
+**separate waitlist application**, not a live demonstration of the full marketplace
+or an automatic marketplace account/invitation.
+
+Its source lives in the separate, private `bytesized-careers-waitlist` repository;
+it is not bundled here. The [early-access project note](docs/EARLY_ACCESS.md) explains
+its flow, architecture, and separation from this project. Subscriber data and
+credentials are not included in this public repository.
+
 ## Architecture at a glance
 
 ```text
