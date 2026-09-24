@@ -19,7 +19,7 @@ from app.api.deps import (
     get_db,
     get_optional_current_user,
 )
-from app.core.account_state import account_is_blocked
+from app.core.account_state import account_is_blocked, active_account_clause
 from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, REPORT_LIMIT, rate_limit
 from app.models import (
     Conversation,
@@ -41,6 +41,7 @@ from app.models import (
 )
 from app.notifications import dispatch_notification
 from app.realtime import events as realtime_events
+from app.repositories.public_visibility import public_job_predicates, public_talent_predicates
 from app.schemas.job import JobRead
 from app.schemas.marketplace import (
     ActivitySummaryResponse,
@@ -660,22 +661,6 @@ def _candidate_safe_job_read(job: Job) -> JobRead:
     return read
 
 
-def _public_job_predicates() -> tuple[object, ...]:
-    suspended_owner = (
-        select(User.id)
-        .where(
-            User.id == Job.posted_by_user_id,
-            User.suspended_at.isnot(None),
-        )
-        .exists()
-    )
-    return (
-        Job.status == "published",
-        Job.deleted_at.is_(None),
-        ~suspended_owner,
-    )
-
-
 def _talent_snapshot(listing: TalentListing) -> dict:
     return {
         "id": str(listing.id),
@@ -768,7 +753,7 @@ async def save_job(
 ) -> SavedJobRead:
     job = (
         await session.execute(
-            select(Job).where(Job.id == job_id, *_public_job_predicates())
+            select(Job).where(Job.id == job_id, *public_job_predicates())
         )
     ).scalar_one_or_none()
     if job is None:
@@ -891,7 +876,7 @@ async def apply_to_job(
         await session.execute(
             select(User.id).where(
                 User.id == job.posted_by_user_id,
-                User.suspended_at.is_(None),
+                active_account_clause(User),
             )
         )
     ).scalar_one_or_none()
@@ -1659,13 +1644,10 @@ async def list_talent_listings(
     query = (
         select(TalentListing, User)
         .join(User, TalentListing.owner_user_id == User.id)
-        # Suspended owners' listings are excluded from the public marketplace.
-        .where(TalentListing.deleted_at.is_(None), User.suspended_at.is_(None))
+        .where(*public_talent_predicates())
     )
     if status_filter == "featured":
         query = query.where(TalentListing.status == "featured")
-    else:
-        query = query.where(TalentListing.status.in_(("published", "featured")))
     if q:
         term = f"%{q.lower()}%"
         query = query.where(
@@ -1844,7 +1826,15 @@ async def save_talent_listing(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> SavedTalentListingRead:
-    listing = await _get_listing_or_404(session, listing_id)
+    listing = (
+        await session.execute(
+            select(TalentListing)
+            .join(User, TalentListing.owner_user_id == User.id)
+            .where(TalentListing.id == listing_id, *public_talent_predicates())
+        )
+    ).scalar_one_or_none()
+    if listing is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent listing not found")
     snapshot = _talent_snapshot(listing)
     existing = (
         await session.execute(
@@ -1932,7 +1922,7 @@ async def saved_summary(
     job_ids = [row.job_id for row in saved_jobs]
     jobs = (
         await session.execute(
-            select(Job).where(Job.id.in_(job_ids), *_public_job_predicates())
+            select(Job).where(Job.id.in_(job_ids), *public_job_predicates())
         )
         if job_ids
         else None
@@ -1942,9 +1932,9 @@ async def saved_summary(
     listing_ids = [row.talent_listing_id for row in saved_talent]
     listings = (
         await session.execute(
-            select(TalentListing).where(
+            select(TalentListing).join(User, TalentListing.owner_user_id == User.id).where(
                 TalentListing.id.in_(listing_ids),
-                TalentListing.deleted_at.is_(None),
+                *public_talent_predicates(),
             )
         )
         if listing_ids
@@ -2038,7 +2028,7 @@ async def send_talent_interest(
         await session.execute(
             select(User.id).where(
                 User.id == listing.owner_user_id,
-                User.suspended_at.is_(None),
+                active_account_clause(User),
             )
         )
     ).scalar_one_or_none()

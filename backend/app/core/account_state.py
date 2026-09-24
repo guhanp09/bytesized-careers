@@ -25,6 +25,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import and_
+from sqlalchemy.sql.elements import ColumnElement
+
 
 @dataclass(frozen=True)
 class AccountBlock:
@@ -58,3 +61,16 @@ def account_block(user) -> AccountBlock:  # noqa: ANN001 - accepts any user-shap
 
 def account_is_blocked(user) -> bool:  # noqa: ANN001 - accepts any user-shaped row
     return account_block(user).blocked
+
+
+def active_account_clause(user_model) -> ColumnElement[bool]:  # noqa: ANN001
+    """SQL counterpart of account_block; accepts User or an ORM alias.
+
+    Keep filtering in the query, before ranking, counts and pagination. Reading
+    one state, or filtering serialized rows afterward, leaks the other state or
+    produces misleading totals and page gaps.
+    """
+    return and_(
+        user_model.suspended_at.is_(None),
+        user_model.deletion_hidden_at.is_(None),
+    )

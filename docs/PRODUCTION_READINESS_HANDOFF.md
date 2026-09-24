@@ -1,39 +1,93 @@
 # CreatorJobs Production Readiness Handoff
 
-## Current completion-program checkpoint (2026-09-23)
+## Current completion-program checkpoint (2026-09-24)
 
 ```text
-LAST COMPLETED ATOMIC SLICE: R0A / ROAD-001 — approved roadmap persisted, ledger reconciled,
- bounded current baseline. This is NOT completion of all R0 or release certification.
-CURRENT HEAD: documentation checkpoint containing this section; resolve git rev-parse HEAD.
-NEXT PHASE: R1A / VIS-001 — fix SQL public visibility for deletion-hidden accounts; R0B /
- ROAD-002 route/service inventory and reproducible infrastructure remain NOT_STARTED.
+LAST COMPLETED ATOMIC SLICE: R1A.1 / VIS-001A — public SQL eligibility and interaction
+ admission enforce BOTH account states; 42 new security tests and 224 affected tests pass.
+CURRENT HEAD: security(visibility) checkpoint containing this section; git rev-parse HEAD.
+NEXT PHASE: R1B.1 / EMAIL-006 — production pause/no-mock guard first. VIS-001B retains
+ browser/cache/sitemap/related/expiry transition certification. ROAD-002 retains remaining
+ R0 route/service inventory and reproducible infrastructure; no whole-wave completion claim.
 ORDER ADJUSTMENT: prioritize two reproduced release blockers after the R0A documentation
  checkpoint; neither requires a migration or an unavailable Docker daemon. Do not defer
  their local fixes merely because remaining R0B infrastructure proof cannot run today.
 CURRENT ALEMBIC HEAD: 0070_activity_page_indexes, single head.
 CURRENT ALEMBIC CURRENT: explicit sqlite+aiosqlite:///:memory: unstamped (no migration applied).
-IMPORTANT NEW ARCHITECTURE: none in R0A. PRODUCTION_RELEASE_ROADMAP.md maps R0–R11 completion
+IMPORTANT NEW ARCHITECTURE: core.account_state.active_account_clause(User or alias) is the
+ SQL counterpart of account_block. repositories.public_visibility centralizes published,
+ nondeleted job/talent filters with both owner states before counts/ranking/pagination.
+ Job ownerless legacy behavior and current expiry semantics are deliberately unchanged.
+ Public jobs/detail/search/talent, new saves/applications/interests and ordinary messaging
+ apply the shared boundary. Existing private saved snapshots/notes and conversation history
+ remain readable to their authorized owner/participant; live hidden talent details are absent.
+ PRODUCTION_RELEASE_ROADMAP.md maps R0–R11 completion
  waves and F1–F7 recruiter AND talent additions onto existing audit IDs. Existing features
  are preserved. MEDIA-002 is reopened by approved R6; LEGAL-001 inventory status normalized
  to IMPLEMENTED (not legal approval). Missing storage/Redis adapters are LOCAL code work.
 NEW ENVIRONMENT VARIABLES / DEPENDENCIES / SERVICES / MIGRATIONS: none.
 OUTSTANDING EXTERNAL REQUIREMENTS: all existing provider/hosted/remote/legal/restore/soak gates;
  Docker CLI exists but docker info cannot connect to local daemon. No container proof claimed.
-KNOWN TEST FAILURES: none in completed current checks. Initial baseline command referenced
+KNOWN TEST FAILURES: none unresolved in current focused/affected checks. Initial baseline command referenced
  nonexistent tests/test_notification_runner.py (exit4, no tests); corrected discovered path
  tests/test_email_worker_runner.py passed in the 66-case focus. This was a command error,
- not an application failure. Historical unrerun aggregate risks remain below and in ledger.
+ not an application failure. R1A new fixtures initially used reserved .test registration
+ addresses and a 21-character username; corrected to the existing email/20-character contract,
+ no validation weakened. Guessed test_jobs.py/test_profile_phase1.py paths also caused exit4
+ before discovery corrected commands. Historical aggregate risks remain below and in ledger.
+LAST_FULL_SUITE_OBSERVED: backend3W 7712 passed/65 skipped (historical, NOT rerun here).
+EXPECTED_CURRENT_COLLECTION:7822 independently collected, +42 new VIS tests over7780 initial.
+ Current affected backend224/224; dedicated VIS security42/42; Node1362/1362 and TSC0 in R0A.
 COMMANDS TO RESUME: git branch --show-current; git rev-parse HEAD; git status --short;
  git worktree list; git diff --check; inspect five frozen refs before editing.
-FILES TO READ FIRST: PRODUCTION_RELEASE_ROADMAP.md, current execution ledger VIS-001/
- EMAIL-006, backend/app/core/account_state.py, repositories/search_repository.py and
- job_repository.py, api/v1/routers/marketplace.py, tests/test_moderation_enforcement.py.
+FILES TO READ FIRST: PRODUCTION_RELEASE_ROADMAP.md, ledger EMAIL-006, backend/app/notifications/
+ runner.py, provider.py, worker.py, email.py, tests/test_email_worker_runner.py,
+ tests/test_email_outbox_worker.py. Do not reopen completed identity/SSRF work.
 RELEASE ASSESSMENT: NO-GO. AI retained; no runtime AI change. Nothing pushed/deployed;
  hosted Neon/Vercel/Render/providers untouched. No overlapping writer edits observed.
 ```
 
-### R0A evidence
+### R1A.1 evidence
+
+```text
+Phase: R1A.1 / VIS-001A
+Status: COMPLETE / VALIDATED (SQL/API atomic slice only; VIS-001B remains NOT_STARTED)
+Initial HEAD:1aa3c5ae6d645f5e2c7f8ea96767a0fbfcf59e37
+Final HEAD / Commit(s): security(visibility): enforce deletion hiding across public queries
+ (resolve git log --format=%H --grep='security(visibility): enforce deletion hiding').
+Files materially changed: core/account_state.py; repositories/public_visibility.py,
+ search_repository.py, job_repository.py; routers/marketplace.py; services/messaging_service.py;
+ tests/test_public_account_visibility.py; execution ledger/handoff.
+Migrations / dependencies / env / services:none. Alembic0070 unchanged; R0A memory DB unstamped.
+Behavior changed: shared SQL filter closes deletion-hidden public browse/search/job-detail
+ leak; rejects new saves/requests to blocked owners; surviving participant cannot send new
+ ordinary messages but retains existing authorized history; private saved snapshots/notes
+ survive while live hidden detail is absent. Counts/ranking filter before serialization.
+Security assumptions: admin suspension and deletion hiding remain independent; restoring one
+ cannot lift the other. AST guard covers SQLAlchemy calls previously missed by Python-is regex.
+ Existing public status/expiry/ownerless-job contracts are preserved, not silently redesigned.
+Tests run: new file baseline before runtime edits (24 tests,7 failed/17 passed,0 errors/skips);
+ final security42/42; full affected224/224; full app/tests Ruff0; diff0. Parsed JUnit after
+ exit0. Expected collection7822 (+42), not a complete backend run. No browser/build rerun.
+Exact affected command: APP_ENV=test DATABASE_URL=sqlite+aiosqlite:///:memory: .venv/bin/python
+ -m pytest tests/test_public_account_visibility.py tests/test_deep_search.py
+ tests/test_moderation_enforcement.py tests/test_account_state_separation.py
+ tests/test_account_deletion.py tests/test_jobs_list.py tests/test_jobs_crud.py
+ tests/test_marketplace_core.py tests/test_messaging.py tests/test_application_end_to_end.py
+ tests/test_profile_features.py tests/test_engagement_reviews.py tests/test_realtime_bus.py
+ tests/test_realtime_blocking.py tests/test_realtime_degraded.py -q
+ --junitxml=/tmp/creatorjobs-r1a-focus.xml
+Known test failures: all task-caused fixture/undefined-helper errors fixed before checkpoint;
+ none unresolved in executed tests. New email fixtures rejected .test; new username exceeded20;
+ only fixtures corrected. Existing tests/assertions untouched. No skip/sleep relaxation.
+Known external failures:Docker daemon unavailable; no Postgres/hosted/cache/provider proof.
+Remaining risks:VIS-001B transitions, EMAIL-006 production mock success, all other open rows.
+Next phase:R1B.1 production pause guard; then freshness/diagnostic and VIS-001B certification.
+Important commands: affected command above; inspect email runner/provider/worker tests first.
+Nothing pushed/deployed; Neon/Vercel/Render untouched; all five frozen refs unchanged.
+```
+
+### R0A evidence (2026-09-23)
 
 ```text
 Phase: R0A / ROAD-001

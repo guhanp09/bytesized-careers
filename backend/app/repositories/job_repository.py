@@ -13,6 +13,7 @@ from app.models import HiringIdentity, Job, Role
 from app.models.user import User
 from app.models.user_youtube_channel import UserYouTubeChannel
 from app.models.youtube_channel import YouTubeChannel
+from app.repositories.public_visibility import public_job_predicates
 
 
 class JobRepository:
@@ -20,16 +21,7 @@ class JobRepository:
         self.session = session
 
     def _public_query(self):
-        suspended_owner = (
-            select(User.id)
-            .where(User.id == Job.posted_by_user_id, User.suspended_at.isnot(None))
-            .exists()
-        )
-        return select(Job).where(
-            Job.status == "published",
-            Job.deleted_at.is_(None),
-            ~suspended_owner,
-        )
+        return select(Job).where(*public_job_predicates())
 
     @staticmethod
     def _escaped_like(value: str) -> str:

@@ -16,6 +16,7 @@ from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.account_state import active_account_clause
 from app.models import Conversation, JobApplication, Message, TalentInterest, User
 from app.notifications import dispatch_notification
 from app.services import blocking_service
@@ -195,7 +196,7 @@ async def conversation_is_closed(session: AsyncSession, conversation: Conversati
                             conversation.participant_b_user_id,
                         ]
                     ),
-                    User.suspended_at.is_(None),
+                    active_account_clause(User),
                 )
             )
         ).scalar_one()
